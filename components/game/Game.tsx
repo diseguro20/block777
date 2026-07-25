@@ -28,6 +28,7 @@ import { useBetting } from '@/hooks/useBettingState';
 import { BettingHud } from '@/components/betting/BettingHud';
 import { WinModal } from '@/components/betting/WinModal';
 import { calculatePayout, MULTIPLIER_PER_LINE, COMBO_BONUS_MULTIPLIER, BetRecord } from '@/constants/Betting';
+import { SoundEffects } from '@/constants/SoundEffects';
 
 const pieceOverlapsRectangle = (layout: Rectangle, other: Rectangle) => {
   'worklet';
@@ -107,6 +108,7 @@ export const Game = ({ gameMode }: { gameMode: GameModeType }) => {
     const inc = linesBroken * MULTIPLIER_PER_LINE + currentCombo * COMBO_BONUS_MULTIPLIER;
     const newMult = Math.round((multiplier + inc) * 100) / 100;
     setMultiplier(newMult);
+    SoundEffects.playLineClear(linesBroken);
   };
 
   const handleGameOver = () => {
@@ -125,6 +127,7 @@ export const Game = ({ gameMode }: { gameMode: GameModeType }) => {
   };
 
   const handleCashout = () => {
+    SoundEffects.playWinCashout();
     const winPayout = calculatePayout(bet, multiplier);
     if (!isDemo) {
       deposit(winPayout);
