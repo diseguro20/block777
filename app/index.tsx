@@ -117,6 +117,5 @@ const styles = StyleSheet.create({
 		marginHorizontal: 2,
 		borderBottomLeftRadius: 2,
 		borderBottomRightRadius: 2,
-		clipPath: 'polygon(0 0, 100% 0, 50% 100%)',
 	},
 });

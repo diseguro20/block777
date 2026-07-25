@@ -129,7 +129,10 @@ function createBlockStyle(x: number, y: number, board: SharedValue<Board>): any 
                     : block.hoveredBreakColor;
             style = {
                 ...createFilledBlockStyle(blockColor),
-                boxShadow: '0px 0px 30px ' + colorToHex(blockColor)
+                shadowColor: colorToHex(blockColor),
+                shadowOffset: { width: 0, height: 0 },
+                shadowOpacity: 0.8,
+                shadowRadius: 15,
             };
         }
 
