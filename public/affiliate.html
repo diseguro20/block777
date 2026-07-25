@@ -1,32 +1,56 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Affiliate - BLOCK777</title>
+    <title>Painel de Afiliados — BLOCKERINO BET 🤝</title>
     <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
     <nav>
-        <div class="logo">AFFILIATES</div>
-        <button class="btn btn-primary" onclick="window.location.href='index.html'">Back to App</button>
+        <div class="logo">
+            <span>🤝</span> ARRAIÁ DE AFILIADOS
+        </div>
+        <button class="btn btn-wood" onclick="window.location.href='index.html'">VOLTAR AO JOGO 🎪</button>
     </nav>
-    <div class="screen active">
-        <div class="glass-card" style="margin-bottom:20px">
-            <h3>Your Referral Link</h3>
-            <div style="display:flex; gap:10px; margin-top:10px;">
-                <input type="text" id="ref-link" readonly>
-                <button class="btn btn-primary" onclick="affiliate.copyReferralLink()">Copy</button>
+
+    <div class="screen active" style="max-width:600px; padding:20px 16px;">
+        <!-- Link de Indicação -->
+        <div class="glass-card" style="margin-bottom:20px;">
+            <h2 style="font-size:16px; color:var(--color-primary); margin-bottom:6px;">🔗 SEU LINK EXCLUSIVO DE INDICAÇÃO</h2>
+            <p style="font-size:11px; color:var(--color-text-muted); margin-bottom:12px;">Ganhe 10% sobre depósitos diretos (Nível 1) e 2% sobre depósitos da sua rede (Nível 2):</p>
+            
+            <div style="display:flex; gap:8px;">
+                <input type="text" id="ref-link" readonly style="margin-bottom:0; font-size:12px; font-weight:bold;">
+                <button class="btn btn-primary" style="white-space:nowrap; min-height:44px;" onclick="affiliate.copyReferralLink()">📋 COPIAR</button>
             </div>
         </div>
 
-        <div class="grid grid-2" style="margin-bottom:20px">
-            <div class="card"><h3>Total Referred</h3><p id="stat-referred">0</p></div>
-            <div class="card"><h3>Total Commissions</h3><p id="stat-commissions">R$ 0,00</p></div>
-            <div class="card"><h3>Available Balance</h3><p id="stat-balance">R$ 0,00</p></div>
+        <!-- Cards de Estatísticas -->
+        <div class="grid grid-2" style="margin-bottom:20px;">
+            <div class="card" style="text-align:center;">
+                <div style="font-size:10px; color:var(--color-text-muted);">INDICADOS DIRETO (NÍVEL 1)</div>
+                <div style="font-size:22px; color:var(--color-primary); font-weight:bold;" id="stat-level1">0</div>
+            </div>
+            <div class="card" style="text-align:center;">
+                <div style="font-size:10px; color:var(--color-text-muted);">REDE SUBAFILIADOS (NÍVEL 2)</div>
+                <div style="font-size:22px; color:var(--color-text); font-weight:bold;" id="stat-level2">0</div>
+            </div>
+            <div class="card" style="text-align:center;">
+                <div style="font-size:10px; color:var(--color-text-muted);">COMISSÕES TOTAIS</div>
+                <div style="font-size:20px; color:var(--color-text); font-weight:bold;" id="stat-commissions">R$ 0,00</div>
+            </div>
+            <div class="card" style="text-align:center;">
+                <div style="font-size:10px; color:var(--color-text-muted);">SALDO DISPONÍVEL</div>
+                <div style="font-size:20px; color:var(--color-success); font-weight:bold;" id="stat-balance">R$ 0,00</div>
+            </div>
         </div>
-        
-        <button class="btn btn-success" style="width:100%" onclick="affiliate.redeemCommissions()">Redeem to Wallet</button>
+
+        <!-- Botão de Resgate de Comissões -->
+        <button class="btn btn-success" style="width:100%; min-height:50px; font-size:14px;" onclick="affiliate.redeemCommissions()">
+            💰 RESGATAR COMISSÕES PARA A CARTEIRA DE APOSTAS
+        </button>
     </div>
 
     <div class="toast-container" id="toast-container"></div>

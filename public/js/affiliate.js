@@ -1,41 +1,48 @@
 const affiliate = {
-    init() {
-        if (!app.token) {
-            window.location.href = 'index.html';
-            return;
-        }
-        this.loadAffiliateStats();
-        
-        const link = `${window.location.origin}?ref=${app.user?.id || 'TEST'}`;
-        document.getElementById('ref-link').value = link;
-    },
-
-    async loadAffiliateStats() {
-        try {
-            const data = await app.fetchAPI('/api/affiliate/stats');
-            document.getElementById('stat-referred').textContent = data.totalReferred;
-            document.getElementById('stat-commissions').textContent = app.formatBRL(data.totalCommissions);
-            document.getElementById('stat-balance').textContent = app.formatBRL(data.availableBalance);
-        } catch (e) {}
-    },
-
-    copyReferralLink() {
-        const linkEl = document.getElementById('ref-link');
-        linkEl.select();
-        document.execCommand('copy');
-        app.toast('Referral link copied!');
-    },
-
-    async redeemCommissions() {
-        try {
-            await app.fetchAPI('/api/affiliate/redeem', { method: 'POST' });
-            app.toast('Commissions redeemed to wallet!');
-            this.loadAffiliateStats();
-        } catch (e) {}
+  async init() {
+    if (!app.token) {
+      window.location.href = 'index.html';
+      return;
     }
+    await this.loadAffiliateStats();
+  },
+
+  async loadAffiliateStats() {
+    try {
+      const data = await app.fetchAPI('/api/affiliate/stats');
+      
+      const link = `${window.location.origin}/index.html?ref=${data.ref_code}`;
+      document.getElementById('ref-link').value = link;
+
+      document.getElementById('stat-level1').textContent = data.level1Count || 0;
+      document.getElementById('stat-level2').textContent = data.level2Count || 0;
+      document.getElementById('stat-commissions').textContent = app.formatBRL(data.totalCommissions || 0);
+      document.getElementById('stat-balance').textContent = app.formatBRL(data.affiliateBalance || 0);
+    } catch (e) {
+      console.error(e);
+    }
+  },
+
+  copyReferralLink() {
+    const linkEl = document.getElementById('ref-link');
+    if (!linkEl || !linkEl.value) return;
+    navigator.clipboard.writeText(linkEl.value);
+    app.showToast('📋 Link de indicação copiado com sucesso!');
+  },
+
+  async redeemCommissions() {
+    try {
+      const data = await app.fetchAPI('/api/affiliate/redeem', { method: 'POST' });
+      app.showToast(`💰 ${app.formatBRL(data.redeemed)} de comissões transferidos para a sua carteira!`);
+      await this.loadAffiliateStats();
+      if (app.user) {
+        app.user.balance = data.newBalance;
+        app.updateBalanceDisplays();
+      }
+    } catch (e) {}
+  }
 };
 
 document.addEventListener('DOMContentLoaded', () => {
-    // wait for app to init
-    setTimeout(() => affiliate.init(), 500);
+  setTimeout(() => affiliate.init(), 300);
 });
