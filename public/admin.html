@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin - BLOCK777</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <nav>
+        <div class="logo">ADMIN PANl</div>
+        <button class="btn btn-primary" onclick="window.location.href='index.html'">Back to App</button>
+    </nav>
+    <div class="screen active" style="max-width:1200px">
+        <div class="grid grid-4" style="margin-bottom:20px">
+            <div class="card"><h3>Total Users</h3><p id="stat-users">0</p></div>
+            <div class="card"><h3>Total Bets</h3><p id="stat-bets">R$ 0,00</p></div>
+            <div class="card"><h3>Total Payouts</h3><p id="stat-payouts">R$ 0,00</p></div>
+            <div class="card"><h3>House Profit</h3><p id="stat-profit">R$ 0,00</p></div>
+        </div>
+
+        <div class="glass-card" style="margin-bottom:20px">
+            <h3>Difficulty Control</h3>
+            <div class="grid grid-4" style="margin-top:10px">
+                <button class="btn btn-primary" onclick="admin.changeDifficulty('easy')">Easy</button>
+                <button class="btn btn-primary" onclick="admin.changeDifficulty('balanced')">Balanced</button>
+                <button class="btn btn-primary" onclick="admin.changeDifficulty('strict')">Strict</button>
+            </div>
+        </div>
+
+        <div class="glass-card">
+            <h3>Players</h3>
+            <input type="text" id="search-users" placeholder="Search..." oninput="admin.loadUsers(this.value)">
+            <table>
+                <thead><tr><th>Username</th><th>Email</th><th>Balance</th><th>Status</th><th>Influencer</th><th>Actions</th></tr></thead>
+                <tbody id="users-table"></tbody>
+            </table>
+        </div>
+    </div>
+    
+    <div class="toast-container" id="toast-container"></div>
+    
+    <script src="js/app.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>
