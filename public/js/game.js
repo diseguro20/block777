@@ -93,11 +93,24 @@ const game = {
     this.landingCtx = this.landingCanvas.getContext('2d');
 
     const container = this.landingCanvas.parentElement;
-    const size = Math.min(container.clientWidth - 20, 320);
-    this.landingCanvas.width = size;
-    this.landingCanvas.height = size + 90;
+    const containerW = (container && container.clientWidth > 50) ? container.clientWidth - 20 : 300;
+    const size = Math.max(Math.min(containerW, 320), 280);
 
+    this.landingCanvas.width = size;
+    this.landingCanvas.height = size + 100;
+
+    // Inicializa o grid 6x6 da landing demo
     this.landingDemo.board = Array(6).fill(null).map(() => Array(6).fill(null));
+    
+    // Adiciona alguns blocos decorativos iniciais para dar vida ao jogo
+    this.landingDemo.board[1][1] = BLOCK_COLORS[0];
+    this.landingDemo.board[1][2] = BLOCK_COLORS[0];
+    this.landingDemo.board[3][4] = BLOCK_COLORS[1];
+    this.landingDemo.board[4][4] = BLOCK_COLORS[1];
+    this.landingDemo.board[5][0] = BLOCK_COLORS[2];
+    this.landingDemo.board[5][1] = BLOCK_COLORS[2];
+    this.landingDemo.board[5][2] = BLOCK_COLORS[2];
+
     this.landingDemo.multiplier = 1.0;
     this.landingDemo.linesCleared = 0;
     this.generateLandingHand();
@@ -202,14 +215,16 @@ const game = {
   checkLandingLines() {
     let lines = 0;
     const board = this.landingDemo.board;
-    // Check rows
+    
+    // Checar linhas completas
     for (let r = 0; r < 6; r++) {
       if (board[r].every(c => c !== null)) {
         lines++;
         for (let c = 0; c < 6; c++) board[r][c] = null;
       }
     }
-    // Check cols
+
+    // Checar colunas completas
     for (let c = 0; c < 6; c++) {
       let full = true;
       for (let r = 0; r < 6; r++) if (!board[r][c]) full = false;
@@ -218,6 +233,7 @@ const game = {
         for (let r = 0; r < 6; r++) board[r][c] = null;
       }
     }
+
     if (lines > 0) {
       this.landingDemo.linesCleared += lines;
       this.landingDemo.multiplier += lines * 0.25;
@@ -239,7 +255,7 @@ const game = {
     ctx.fillStyle = '#1a0a2e';
     ctx.fillRect(0, 0, gridW, gridW);
 
-    ctx.strokeStyle = 'rgba(139, 94, 60, 0.3)';
+    ctx.strokeStyle = 'rgba(139, 94, 60, 0.4)';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 6; i++) {
       ctx.beginPath(); ctx.moveTo(0, i * cellSize); ctx.lineTo(gridW, i * cellSize); ctx.stroke();
@@ -254,7 +270,7 @@ const game = {
       }
     }
 
-    // Dragged preview
+    // Preview de arraste
     if (this.landingDemo.isDragging && this.landingDemo.draggedIndex !== null) {
       const piece = this.landingDemo.hand[this.landingDemo.draggedIndex];
       if (piece) {
@@ -274,9 +290,9 @@ const game = {
       }
     }
 
-    // Hand tray
+    // Área da mão de peças (Rodapé)
     ctx.fillStyle = '#0d0618';
-    ctx.fillRect(0, gridW, w, 90);
+    ctx.fillRect(0, gridW, w, 100);
     ctx.strokeStyle = '#8B5E3C';
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(0, gridW); ctx.lineTo(w, gridW); ctx.stroke();
@@ -297,7 +313,7 @@ const game = {
         }
       } else {
         const startX = idx * slotW + slotW / 2 - (p.shape[0].length * miniCell) / 2;
-        const startY = gridW + 45 - (p.shape.length * miniCell) / 2;
+        const startY = gridW + 50 - (p.shape.length * miniCell) / 2;
         for (let r = 0; r < p.shape.length; r++) {
           for (let c = 0; c < p.shape[r].length; c++) {
             if (p.shape[r][c]) this.drawBlockCtx(ctx, startX + c * miniCell, startY + r * miniCell, miniCell, p.color);
@@ -373,7 +389,7 @@ const game = {
     this.canvas.onmouseup = handleEnd;
 
     this.canvas.ontouchstart = handleStart;
-    this.canvas.ontouchmove = handleMove;
+    this.canvas.onttouchmove = handleMove;
     this.canvas.ontouchend = handleEnd;
   },
 
@@ -761,3 +777,11 @@ const game = {
     ctx.fillRect(x + size - 4, y + 1, 3, size - 2);
   }
 };
+
+// Auto-inicializa o mini-demo da landing page assim que o script é carregado
+document.addEventListener('DOMContentLoaded', () => {
+  setTimeout(() => game.initLandingDemo(), 150);
+});
+window.addEventListener('load', () => {
+  setTimeout(() => game.initLandingDemo(), 200);
+});
