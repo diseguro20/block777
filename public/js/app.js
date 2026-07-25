@@ -9,7 +9,7 @@ const app = {
     if (this.token) {
       this.loadUserData();
     } else {
-      this.showScreen('auth-screen');
+      this.showScreen('landing-screen');
     }
   },
 
@@ -48,6 +48,10 @@ const app = {
       navActions.style.display = this.token ? 'flex' : 'none';
     }
 
+    if (screenId === 'landing-screen' && window.game) {
+      setTimeout(() => window.game.initLandingDemo(), 100);
+    }
+
     if (screenId === 'game-screen' && window.game) {
       window.game.init();
     }
@@ -66,7 +70,14 @@ const app = {
 
     try {
       const res = await fetch(url, options);
-      const data = await res.json();
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error('Erro de comunicação com o servidor. Verifique as credenciais Firebase na Vercel.');
+      }
+
       if (!res.ok) throw new Error(data.error || 'Erro na requisição');
       return data;
     } catch (err) {
@@ -80,7 +91,6 @@ const app = {
       this.user = await this.fetchAPI('/api/auth/me');
       this.updateBalanceDisplays();
 
-      // Exibir link do admin se o usuário for administrador
       const adminBtn = document.getElementById('btn-admin-link');
       if (adminBtn) {
         adminBtn.style.display = this.user.role === 'admin' ? 'block' : 'none';
@@ -122,7 +132,7 @@ const app = {
           });
           this.token = data.token;
           localStorage.setItem('token', data.token);
-          this.showToast('Login realizado com sucesso! Bem-vindo.');
+          this.showToast('🎉 Login realizado com sucesso! Bem-vindo.');
           await this.loadUserData();
         } catch (e) {}
       };
@@ -145,7 +155,7 @@ const app = {
           });
           this.token = data.token;
           localStorage.setItem('token', data.token);
-          this.showToast('Conta criada com sucesso no Arraiá!');
+          this.showToast('🎁 Conta criada! Bônus de 300% pronto para ativação.');
           await this.loadUserData();
         } catch (e) {}
       };
@@ -156,7 +166,7 @@ const app = {
     this.token = null;
     this.user = null;
     localStorage.removeItem('token');
-    this.showScreen('auth-screen');
+    this.showScreen('landing-screen');
     this.showToast('Sessão encerrada com sucesso.');
   },
 
@@ -167,7 +177,7 @@ const app = {
     toast.className = 'toast';
     toast.textContent = msg;
     container.appendChild(toast);
-    setTimeout(() => toast.remove(), 3500);
+    setTimeout(() => toast.remove(), 4000);
   }
 };
 

@@ -7,30 +7,21 @@ const BLOCK_COLORS = [
   '#8B5E3C'  // Marrom Madeira
 ];
 
-// Formas de Peças (Matrizes 2D)
 const ALL_SHAPES = [
-  // 1x1
   [[1]],
-  // Linhas 2x1 e 1x2
   [[1, 1]],
   [[1], [1]],
-  // Linhas 3x1 e 1x3
   [[1, 1, 1]],
   [[1], [1], [1]],
-  // Quadrados 2x2
   [[1, 1], [1, 1]],
-  // L pequenas
   [[1, 0], [1, 1]],
   [[0, 1], [1, 1]],
   [[1, 1], [1, 0]],
   [[1, 1], [0, 1]],
-  // T pequenas
   [[1, 1, 1], [0, 1, 0]],
   [[0, 1], [1, 1], [0, 1]],
-  // Linhas 4x1 e 1x4
   [[1, 1, 1, 1]],
   [[1], [1], [1], [1]],
-  // Quadrados 3x3
   [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
 ];
 
@@ -53,6 +44,9 @@ const STRICT_SHAPES = [
 const game = {
   canvas: null,
   ctx: null,
+  landingCanvas: null,
+  landingCtx: null,
+
   isPlaying: false,
   mode: 'demo', // 'real' ou 'demo'
   gameMode: 'classic', // 'classic' (8x8) ou 'chaos' (10x10)
@@ -60,17 +54,29 @@ const game = {
   board: [],
   hand: [],
   sessionId: null,
-  difficulty: 'balanced',
-  betAmount: 200, // Centavos (R$ 2,00)
+  difficulty: 'easy',
+  betAmount: 200,
   multiplier: 1.0,
   linesCleared: 0,
   score: 0,
 
-  // Estado de Arraste (Drag & Drop)
   draggedPieceIndex: null,
   dragX: 0,
   dragY: 0,
   isDragging: false,
+
+  // Mini-Demo da Landing Page
+  landingDemo: {
+    board: [],
+    hand: [],
+    gridSize: 6,
+    multiplier: 1.0,
+    linesCleared: 0,
+    isDragging: false,
+    draggedIndex: null,
+    dragX: 0,
+    dragY: 0
+  },
 
   init() {
     this.canvas = document.getElementById('blockerino-canvas');
@@ -79,6 +85,239 @@ const game = {
     
     this.setupEvents();
     this.resizeCanvas();
+  },
+
+  initLandingDemo() {
+    this.landingCanvas = document.getElementById('mini-demo-canvas');
+    if (!this.landingCanvas) return;
+    this.landingCtx = this.landingCanvas.getContext('2d');
+
+    const container = this.landingCanvas.parentElement;
+    const size = Math.min(container.clientWidth - 20, 320);
+    this.landingCanvas.width = size;
+    this.landingCanvas.height = size + 90;
+
+    this.landingDemo.board = Array(6).fill(null).map(() => Array(6).fill(null));
+    this.landingDemo.multiplier = 1.0;
+    this.landingDemo.linesCleared = 0;
+    this.generateLandingHand();
+    this.setupLandingEvents();
+    this.drawLandingDemo();
+  },
+
+  generateLandingHand() {
+    this.landingDemo.hand = [];
+    const shapes = EASY_SHAPES;
+    for (let i = 0; i < 3; i++) {
+      const shape = shapes[Math.floor(Math.random() * shapes.length)];
+      const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
+      this.landingDemo.hand.push({ shape, color, used: false });
+    }
+  },
+
+  setupLandingEvents() {
+    if (!this.landingCanvas) return;
+
+    const getPos = (e) => {
+      const rect = this.landingCanvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: (clientX - rect.left) * (this.landingCanvas.width / rect.width),
+        y: (clientY - rect.top) * (this.landingCanvas.height / rect.height)
+      };
+    };
+
+    const handleStart = (e) => {
+      const pos = getPos(e);
+      const handAreaY = this.landingCanvas.width;
+      if (pos.y >= handAreaY) {
+        const slotW = this.landingCanvas.width / this.landingDemo.hand.length;
+        const idx = Math.floor(pos.x / slotW);
+        if (this.landingDemo.hand[idx] && !this.landingDemo.hand[idx].used) {
+          this.landingDemo.isDragging = true;
+          this.landingDemo.draggedIndex = idx;
+          this.landingDemo.dragX = pos.x;
+          this.landingDemo.dragY = pos.y;
+          this.drawLandingDemo();
+        }
+      }
+    };
+
+    const handleMove = (e) => {
+      if (!this.landingDemo.isDragging) return;
+      e.preventDefault();
+      const pos = getPos(e);
+      this.landingDemo.dragX = pos.x;
+      this.landingDemo.dragY = pos.y;
+      this.drawLandingDemo();
+    };
+
+    const handleEnd = () => {
+      if (!this.landingDemo.isDragging) return;
+      this.landingDemo.isDragging = false;
+      this.tryPlaceLandingPiece();
+      this.landingDemo.draggedIndex = null;
+      this.drawLandingDemo();
+    };
+
+    this.landingCanvas.onmousedown = handleStart;
+    this.landingCanvas.onmousemove = handleMove;
+    this.landingCanvas.onmouseup = handleEnd;
+
+    this.landingCanvas.ontouchstart = handleStart;
+    this.landingCanvas.ontouchmove = handleMove;
+    this.landingCanvas.ontouchend = handleEnd;
+  },
+
+  tryPlaceLandingPiece() {
+    const idx = this.landingDemo.draggedIndex;
+    if (idx === null) return;
+    const piece = this.landingDemo.hand[idx];
+    if (!piece || piece.used) return;
+
+    const gridW = this.landingCanvas.width;
+    const cellSize = gridW / 6;
+
+    const col = Math.floor((this.landingDemo.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
+    const row = Math.floor((this.landingDemo.dragY - 20 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
+
+    if (this.canPlaceOnGrid(this.landingDemo.board, piece.shape, row, col, 6)) {
+      for (let r = 0; r < piece.shape.length; r++) {
+        for (let c = 0; c < piece.shape[r].length; c++) {
+          if (piece.shape[r][c]) {
+            this.landingDemo.board[row + r][col + c] = piece.color;
+          }
+        }
+      }
+      piece.used = true;
+      this.checkLandingLines();
+
+      if (this.landingDemo.hand.every(p => p.used)) {
+        this.generateLandingHand();
+      }
+    }
+  },
+
+  checkLandingLines() {
+    let lines = 0;
+    const board = this.landingDemo.board;
+    // Check rows
+    for (let r = 0; r < 6; r++) {
+      if (board[r].every(c => c !== null)) {
+        lines++;
+        for (let c = 0; c < 6; c++) board[r][c] = null;
+      }
+    }
+    // Check cols
+    for (let c = 0; c < 6; c++) {
+      let full = true;
+      for (let r = 0; r < 6; r++) if (!board[r][c]) full = false;
+      if (full) {
+        lines++;
+        for (let r = 0; r < 6; r++) board[r][c] = null;
+      }
+    }
+    if (lines > 0) {
+      this.landingDemo.linesCleared += lines;
+      this.landingDemo.multiplier += lines * 0.25;
+      const demoMult = document.getElementById('mini-demo-mult');
+      if (demoMult) demoMult.textContent = `${this.landingDemo.multiplier.toFixed(2)}x`;
+      const demoValue = document.getElementById('mini-demo-value');
+      if (demoValue) demoValue.textContent = app.formatBRL(Math.round(2000 * this.landingDemo.multiplier));
+    }
+  },
+
+  drawLandingDemo() {
+    if (!this.landingCtx || !this.landingCanvas) return;
+    const ctx = this.landingCtx;
+    const w = this.landingCanvas.width;
+    const gridW = w;
+    const cellSize = gridW / 6;
+
+    ctx.clearRect(0, 0, w, this.landingCanvas.height);
+    ctx.fillStyle = '#1a0a2e';
+    ctx.fillRect(0, 0, gridW, gridW);
+
+    ctx.strokeStyle = 'rgba(139, 94, 60, 0.3)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i <= 6; i++) {
+      ctx.beginPath(); ctx.moveTo(0, i * cellSize); ctx.lineTo(gridW, i * cellSize); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(i * cellSize, 0); ctx.lineTo(i * cellSize, gridW); ctx.stroke();
+    }
+
+    for (let r = 0; r < 6; r++) {
+      for (let c = 0; c < 6; c++) {
+        if (this.landingDemo.board[r][c]) {
+          this.drawBlockCtx(ctx, c * cellSize, r * cellSize, cellSize, this.landingDemo.board[r][c]);
+        }
+      }
+    }
+
+    // Dragged preview
+    if (this.landingDemo.isDragging && this.landingDemo.draggedIndex !== null) {
+      const piece = this.landingDemo.hand[this.landingDemo.draggedIndex];
+      if (piece) {
+        const col = Math.floor((this.landingDemo.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
+        const row = Math.floor((this.landingDemo.dragY - 20 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
+        if (this.canPlaceOnGrid(this.landingDemo.board, piece.shape, row, col, 6)) {
+          ctx.globalAlpha = 0.5;
+          for (let r = 0; r < piece.shape.length; r++) {
+            for (let c = 0; c < piece.shape[r].length; c++) {
+              if (piece.shape[r][c]) {
+                this.drawBlockCtx(ctx, (col + c) * cellSize, (row + r) * cellSize, cellSize, piece.color);
+              }
+            }
+          }
+          ctx.globalAlpha = 1.0;
+        }
+      }
+    }
+
+    // Hand tray
+    ctx.fillStyle = '#0d0618';
+    ctx.fillRect(0, gridW, w, 90);
+    ctx.strokeStyle = '#8B5E3C';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0, gridW); ctx.lineTo(w, gridW); ctx.stroke();
+
+    const slotW = w / 3;
+    const miniCell = cellSize * 0.5;
+    this.landingDemo.hand.forEach((p, idx) => {
+      if (p.used) return;
+      if (this.landingDemo.isDragging && this.landingDemo.draggedIndex === idx) {
+        const pW = p.shape[0].length * cellSize;
+        const pH = p.shape.length * cellSize;
+        const startX = this.landingDemo.dragX - pW / 2;
+        const startY = this.landingDemo.dragY - 20 - pH / 2;
+        for (let r = 0; r < p.shape.length; r++) {
+          for (let c = 0; c < p.shape[r].length; c++) {
+            if (p.shape[r][c]) this.drawBlockCtx(ctx, startX + c * cellSize, startY + r * cellSize, cellSize, p.color);
+          }
+        }
+      } else {
+        const startX = idx * slotW + slotW / 2 - (p.shape[0].length * miniCell) / 2;
+        const startY = gridW + 45 - (p.shape.length * miniCell) / 2;
+        for (let r = 0; r < p.shape.length; r++) {
+          for (let c = 0; c < p.shape[r].length; c++) {
+            if (p.shape[r][c]) this.drawBlockCtx(ctx, startX + c * miniCell, startY + r * miniCell, miniCell, p.color);
+          }
+        }
+      }
+    });
+  },
+
+  canPlaceOnGrid(grid, shape, startRow, startCol, maxGrid) {
+    for (let r = 0; r < shape.length; r++) {
+      for (let c = 0; c < shape[r].length; c++) {
+        if (shape[r][c]) {
+          const tr = startRow + r;
+          const tc = startCol + c;
+          if (tr < 0 || tr >= maxGrid || tc < 0 || tc >= maxGrid || grid[tr][tc] !== null) return false;
+        }
+      }
+    }
+    return true;
   },
 
   setupEvents() {
@@ -97,7 +336,7 @@ const game = {
     const handleStart = (e) => {
       if (!this.isPlaying) return;
       const pos = getPos(e);
-      const handAreaY = this.canvas.height - 130;
+      const handAreaY = this.canvas.width;
       
       if (pos.y >= handAreaY) {
         const slotWidth = this.canvas.width / this.hand.length;
@@ -129,13 +368,13 @@ const game = {
       this.draw();
     };
 
-    this.canvas.addEventListener('mousedown', handleStart);
-    this.canvas.addEventListener('mousemove', handleMove);
-    this.canvas.addEventListener('mouseup', handleEnd);
+    this.canvas.onmousedown = handleStart;
+    this.canvas.onmousemove = handleMove;
+    this.canvas.onmouseup = handleEnd;
 
-    this.canvas.addEventListener('touchstart', handleStart);
-    this.canvas.addEventListener('touchmove', handleMove);
-    this.canvas.addEventListener('touchend', handleEnd);
+    this.canvas.ontouchstart = handleStart;
+    this.canvas.ontouchmove = handleMove;
+    this.canvas.ontouchend = handleEnd;
   },
 
   resizeCanvas() {
@@ -143,7 +382,7 @@ const game = {
     const container = this.canvas.parentElement;
     const width = Math.min(container.clientWidth - 16, 420);
     this.canvas.width = width;
-    this.canvas.height = width + 130; // Grid quadrado + Área da mão de peças
+    this.canvas.height = width + 130;
     if (this.isPlaying) this.draw();
   },
 
@@ -163,7 +402,7 @@ const game = {
     const inputVal = document.getElementById('bet-input-val').value;
     const betVal = parseFloat(inputVal);
     if (isNaN(betVal) || betVal < 1.0 || betVal > 100.0) {
-      app.showToast('Valor de aposta inválido! Min R$ 1,00 - Max R$ 100,00.');
+      app.showToast('Valor de aposta inválido! Mínimo R$ 1,00 - Máximo R$ 100,00.');
       return;
     }
 
@@ -206,25 +445,25 @@ const game = {
   },
 
   async startDemoGame() {
-    try {
-      const data = await app.fetchAPI('/api/game/demo/start', { method: 'POST' });
-      this.sessionId = data.sessionId;
-      this.difficulty = 'easy';
-      this.multiplier = 1.0;
-      this.linesCleared = 0;
-      this.score = 0;
+    this.sessionId = 'demo-' + Date.now();
+    this.difficulty = 'easy';
+    this.multiplier = 1.0;
+    this.linesCleared = 0;
+    this.score = 0;
+    this.mode = 'demo';
 
-      app.showScreen('game-screen');
-      this.initBoard();
-      this.isPlaying = true;
-      
-      document.getElementById('btn-cashout').style.display = 'none';
-      this.updateHud();
-      this.draw();
-      app.showToast('🌽 Modo Treino Demo Iniciado!');
-    } catch (err) {
-      app.showToast('Erro ao iniciar treino demo.');
-    }
+    try {
+      await app.fetchAPI('/api/game/demo/start', { method: 'POST' });
+    } catch (e) {}
+
+    app.showScreen('game-screen');
+    this.initBoard();
+    this.isPlaying = true;
+    
+    document.getElementById('btn-cashout').style.display = 'none';
+    this.updateHud();
+    this.draw();
+    app.showToast('🌽 Modo Treino Demo Iniciado!');
   },
 
   initBoard() {
@@ -268,12 +507,10 @@ const game = {
     const boardWidth = this.canvas.width;
     const cellSize = boardWidth / this.gridSize;
 
-    // Calcular célula correspondente no grid baseada no centro da peça
     const col = Math.floor((this.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
     const row = Math.floor((this.dragY - 30 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
 
-    if (this.canPlace(piece.shape, row, col)) {
-      // Colocar a peça no tabuleiro
+    if (this.canPlaceOnGrid(this.board, piece.shape, row, col, this.gridSize)) {
       for (let r = 0; r < piece.shape.length; r++) {
         for (let c = 0; c < piece.shape[r].length; c++) {
           if (piece.shape[r][c]) {
@@ -285,37 +522,14 @@ const game = {
       piece.used = true;
       this.checkLines();
 
-      // Se todas as peças da mão foram usadas, gera nova mão
       if (this.hand.every(p => p.used)) {
         this.generateHand();
       }
 
-      // Checar se o jogo acabou
       if (!this.canAnyPieceBePlaced()) {
         this.handleGameOver();
       }
     }
-  },
-
-  canPlace(shape, startRow, startCol) {
-    for (let r = 0; r < shape.length; r++) {
-      for (let c = 0; c < shape[r].length; c++) {
-        if (shape[r][c]) {
-          const targetRow = startRow + r;
-          const targetCol = startCol + c;
-          if (
-            targetRow < 0 ||
-            targetRow >= this.gridSize ||
-            targetCol < 0 ||
-            targetCol >= this.gridSize ||
-            this.board[targetRow][targetCol] !== null
-          ) {
-            return false;
-          }
-        }
-      }
-    }
-    return true;
   },
 
   canAnyPieceBePlaced() {
@@ -323,7 +537,7 @@ const game = {
       if (piece.used) continue;
       for (let r = 0; r < this.gridSize; r++) {
         for (let c = 0; c < this.gridSize; c++) {
-          if (this.canPlace(piece.shape, r, c)) {
+          if (this.canPlaceOnGrid(this.board, piece.shape, r, c, this.gridSize)) {
             return true;
           }
         }
@@ -336,14 +550,12 @@ const game = {
     const rowsToClear = [];
     const colsToClear = [];
 
-    // Checar Linhas
     for (let r = 0; r < this.gridSize; r++) {
       if (this.board[r].every(cell => cell !== null)) {
         rowsToClear.push(r);
       }
     }
 
-    // Checar Colunas
     for (let c = 0; c < this.gridSize; c++) {
       let full = true;
       for (let r = 0; r < this.gridSize; r++) {
@@ -357,17 +569,14 @@ const game = {
 
     const totalLines = rowsToClear.length + colsToClear.length;
     if (totalLines > 0) {
-      // Limpar Linhas
       rowsToClear.forEach(r => {
         for (let c = 0; c < this.gridSize; c++) this.board[r][c] = null;
       });
 
-      // Limpar Colunas
       colsToClear.forEach(c => {
         for (let r = 0; r < this.gridSize; r++) this.board[r][c] = null;
       });
 
-      // Atualizar Multiplicador
       this.linesCleared += totalLines;
       const baseIncrease = totalLines * 0.15;
       const comboBonus = totalLines > 1 ? totalLines * 0.10 : 0;
@@ -408,7 +617,7 @@ const game = {
       document.getElementById('win-modal-mult').textContent = `${data.multiplier.toFixed(2)}x`;
       document.getElementById('win-modal').classList.add('active');
     } catch (err) {
-      app.showToast(err.message || 'Erro ao realizar saque de vitória.');
+      app.showToast(err.message || 'Erro ao realizar resgate de vitória.');
     }
   },
 
@@ -432,19 +641,15 @@ const game = {
   },
 
   draw() {
-    if (!this.ctx) return;
+    if (!this.ctx || !this.canvas) return;
     const w = this.canvas.width;
     const gridW = w;
     const cellSize = gridW / this.gridSize;
 
-    // Limpar Canvas
     this.ctx.clearRect(0, 0, w, this.canvas.height);
-
-    // Fundo do Grid
     this.ctx.fillStyle = '#1a0a2e';
     this.ctx.fillRect(0, 0, gridW, gridW);
 
-    // Linhas do Grid
     this.ctx.strokeStyle = 'rgba(139, 94, 60, 0.3)';
     this.ctx.lineWidth = 1;
 
@@ -460,28 +665,26 @@ const game = {
       this.ctx.stroke();
     }
 
-    // Desenhar Bloco Colocados no Tabuleiro
     for (let r = 0; r < this.gridSize; r++) {
       for (let c = 0; c < this.gridSize; c++) {
         if (this.board[r][c]) {
-          this.drawBlock(c * cellSize, r * cellSize, cellSize, this.board[r][c]);
+          this.drawBlockCtx(this.ctx, c * cellSize, r * cellSize, cellSize, this.board[r][c]);
         }
       }
     }
 
-    // Desenhar Preview do Arraste
     if (this.isDragging && this.draggedPieceIndex !== null) {
       const piece = this.hand[this.draggedPieceIndex];
       if (piece) {
         const col = Math.floor((this.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
         const row = Math.floor((this.dragY - 30 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
 
-        if (this.canPlace(piece.shape, row, col)) {
+        if (this.canPlaceOnGrid(this.board, piece.shape, row, col, this.gridSize)) {
           this.ctx.globalAlpha = 0.45;
           for (let r = 0; r < piece.shape.length; r++) {
             for (let c = 0; c < piece.shape[r].length; c++) {
               if (piece.shape[r][c]) {
-                this.drawBlock((col + c) * cellSize, (row + r) * cellSize, cellSize, piece.color);
+                this.drawBlockCtx(this.ctx, (col + c) * cellSize, (row + r) * cellSize, cellSize, piece.color);
               }
             }
           }
@@ -490,7 +693,6 @@ const game = {
       }
     }
 
-    // Desenhar Área da Mão de Peças (Rodapé do Canvas)
     const handAreaY = gridW;
     this.ctx.fillStyle = '#0d0618';
     this.ctx.fillRect(0, handAreaY, w, 130);
@@ -502,14 +704,12 @@ const game = {
     this.ctx.lineTo(w, handAreaY);
     this.ctx.stroke();
 
-    // Desenhar Peças da Mão
     const slotWidth = w / this.hand.length;
     const miniCellSize = Math.min(cellSize * 0.65, 24);
 
     this.hand.forEach((p, idx) => {
       if (p.used) return;
 
-      // Se a peça está sendo arrastada, desenha na posição do cursor
       if (this.isDragging && this.draggedPieceIndex === idx) {
         const pW = p.shape[0].length * cellSize;
         const pH = p.shape.length * cellSize;
@@ -519,12 +719,11 @@ const game = {
         for (let r = 0; r < p.shape.length; r++) {
           for (let c = 0; c < p.shape[r].length; c++) {
             if (p.shape[r][c]) {
-              this.drawBlock(startX + c * cellSize, startY + r * cellSize, cellSize, p.color);
+              this.drawBlockCtx(this.ctx, startX + c * cellSize, startY + r * cellSize, cellSize, p.color);
             }
           }
         }
       } else {
-        // Desenha no slot da mão
         const slotCenterX = idx * slotWidth + slotWidth / 2;
         const slotCenterY = handAreaY + 65;
         const pW = p.shape[0].length * miniCellSize;
@@ -535,14 +734,13 @@ const game = {
         for (let r = 0; r < p.shape.length; r++) {
           for (let c = 0; c < p.shape[r].length; c++) {
             if (p.shape[r][c]) {
-              this.drawBlock(startX + c * miniCellSize, startY + r * miniCellSize, miniCellSize, p.color);
+              this.drawBlockCtx(this.ctx, startX + c * miniCellSize, startY + r * miniCellSize, miniCellSize, p.color);
             }
           }
         }
       }
     });
 
-    // Marca d'água Modo Treino Demo
     if (this.mode === 'demo') {
       this.ctx.font = 'bold 12px Silkscreen';
       this.ctx.fillStyle = 'rgba(247, 183, 49, 0.4)';
@@ -550,17 +748,16 @@ const game = {
     }
   },
 
-  drawBlock(x, y, size, color) {
-    this.ctx.fillStyle = color;
-    this.ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
+  drawBlockCtx(ctx, x, y, size, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
 
-    // Bordas estilo madeira / 3D
-    this.ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-    this.ctx.fillRect(x + 1, y + 1, size - 2, 3);
-    this.ctx.fillRect(x + 1, y + 1, 3, size - 2);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.fillRect(x + 1, y + 1, size - 2, 3);
+    ctx.fillRect(x + 1, y + 1, 3, size - 2);
 
-    this.ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    this.ctx.fillRect(x + 1, y + size - 4, size - 2, 3);
-    this.ctx.fillRect(x + size - 4, y + 1, 3, size - 2);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fillRect(x + 1, y + size - 4, size - 2, 3);
+    ctx.fillRect(x + size - 4, y + 1, 3, size - 2);
   }
 };

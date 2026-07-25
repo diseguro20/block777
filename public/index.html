@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>BLOCKERINO BET — Festa Junina 🎪</title>
+    <title>BLOCKERINO BET — Bônus de 300% no Arraiá 🎪</title>
     <link rel="stylesheet" href="css/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
 </head>
@@ -26,7 +26,7 @@
 
     <!-- Header Navigation -->
     <nav>
-        <div class="logo" onclick="app.showScreen('menu-screen')">
+        <div class="logo" onclick="app.showScreen(app.token ? 'menu-screen' : 'landing-screen')">
             <span>🎪</span> BLOCKERINO
         </div>
         <div class="menu-items" id="nav-actions" style="display:none;">
@@ -37,11 +37,56 @@
         </div>
     </nav>
 
+    <!-- Tela 0: Landing Page Promocional (Marketing Agressivo + Mini-Demo) -->
+    <div id="landing-screen" class="screen active" style="max-width:540px;">
+        <!-- Banner de Marketing Agressivo -->
+        <div class="glass-card" style="text-align:center; border-color:var(--color-primary); background:linear-gradient(180deg, rgba(232, 67, 47, 0.25), rgba(26, 10, 46, 0.95)); margin-bottom:16px;">
+            <div class="badge badge-danger" style="font-size:12px; padding:6px 14px; display:inline-block; margin-bottom:8px; animation:pulse 1.5s infinite;">
+                🔥 OFERTA EXCLUSIVA DE BOAS-VINDAS 🚀
+            </div>
+            <h1 style="font-size:24px; color:var(--color-primary); text-shadow:2px 2px 6px #E8432F; margin-bottom:6px;">
+                BÔNUS DE 300% NO 1º DEPÓSITO!
+            </h1>
+            <div style="font-size:16px; color:#ffffff; font-weight:bold; background:rgba(45, 139, 78, 0.35); border:1.5px solid var(--color-success); border-radius:12px; padding:10px; margin:10px 0;">
+                🌽 DEPOSITOU R$ 20,00 ➔ JOGUE COM R$ 60,00! 💰
+            </div>
+            <p style="font-size:11px; color:var(--color-text-muted);">
+                Aproveite os multiplicadores de até 10X e saques PIX instantâneos no Arraiá!
+            </p>
+        </div>
+
+        <!-- Mini-Demo Jogável da Landing Page -->
+        <div class="glass-card" style="text-align:center; margin-bottom:16px;">
+            <h2 style="font-size:14px; color:var(--color-primary); margin-bottom:4px;">🎮 EXPERIMENTE O MODO DEMO AGORA:</h2>
+            <p style="font-size:10px; color:var(--color-text-muted); margin-bottom:10px;">Arraste as peças abaixo para o grid e teste seus prêmios:</p>
+
+            <div style="display:flex; justify-content:space-around; background:rgba(0,0,0,0.3); padding:8px; border-radius:10px; margin-bottom:10px; font-size:11px;">
+                <div>MULTIPLICADOR: <strong id="mini-demo-mult" style="color:var(--color-primary);">1.00x</strong></div>
+                <div>LUCRO DEMO: <strong id="mini-demo-value" style="color:var(--color-success);">R$ 20,00</strong></div>
+            </div>
+
+            <!-- Canvas do Mini-Demo -->
+            <div style="display:flex; justify-content:center;">
+                <canvas id="mini-demo-canvas" style="background:#1a0a2e; border:2px solid var(--color-wood); border-radius:12px; touch-action:none;"></canvas>
+            </div>
+
+            <!-- CTA Agressivo de Cadastro pós Demo -->
+            <button class="btn btn-primary" style="width:100%; margin-top:14px; padding:16px; font-size:14px; box-shadow:0 4px 20px rgba(247, 183, 49, 0.4);" onclick="app.showScreen('auth-screen'); app.toggleAuthTab('register');">
+                🔥 GANHAR DE VERDADE (RESGATAR BÔNUS 300%) 🚀
+            </button>
+            <button class="btn btn-wood" style="width:100%; margin-top:8px; font-size:11px;" onclick="app.showScreen('auth-screen'); app.toggleAuthTab('login');">
+                JÁ TENHO CONTA — ENTRAR 🔑
+            </button>
+        </div>
+    </div>
+
     <!-- Tela 1: Login / Cadastro -->
-    <div id="auth-screen" class="screen active">
+    <div id="auth-screen" class="screen">
         <div class="glass-card" style="text-align:center;">
-            <h1 style="font-size:24px; color:var(--color-primary); margin-bottom:4px;">🎪 BLOCKERINO BET</h1>
-            <p style="font-size:12px; color:var(--color-text-muted); margin-bottom:16px;">ARRAIÁ DIGITAL DE APOSTAS 🌽</p>
+            <h1 style="font-size:22px; color:var(--color-primary); margin-bottom:4px;">🎪 BLOCKERINO BET</h1>
+            <div style="background:var(--color-success); color:white; padding:4px 10px; border-radius:10px; font-size:10px; display:inline-block; margin-bottom:14px; border:1px solid var(--color-primary);">
+                🎁 300% BÔNUS ATIVO: R$ 20 = R$ 60
+            </div>
 
             <div class="grid grid-2" style="margin-bottom:16px;">
                 <button class="btn btn-primary" id="tab-login-btn" onclick="app.toggleAuthTab('login')">Entrar</button>
@@ -60,16 +105,20 @@
                 <input type="text" id="reg-username" placeholder="Nome de Usuário" required>
                 <input type="email" id="reg-email" placeholder="E-mail" required>
                 <input type="password" id="reg-password" placeholder="Criar Senha" required>
-                <button type="submit" class="btn btn-success" style="width:100%;">CRIAR CONTA GRÁTIS 🌽</button>
+                <button type="submit" class="btn btn-success" style="width:100%;">CRIAR CONTA E ATIVAR BÔNUS 🌽</button>
             </form>
+
+            <button class="btn btn-wood" style="width:100%; margin-top:12px; font-size:11px;" onclick="app.showScreen('landing-screen')">
+                ⬅️ VOLTAR PARA A DEMO
+            </button>
         </div>
     </div>
 
     <!-- Tela 2: Menu Principal -->
     <div id="menu-screen" class="screen">
         <div class="glass-card" style="text-align:center;">
-            <div style="font-size:40px;">🎪</div>
-            <h1 style="font-size:24px; color:var(--color-primary); margin-top:4px;">BLOCKERINO</h1>
+            <div style="font-size:36px;">🎪</div>
+            <h1 style="font-size:24px; color:var(--color-primary); margin-top:2px;">BLOCKERINO</h1>
             <div style="background:var(--color-accent); color:white; padding:4px 12px; border-radius:12px; font-size:10px; display:inline-block; margin-bottom:16px; border:1px solid var(--color-primary);">
                 🔥 FESTA JUNINA BET 🌽
             </div>
@@ -77,13 +126,13 @@
             <div class="grid" style="gap:10px;">
                 <!-- Modo Clássico 8x8 -->
                 <button class="btn btn-success" style="padding:14px; flex-direction:column; gap:4px;" onclick="game.showPrep('real', 'classic')">
-                    <span style="font-size:16px;">🌽 MODO CLÁSSICO 8x8</span>
+                    <span style="font-size:15px;">🌽 MODO CLÁSSICO 8x8</span>
                     <span style="font-size:10px; opacity:0.9;">Aposta Real com quebra de linhas</span>
                 </button>
 
                 <!-- Modo Chaos 10x10 -->
                 <button class="btn btn-primary" style="padding:14px; flex-direction:column; gap:4px;" onclick="game.showPrep('real', 'chaos')">
-                    <span style="font-size:16px;">🎆 MODO CHAOS 10x10</span>
+                    <span style="font-size:15px;">🎆 MODO CHAOS 10x10</span>
                     <span style="font-size:10px; opacity:0.9;">5 peças e Super Multiplicadores 🪗</span>
                 </button>
 
@@ -98,7 +147,7 @@
                 </div>
 
                 <button class="btn btn-wood" id="btn-admin-link" style="display:none; color:var(--color-accent); border-color:var(--color-accent);" onclick="window.location.href='admin.html'">
-                    👑 PAINEL PAINEL ADMIN
+                    👑 PAINEL ADMIN
                 </button>
             </div>
         </div>
@@ -152,15 +201,15 @@
 
             <!-- Conteúdo Depósito -->
             <div id="dep-content">
-                <div style="font-size:11px; color:var(--color-text-muted); margin-bottom:8px;">ESCOLHA O VALOR:</div>
+                <div style="font-size:11px; color:var(--color-text-muted); margin-bottom:8px;">ESCOLHA O VALOR DO DEPÓSITO:</div>
                 <div class="preset-grid">
-                    <div class="preset-card" onclick="wallet.selectPreset(20)">R$ 20</div>
-                    <div class="preset-card active" onclick="wallet.selectPreset(50)">R$ 50</div>
+                    <div class="preset-card active" onclick="wallet.selectPreset(20)">R$ 20 (R$ 60)</div>
+                    <div class="preset-card" onclick="wallet.selectPreset(50)">R$ 50</div>
                     <div class="preset-card" onclick="wallet.selectPreset(100)">R$ 100</div>
                     <div class="preset-card" onclick="wallet.selectPreset(200)">R$ 200</div>
                 </div>
 
-                <input type="number" id="dep-amount-input" value="50" placeholder="Outro Valor (R$)" min="5" step="1">
+                <input type="number" id="dep-amount-input" value="20" placeholder="Outro Valor (R$)" min="5" step="1">
                 <button class="btn btn-primary" style="width:100%;" onclick="wallet.requestDeposit()">GERAR PIX COPIA E COLA 🌽</button>
 
                 <div id="pix-result-container" style="display:none; margin-top:16px; text-align:center;">
