@@ -65,17 +65,18 @@ const game = {
   dragY: 0,
   isDragging: false,
 
-  // Mini-Demo da Landing Page
+  // Jogo Real em Prévia Gratuita na Landing Page (8x8 Completo)
   landingDemo: {
     board: [],
     hand: [],
-    gridSize: 6,
+    gridSize: 8,
     multiplier: 1.0,
     linesCleared: 0,
     isDragging: false,
     draggedIndex: null,
     dragX: 0,
-    dragY: 0
+    dragY: 0,
+    betBase: 2000 // R$ 20,00 base
   },
 
   init() {
@@ -93,29 +94,31 @@ const game = {
     this.landingCtx = this.landingCanvas.getContext('2d');
 
     const container = this.landingCanvas.parentElement;
-    const containerW = (container && container.clientWidth > 50) ? container.clientWidth - 20 : 300;
-    const size = Math.max(Math.min(containerW, 320), 280);
+    const containerW = (container && container.clientWidth > 50) ? container.clientWidth - 16 : 340;
+    const size = Math.max(Math.min(containerW, 400), 290);
 
     this.landingCanvas.width = size;
-    this.landingCanvas.height = size + 100;
+    this.landingCanvas.height = size + 120; // Grid 8x8 + Mão de Peças
 
-    // Inicializa o grid 6x6 da landing demo
-    this.landingDemo.board = Array(6).fill(null).map(() => Array(6).fill(null));
-    
-    // Adiciona alguns blocos decorativos iniciais para dar vida ao jogo
+    this.landingDemo.gridSize = 8;
+    this.landingDemo.board = Array(8).fill(null).map(() => Array(8).fill(null));
+
+    // Blocos decorativos iniciais coloridos para engajamento imediato
     this.landingDemo.board[1][1] = BLOCK_COLORS[0];
     this.landingDemo.board[1][2] = BLOCK_COLORS[0];
     this.landingDemo.board[3][4] = BLOCK_COLORS[1];
     this.landingDemo.board[4][4] = BLOCK_COLORS[1];
-    this.landingDemo.board[5][0] = BLOCK_COLORS[2];
-    this.landingDemo.board[5][1] = BLOCK_COLORS[2];
-    this.landingDemo.board[5][2] = BLOCK_COLORS[2];
+    this.landingDemo.board[7][0] = BLOCK_COLORS[2];
+    this.landingDemo.board[7][1] = BLOCK_COLORS[2];
+    this.landingDemo.board[7][2] = BLOCK_COLORS[2];
+    this.landingDemo.board[7][3] = BLOCK_COLORS[2];
 
     this.landingDemo.multiplier = 1.0;
     this.landingDemo.linesCleared = 0;
     this.generateLandingHand();
     this.setupLandingEvents();
     this.drawLandingDemo();
+    this.updateLandingHud();
   },
 
   generateLandingHand() {
@@ -190,12 +193,12 @@ const game = {
     if (!piece || piece.used) return;
 
     const gridW = this.landingCanvas.width;
-    const cellSize = gridW / 6;
+    const cellSize = gridW / 8;
 
     const col = Math.floor((this.landingDemo.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
-    const row = Math.floor((this.landingDemo.dragY - 20 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
+    const row = Math.floor((this.landingDemo.dragY - 25 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
 
-    if (this.canPlaceOnGrid(this.landingDemo.board, piece.shape, row, col, 6)) {
+    if (this.canPlaceOnGrid(this.landingDemo.board, piece.shape, row, col, 8)) {
       for (let r = 0; r < piece.shape.length; r++) {
         for (let c = 0; c < piece.shape[r].length; c++) {
           if (piece.shape[r][c]) {
@@ -215,32 +218,48 @@ const game = {
   checkLandingLines() {
     let lines = 0;
     const board = this.landingDemo.board;
-    
-    // Checar linhas completas
-    for (let r = 0; r < 6; r++) {
-      if (board[r].every(c => c !== null)) {
-        lines++;
-        for (let c = 0; c < 6; c++) board[r][c] = null;
-      }
+    const rowsToClear = [];
+    const colsToClear = [];
+
+    for (let r = 0; r < 8; r++) {
+      if (board[r].every(c => c !== null)) rowsToClear.push(r);
     }
 
-    // Checar colunas completas
-    for (let c = 0; c < 6; c++) {
+    for (let c = 0; c < 8; c++) {
       let full = true;
-      for (let r = 0; r < 6; r++) if (!board[r][c]) full = false;
-      if (full) {
-        lines++;
-        for (let r = 0; r < 6; r++) board[r][c] = null;
-      }
+      for (let r = 0; r < 8; r++) if (!board[r][c]) full = false;
+      if (full) colsToClear.push(c);
     }
+
+    lines = rowsToClear.length + colsToClear.length;
 
     if (lines > 0) {
+      rowsToClear.forEach(r => { for (let c = 0; c < 8; c++) board[r][c] = null; });
+      colsToClear.forEach(c => { for (let r = 0; r < 8; r++) board[r][c] = null; });
+
       this.landingDemo.linesCleared += lines;
-      this.landingDemo.multiplier += lines * 0.25;
-      const demoMult = document.getElementById('mini-demo-mult');
-      if (demoMult) demoMult.textContent = `${this.landingDemo.multiplier.toFixed(2)}x`;
-      const demoValue = document.getElementById('mini-demo-value');
-      if (demoValue) demoValue.textContent = app.formatBRL(Math.round(2000 * this.landingDemo.multiplier));
+      this.landingDemo.multiplier = parseFloat((this.landingDemo.multiplier + lines * 0.20).toFixed(2));
+      this.updateLandingHud();
+      app.showToast(`🔥 ${lines} LINHA(S) QUEBRADA(S)! Multiplicador: ${this.landingDemo.multiplier.toFixed(2)}x`);
+    }
+  },
+
+  updateLandingHud() {
+    const multEl = document.getElementById('mini-demo-mult');
+    if (multEl) multEl.textContent = `${this.landingDemo.multiplier.toFixed(2)}x`;
+    
+    const linesEl = document.getElementById('mini-demo-lines');
+    if (linesEl) linesEl.textContent = this.landingDemo.linesCleared;
+
+    const valEl = document.getElementById('mini-demo-value');
+    const profitCentavos = Math.round(this.landingDemo.betBase * this.landingDemo.multiplier);
+    const profitStr = app.formatBRL(profitCentavos);
+
+    if (valEl) valEl.textContent = profitStr;
+
+    const ctaBtn = document.getElementById('landing-cta-btn');
+    if (ctaBtn) {
+      ctaBtn.innerHTML = `🔥 GANHAR ${profitStr} DE VERDADE (RESGATAR BÔNUS 300%) 🚀`;
     }
   },
 
@@ -249,34 +268,34 @@ const game = {
     const ctx = this.landingCtx;
     const w = this.landingCanvas.width;
     const gridW = w;
-    const cellSize = gridW / 6;
+    const cellSize = gridW / 8;
 
     ctx.clearRect(0, 0, w, this.landingCanvas.height);
     ctx.fillStyle = '#1a0a2e';
     ctx.fillRect(0, 0, gridW, gridW);
 
-    ctx.strokeStyle = 'rgba(139, 94, 60, 0.4)';
+    ctx.strokeStyle = 'rgba(139, 94, 60, 0.35)';
     ctx.lineWidth = 1;
-    for (let i = 0; i <= 6; i++) {
+    for (let i = 0; i <= 8; i++) {
       ctx.beginPath(); ctx.moveTo(0, i * cellSize); ctx.lineTo(gridW, i * cellSize); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(i * cellSize, 0); ctx.lineTo(i * cellSize, gridW); ctx.stroke();
     }
 
-    for (let r = 0; r < 6; r++) {
-      for (let c = 0; c < 6; c++) {
+    for (let r = 0; r < 8; r++) {
+      for (let c = 0; c < 8; c++) {
         if (this.landingDemo.board[r][c]) {
           this.drawBlockCtx(ctx, c * cellSize, r * cellSize, cellSize, this.landingDemo.board[r][c]);
         }
       }
     }
 
-    // Preview de arraste
+    // Preview do Arraste no Jogo Real em Prévia
     if (this.landingDemo.isDragging && this.landingDemo.draggedIndex !== null) {
       const piece = this.landingDemo.hand[this.landingDemo.draggedIndex];
       if (piece) {
         const col = Math.floor((this.landingDemo.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
-        const row = Math.floor((this.landingDemo.dragY - 20 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
-        if (this.canPlaceOnGrid(this.landingDemo.board, piece.shape, row, col, 6)) {
+        const row = Math.floor((this.landingDemo.dragY - 25 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
+        if (this.canPlaceOnGrid(this.landingDemo.board, piece.shape, row, col, 8)) {
           ctx.globalAlpha = 0.5;
           for (let r = 0; r < piece.shape.length; r++) {
             for (let c = 0; c < piece.shape[r].length; c++) {
@@ -292,20 +311,20 @@ const game = {
 
     // Área da mão de peças (Rodapé)
     ctx.fillStyle = '#0d0618';
-    ctx.fillRect(0, gridW, w, 100);
+    ctx.fillRect(0, gridW, w, 120);
     ctx.strokeStyle = '#8B5E3C';
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(0, gridW); ctx.lineTo(w, gridW); ctx.stroke();
 
     const slotW = w / 3;
-    const miniCell = cellSize * 0.5;
+    const miniCell = cellSize * 0.65;
     this.landingDemo.hand.forEach((p, idx) => {
       if (p.used) return;
       if (this.landingDemo.isDragging && this.landingDemo.draggedIndex === idx) {
         const pW = p.shape[0].length * cellSize;
         const pH = p.shape.length * cellSize;
         const startX = this.landingDemo.dragX - pW / 2;
-        const startY = this.landingDemo.dragY - 20 - pH / 2;
+        const startY = this.landingDemo.dragY - 25 - pH / 2;
         for (let r = 0; r < p.shape.length; r++) {
           for (let c = 0; c < p.shape[r].length; c++) {
             if (p.shape[r][c]) this.drawBlockCtx(ctx, startX + c * cellSize, startY + r * cellSize, cellSize, p.color);
@@ -313,7 +332,7 @@ const game = {
         }
       } else {
         const startX = idx * slotW + slotW / 2 - (p.shape[0].length * miniCell) / 2;
-        const startY = gridW + 50 - (p.shape.length * miniCell) / 2;
+        const startY = gridW + 60 - (p.shape.length * miniCell) / 2;
         for (let r = 0; r < p.shape.length; r++) {
           for (let c = 0; c < p.shape[r].length; c++) {
             if (p.shape[r][c]) this.drawBlockCtx(ctx, startX + c * miniCell, startY + r * miniCell, miniCell, p.color);
@@ -321,6 +340,10 @@ const game = {
         }
       }
     });
+
+    ctx.font = 'bold 11px Silkscreen';
+    ctx.fillStyle = 'rgba(247, 183, 49, 0.5)';
+    ctx.fillText('JOGO REAL — PRÉVIA GRATUITA', 10, gridW - 10);
   },
 
   canPlaceOnGrid(grid, shape, startRow, startCol, maxGrid) {
@@ -389,7 +412,7 @@ const game = {
     this.canvas.onmouseup = handleEnd;
 
     this.canvas.ontouchstart = handleStart;
-    this.canvas.onttouchmove = handleMove;
+    this.canvas.ontouchmove = handleMove;
     this.canvas.ontouchend = handleEnd;
   },
 
@@ -778,7 +801,6 @@ const game = {
   }
 };
 
-// Auto-inicializa o mini-demo da landing page assim que o script é carregado
 document.addEventListener('DOMContentLoaded', () => {
   setTimeout(() => game.initLandingDemo(), 150);
 });

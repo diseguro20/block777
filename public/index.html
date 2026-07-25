@@ -37,7 +37,7 @@
         </div>
     </nav>
 
-    <!-- Tela 0: Landing Page Promocional (Marketing Agressivo + Mini-Demo) -->
+    <!-- Tela 0: Landing Page Promocional (Marketing Agressivo + Jogo Real em Prévia) -->
     <div id="landing-screen" class="screen active" style="max-width:540px;">
         <!-- Banner de Marketing Agressivo -->
         <div class="glass-card" style="text-align:center; border-color:var(--color-primary); background:linear-gradient(180deg, rgba(232, 67, 47, 0.25), rgba(26, 10, 46, 0.95)); margin-bottom:16px;">
@@ -55,24 +55,25 @@
             </p>
         </div>
 
-        <!-- Mini-Demo Jogável da Landing Page -->
+        <!-- Jogo Real Blockerino 8x8 em Prévia Gratuita -->
         <div class="glass-card" style="text-align:center; margin-bottom:16px;">
-            <h2 style="font-size:14px; color:var(--color-primary); margin-bottom:4px;">🎮 EXPERIMENTE O MODO DEMO AGORA:</h2>
-            <p style="font-size:10px; color:var(--color-text-muted); margin-bottom:10px;">Arraste as peças abaixo para o grid e teste seus prêmios:</p>
+            <h2 style="font-size:14px; color:var(--color-primary); margin-bottom:4px;">🎮 JOGUE AGORA MESMO (PRÉVIA GRATUITA DO JOGO REAL):</h2>
+            <p style="font-size:10px; color:var(--color-text-muted); margin-bottom:10px;">Arraste as peças abaixo para o grid 8x8 e quebre linhas para acumular prêmios:</p>
 
-            <div style="display:flex; justify-content:space-around; background:rgba(0,0,0,0.3); padding:8px; border-radius:10px; margin-bottom:10px; font-size:11px;">
+            <div style="display:flex; justify-content:space-around; background:rgba(0,0,0,0.3); padding:8px 12px; border-radius:10px; margin-bottom:12px; font-size:11px;">
                 <div>MULTIPLICADOR: <strong id="mini-demo-mult" style="color:var(--color-primary);">1.00x</strong></div>
-                <div>LUCRO DEMO: <strong id="mini-demo-value" style="color:var(--color-success);">R$ 20,00</strong></div>
+                <div>LINHAS: <strong id="mini-demo-lines" style="color:var(--color-text);">0</strong></div>
+                <div>GANHO DEMO: <strong id="mini-demo-value" style="color:var(--color-success);">R$ 20,00</strong></div>
             </div>
 
-            <!-- Canvas do Mini-Demo -->
-            <div style="display:flex; justify-content:center; align-items:center; min-height:400px;">
-                <canvas id="mini-demo-canvas" width="300" height="400" style="background:#1a0a2e; border:2px solid var(--color-wood); border-radius:12px; touch-action:none; width:300px; height:400px; display:block;"></canvas>
+            <!-- Canvas do Jogo Real 8x8 na Prévia -->
+            <div style="display:flex; justify-content:center; align-items:center; min-height:420px;">
+                <canvas id="mini-demo-canvas" width="340" height="460" style="background:#1a0a2e; border:2.5px solid var(--color-wood); border-radius:14px; touch-action:none; width:100%; max-width:360px; height:auto; display:block; box-shadow:0 6px 20px rgba(0,0,0,0.5);"></canvas>
             </div>
 
-            <!-- CTA Agressivo de Cadastro pós Demo -->
-            <button class="btn btn-primary" style="width:100%; margin-top:14px; padding:16px; font-size:14px; box-shadow:0 4px 20px rgba(247, 183, 49, 0.4);" onclick="app.showScreen('auth-screen'); app.toggleAuthTab('register');">
-                🔥 GANHAR DE VERDADE (RESGATAR BÔNUS 300%) 🚀
+            <!-- CTA Agressivo de Cadastro com Atualização Dinâmica -->
+            <button class="btn btn-primary" id="landing-cta-btn" style="width:100%; margin-top:14px; padding:16px; font-size:13px; box-shadow:0 4px 20px rgba(247, 183, 49, 0.4);" onclick="app.showScreen('auth-screen'); app.toggleAuthTab('register');">
+                🔥 GANHAR R$ 20,00 DE VERDADE (RESGATAR BÔNUS 300%) 🚀
             </button>
             <button class="btn btn-wood" style="width:100%; margin-top:8px; font-size:11px;" onclick="app.showScreen('auth-screen'); app.toggleAuthTab('login');">
                 JÁ TENHO CONTA — ENTRAR 🔑
@@ -109,7 +110,7 @@
             </form>
 
             <button class="btn btn-wood" style="width:100%; margin-top:12px; font-size:11px;" onclick="app.showScreen('landing-screen')">
-                ⬅️ VOLTAR PARA A DEMO
+                ⬅️ VOLTAR PARA A PRÉVIA
             </button>
         </div>
     </div>
