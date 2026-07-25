@@ -3,25 +3,40 @@
 # dependencies
 node_modules/
 
-# env files
-.env
-.env*.local
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
 
-# Vercel
-.vercel/
+# Native
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
 
-# OS
-.DS_Store
-Thumbs.db
-
-# IDE
-.vscode/
-.idea/
+# Metro
+.metro-health-check*
 
 # debug
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-# build
-dist/
+# macOS
+.DS_Store
+*.pem
+
+# local env files
+.env
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+app-example
+
+*.swp
+*.swo

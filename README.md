@@ -1,49 +1,21 @@
-# BLOCK777 — Plataforma iGaming Serverless
+# blockerino: 8x8 grid, break lines!
+Web and mobile Block Blast-style puzzle game. Place blocks and break lines for score.
 
-Plataforma de jogo arcade/aposta web com tema Festa Junina, rodando serverless na Vercel com Firebase Firestore.
+#### In-game screenshot
+<img src="./chaos-screenshot.png" width="220" title="hover text"></img>
+<img src="./menu-screenshot.png" width="220" title="hover text"></img>
 
-## Tech Stack
-
-- **Backend**: Node.js ES Modules, Express.js (Vercel Serverless Function)
-- **Database**: Firebase Firestore (Admin SDK)
-- **Auth**: JWT Bearer Tokens
-- **Frontend**: Vanilla HTML5, CSS3 (Glassmorphism), JavaScript ES6
-- **Deploy**: Vercel + GitHub
-
-## Funcionalidades
-
-- 🎮 Motor de jogo HTML5 Canvas arcade
-- 💰 Sistema de apostas real/demo com multiplicadores
-- 💳 Carteira PIX (depósitos e saques)
-- 👑 Painel administrativo completo
-- 🤝 Sistema de afiliados 2 níveis
-- ⭐ Modo Influencer
-- 🔧 Controle de dificuldade/retenção dinâmico (easy/balanced/strict)
-- 📱 100% responsivo mobile-first
-
-## Estrutura
-
+### Installation
+1. Clone the repo
+```bash
+git clone https://github.com/tokaa1/blockerino.git
 ```
-api/index.js          → Express serverless entry point
-routes/               → auth, game, wallet, affiliate, admin
-lib/firebase.js       → Firebase Admin SDK
-middleware/            → JWT auth + admin guard
-public/               → HTML, CSS, JS (frontend estático)
-vercel.json           → Configuração Vercel
+2. Install dependencies
+```bash
+npm install
 ```
-
-## Deploy
-
-1. Push para GitHub
-2. Importar projeto na Vercel
-3. Configurar Environment Variables:
-   - `FIREBASE_PROJECT_ID`
-   - `FIREBASE_CLIENT_EMAIL`
-   - `FIREBASE_PRIVATE_KEY`
-   - `JWT_SECRET`
-4. Deploy automático!
-
-## Valores Monetários
-
-Todos os valores no banco e APIs são em **CENTAVOS** (inteiros).  
-`100 centavos = R$ 1,00`
+3. Run the dev server
+```bash
+npm start
+```
+blockerino uses Expo - you can use Expo Go, emulators, or the web to run.
