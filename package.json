@@ -12,7 +12,9 @@
     "test": "jest --watchAll",
     "lint": "expo lint",
     "deploy": "gh-pages --nojekyll -d dist",
-    "predeploy": "expo export -p web"
+    "predeploy": "expo export -p web",
+    "build": "expo export -p web",
+    "vercel-build": "expo export -p web"
   },
   "jest": {
     "preset": "jest-expo"
