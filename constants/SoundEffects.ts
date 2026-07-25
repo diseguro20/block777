@@ -1,16 +1,22 @@
 // Sintetizador de Efeitos Sonoros Web Audio API (sem dependência de arquivos externos)
+// 100% seguro para SSR / NodeJS
 class SoundEffectsManager {
-  private ctx: AudioContext | null = null;
+  private ctx: any = null;
 
   private initCtx() {
-    if (!this.ctx && typeof window !== 'undefined') {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (AudioCtx) {
-        this.ctx = new AudioCtx();
+    if (typeof window === 'undefined') return;
+    try {
+      if (!this.ctx) {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          this.ctx = new AudioCtx();
+        }
       }
-    }
-    if (this.ctx && this.ctx.state === 'suspended') {
-      this.ctx.resume();
+      if (this.ctx && this.ctx.state === 'suspended') {
+        this.ctx.resume();
+      }
+    } catch (e) {
+      console.warn('AudioContext not supported or blocked:', e);
     }
   }
 
