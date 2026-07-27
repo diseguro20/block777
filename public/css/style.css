@@ -1,0 +1,357 @@
+:root {
+  --bg-primary: #0d0618;
+  --bg-secondary: #1a0a2e;
+  --bg-card: rgba(26, 10, 46, 0.88);
+  --color-primary: #F7B731;
+  --color-accent: #E8432F;
+  --color-success: #2D8B4E;
+  --color-text: #F5E6C8;
+  --color-text-muted: rgba(245, 230, 200, 0.7);
+  --color-wood: #8B5E3C;
+  --font-main: 'Silkscreen', cursive, system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+body {
+  background-color: var(--bg-primary);
+  background-image: radial-gradient(circle at 50% 20%, #2d1854 0%, #0d0618 100%);
+  color: var(--color-text);
+  font-family: var(--font-main);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-x: hidden;
+}
+
+/* Header Bandeirinhas Decorativas */
+.bandeirinhas-bar {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  gap: 4px;
+  background: rgba(0, 0, 0, 0.4);
+  padding: 4px 0;
+  border-bottom: 2px solid var(--color-wood);
+}
+
+.flag-mini {
+  width: 16px;
+  height: 18px;
+  border-bottom-left-radius: 3px;
+  border-bottom-right-radius: 3px;
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+/* Nav Superior */
+nav {
+  width: 100%;
+  max-width: 500px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+}
+
+.logo {
+  font-size: 20px;
+  color: var(--color-primary);
+  text-shadow: 2px 2px 4px var(--color-accent);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.balance-pill {
+  background: rgba(45, 139, 78, 0.25);
+  border: 1.5px solid var(--color-success);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 13px;
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(45, 139, 78, 0.3);
+}
+
+/* Estutura de Telas (.screen) */
+.screen {
+  display: none;
+  width: 100%;
+  max-width: 480px;
+  padding: 12px;
+  animation: fadeIn 0.3s ease;
+}
+
+.screen.active {
+  display: block;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Cards em Glassmorphism */
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 2px solid var(--color-wood);
+  border-radius: 18px;
+  padding: 18px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+  margin-bottom: 14px;
+}
+
+/* Botões Customizados */
+.btn {
+  font-family: var(--font-main);
+  font-size: 12px;
+  padding: 12px 18px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+  min-height: 46px;
+  text-decoration: none;
+}
+
+.btn:active {
+  transform: scale(0.97);
+}
+
+.btn-primary {
+  background: var(--color-primary);
+  color: #1a0a2e;
+  border: 2px solid var(--color-accent);
+  font-weight: bold;
+  box-shadow: 0 4px 14px rgba(247, 183, 49, 0.3);
+}
+
+.btn-success {
+  background: var(--color-success);
+  color: #ffffff;
+  border: 2px solid var(--color-primary);
+  font-weight: bold;
+  box-shadow: 0 4px 14px rgba(45, 139, 78, 0.4);
+}
+
+.btn-danger {
+  background: var(--color-accent);
+  color: #ffffff;
+  border: 2px solid var(--color-primary);
+  font-weight: bold;
+}
+
+.btn-wood {
+  background: rgba(139, 94, 60, 0.3);
+  color: var(--color-text);
+  border: 1.5px solid var(--color-wood);
+}
+
+/* Formulários */
+input, select {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  border: 1.5px solid var(--color-wood);
+  border-radius: 10px;
+  padding: 12px 14px;
+  color: var(--color-text);
+  font-family: var(--font-main);
+  font-size: 13px;
+  margin-bottom: 12px;
+  outline: none;
+}
+
+input:focus {
+  border-color: var(--color-primary);
+}
+
+/* Badges e Tags */
+.badge {
+  padding: 4px 10px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: bold;
+  display: inline-block;
+}
+
+.badge-danger {
+  background: var(--color-accent);
+  color: white;
+}
+
+.badge-success {
+  background: var(--color-success);
+  color: white;
+}
+
+/* Container do Jogo Canvas */
+.game-container {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.game-hud-bar {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1.5px solid var(--color-wood);
+  border-radius: 12px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+}
+
+.game-hud-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.game-hud-label {
+  font-size: 8px;
+  color: var(--color-text-muted);
+}
+
+.game-hud-value {
+  font-size: 14px;
+  color: var(--color-primary);
+  font-weight: bold;
+}
+
+/* Efeito de Lucro Flutuante */
+.floating-profit {
+  position: absolute;
+  color: #2ED573;
+  font-size: 22px;
+  font-weight: bold;
+  text-shadow: 0 0 10px #2ED573, 2px 2px 4px #000;
+  pointer-events: none;
+  animation: floatUp 1.2s ease-out forwards;
+  z-index: 999;
+}
+
+@keyframes floatUp {
+  0% { opacity: 1; transform: translateY(0) scale(1); }
+  50% { opacity: 1; transform: translateY(-30px) scale(1.3); }
+  100% { opacity: 0; transform: translateY(-60px) scale(1); }
+}
+
+/* Modais */
+.modal {
+  display: none;
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0, 0, 0, 0.8);
+  backdrop-filter: blur(8px);
+  z-index: 1000;
+  justify-content: center;
+  align-items: center;
+  padding: 16px;
+}
+
+.modal.active {
+  display: flex;
+}
+
+.modal-content {
+  width: 100%;
+  max-width: 400px;
+  animation: popIn 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Responsive Grids */
+.grid { display: grid; gap: 10px; }
+.grid-2 { grid-template-columns: 1fr 1fr; }
+
+/* Preset Cards da Carteira */
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.preset-card {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1.5px solid var(--color-wood);
+  border-radius: 10px;
+  padding: 10px 4px;
+  text-align: center;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.preset-card.active {
+  border-color: var(--color-primary);
+  background: rgba(247, 183, 49, 0.2);
+  color: var(--color-primary);
+}
+
+/* Tabela de Transações */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 10px;
+}
+
+th, td {
+  padding: 8px 6px;
+  text-align: left;
+  border-bottom: 1px solid rgba(139, 94, 60, 0.3);
+}
+
+th { color: var(--color-primary); }
+
+/* Toasts */
+.toast-container {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.toast {
+  background: var(--bg-card);
+  border: 1.5px solid var(--color-primary);
+  color: var(--color-text);
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 11px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.8);
+  animation: toastIn 0.3s ease;
+}
+
+@keyframes toastIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}

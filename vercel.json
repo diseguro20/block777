@@ -1,6 +1,5 @@
 {
-  "buildCommand": "node scripts/build.js",
-  "outputDirectory": "public",
+  "version": 2,
   "rewrites": [
     {
       "source": "/api/(.*)",

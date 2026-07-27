@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLOCK777 — Painel Administrativo 👑</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="bandeirinhas-bar">
+        <div class="flag-mini" style="background:#E8432F;"></div>
+        <div class="flag-mini" style="background:#F7B731;"></div>
+        <div class="flag-mini" style="background:#2D8B4E;"></div>
+        <div class="flag-mini" style="background:#E87F24;"></div>
+        <div class="flag-mini" style="background:#E84393;"></div>
+        <div class="flag-mini" style="background:#F5E6C8;"></div>
+    </div>
+
+    <nav>
+        <div class="logo" onclick="window.location.href='index.html'">
+            <span>👑</span> ADMIN BLOCK777
+        </div>
+        <button class="btn btn-wood" onclick="window.location.href='index.html'">⬅️ VOLTAR AO JOGO</button>
+    </nav>
+
+    <div style="width:100%; max-width:900px; padding:16px;">
+        <!-- Card de Estatísticas Gerais em Tempo Real -->
+        <div class="glass-card">
+            <h2 style="font-size:16px; color:var(--color-primary); margin-bottom:12px;">📊 ESTATÍSTICAS EM TEMPO REAL</h2>
+            <div class="grid grid-2" style="grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap:12px;">
+                <div style="background:rgba(0,0,0,0.3); padding:12px; border-radius:10px; border:1px solid var(--color-wood);">
+                    <div style="font-size:9px; color:var(--color-text-muted);">TOTAL DE JOGADORES</div>
+                    <div style="font-size:18px; color:var(--color-primary); font-weight:bold;" id="stat-total-users">0</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.3); padding:12px; border-radius:10px; border:1px solid var(--color-wood);">
+                    <div style="font-size:9px; color:var(--color-text-muted);">TOTAL DE APOSTAS</div>
+                    <div style="font-size:18px; color:var(--color-text); font-weight:bold;" id="stat-total-bets">R$ 0,00</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.3); padding:12px; border-radius:10px; border:1px solid var(--color-wood);">
+                    <div style="font-size:9px; color:var(--color-text-muted);">TOTAL DE PAGAMENTOS</div>
+                    <div style="font-size:18px; color:var(--color-accent); font-weight:bold;" id="stat-total-payouts">R$ 0,00</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.3); padding:12px; border-radius:10px; border:1px solid var(--color-wood);">
+                    <div style="font-size:9px; color:var(--color-text-muted);">LUCRO DA CASA (GGR)</div>
+                    <div style="font-size:18px; color:var(--color-success); font-weight:bold;" id="stat-house-profit">R$ 0,00</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controle de Retenção Global (Dificuldade) -->
+        <div class="glass-card">
+            <h2 style="font-size:14px; color:var(--color-primary); margin-bottom:8px;">🎯 DIFICULDADE / RETENÇÃO GLOBAL</h2>
+            <div class="grid grid-2" style="grid-template-columns: repeat(3, 1fr); gap:8px;">
+                <button class="btn btn-wood" id="diff-easy" onclick="admin.setDifficulty('easy')">FÁCIL (EASY)</button>
+                <button class="btn btn-primary" id="diff-balanced" onclick="admin.setDifficulty('balanced')">EQUILIBRADO</button>
+                <button class="btn btn-danger" id="diff-strict" onclick="admin.setDifficulty('strict')">RÍGIDO (STRICT)</button>
+            </div>
+        </div>
+
+        <!-- Gestão de Jogadores com Modo Influencer -->
+        <div class="glass-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h2 style="font-size:14px; color:var(--color-primary);">👥 JOGADORES CADASTRADOS</h2>
+                <input type="text" id="user-search-input" placeholder="Buscar por Nome ou E-mail" style="width:200px; margin-bottom:0;" oninput="admin.loadUsers(this.value)">
+            </div>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Usuário</th>
+                            <th>E-mail</th>
+                            <th>Saldo</th>
+                            <th>Modo Influencer</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Aprovação de Depósitos PIX -->
+        <div class="glass-card">
+            <h2 style="font-size:14px; color:var(--color-primary); margin-bottom:12px;">📥 SOLICITAÇÕES DE DEPÓSITO PIX</h2>
+            <div style="overflow-x:auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Usuário</th>
+                            <th>Valor</th>
+                            <th>Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="deposits-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal de Ajuste de Saldo -->
+    <div class="modal" id="admin-balance-modal">
+        <div class="glass-card modal-content">
+            <h3 style="font-size:16px; color:var(--color-primary); margin-bottom:12px;">💰 AJUSTAR SALDO DO JOGADOR</h3>
+            <input type="number" id="adj-amount-input" placeholder="Valor (R$)" step="0.50">
+            <select id="adj-type-select">
+                <option value="credit">CRÉDITAR (+) </option>
+                <option value="debit">DEBITAR (-)</option>
+            </select>
+            <input type="text" id="adj-desc-input" placeholder="Motivo do ajuste">
+            <div class="grid grid-2">
+                <button class="btn btn-success" onclick="admin.confirmBalanceAdjust()">CONFIRMAR</button>
+                <button class="btn btn-wood" onclick="document.getElementById('admin-balance-modal').classList.remove('active')">CANCELAR</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="js/app.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>

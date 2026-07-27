@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BLOCK777 — Painel de Afiliados 🤝</title>
+    <link rel="stylesheet" href="css/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="bandeirinhas-bar">
+        <div class="flag-mini" style="background:#E8432F;"></div>
+        <div class="flag-mini" style="background:#F7B731;"></div>
+        <div class="flag-mini" style="background:#2D8B4E;"></div>
+        <div class="flag-mini" style="background:#E87F24;"></div>
+        <div class="flag-mini" style="background:#E84393;"></div>
+        <div class="flag-mini" style="background:#F5E6C8;"></div>
+    </div>
+
+    <nav>
+        <div class="logo" onclick="window.location.href='index.html'">
+            <span>🤝</span> AFILIADOS
+        </div>
+        <button class="btn btn-wood" onclick="window.location.href='index.html'">⬅️ JOGO</button>
+    </nav>
+
+    <div style="width:100%; max-width:540px; padding:16px;">
+        <!-- Banner do Programa de Afiliados -->
+        <div class="glass-card" style="text-align:center;">
+            <h1 style="font-size:18px; color:var(--color-primary); margin-bottom:4px;">PROGRAMA DE AFILIADOS 🌽</h1>
+            <p style="font-size:11px; color:var(--color-text-muted); margin-bottom:12px;">Ganhe comissões recorrentes indicando novos jogadores:</p>
+
+            <div style="background:rgba(0,0,0,0.3); border:1.5px solid var(--color-primary); border-radius:12px; padding:10px; margin-bottom:12px;">
+                <div style="font-size:10px; color:var(--color-text-muted);">SEU LINK DE CONVITE:</div>
+                <input type="text" id="ref-link-display" readonly style="text-align:center; font-weight:bold; font-size:11px; margin-top:4px; margin-bottom:8px;">
+                <button class="btn btn-primary" style="width:100%;" onclick="affiliate.copyLink()">📋 COPIAR SEU LINK DE INDICAÇÃO</button>
+            </div>
+
+            <!-- Níveis de Comissão -->
+            <div class="grid grid-2" style="margin-bottom:12px;">
+                <div style="background:rgba(45, 139, 78, 0.2); border:1px solid var(--color-success); border-radius:10px; padding:10px; text-align:center;">
+                    <div style="font-size:9px; color:var(--color-text-muted);">NÍVEL 1 (DIRETO)</div>
+                    <div style="font-size:16px; color:var(--color-success); font-weight:bold;">10% COMISSÃO</div>
+                </div>
+                <div style="background:rgba(232, 127, 36, 0.2); border:1px solid var(--color-wood); border-radius:10px; padding:10px; text-align:center;">
+                    <div style="font-size:9px; color:var(--color-text-muted);">NÍVEL 2 (SUB-AFILIADOS)</div>
+                    <div style="font-size:16px; color:var(--color-primary); font-weight:bold;">2% COMISSÃO</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Estatísticas do Afiliado -->
+        <div class="glass-card">
+            <h2 style="font-size:14px; color:var(--color-primary); margin-bottom:12px;">📊 SUAS ESTATÍSTICAS DE INDICAÇÃO</h2>
+            <div class="grid grid-2" style="margin-bottom:12px;">
+                <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:10px; border:1px solid var(--color-wood);">
+                    <div style="font-size:9px; color:var(--color-text-muted);">INDICADOS NÍVEL 1</div>
+                    <div style="font-size:16px; color:var(--color-text); font-weight:bold;" id="aff-l1-count">0</div>
+                </div>
+                <div style="background:rgba(0,0,0,0.3); padding:10px; border-radius:10px; border:1px solid var(--color-wood);">
+                    <div style="font-size:9px; color:var(--color-text-muted);">INDICADOS NÍVEL 2</div>
+                    <div style="font-size:16px; color:var(--color-text); font-weight:bold;" id="aff-l2-count">0</div>
+                </div>
+            </div>
+
+            <div style="background:rgba(45, 139, 78, 0.2); border:1.5px solid var(--color-success); border-radius:12px; padding:14px; text-align:center; margin-bottom:12px;">
+                <div style="font-size:10px; color:var(--color-text-muted);">COMISSÕES ACUMULADAS DISPONÍVEIS</div>
+                <div style="font-size:24px; color:var(--color-success); font-weight:bold;" id="aff-balance-val">R$ 0,00</div>
+            </div>
+
+            <button class="btn btn-success" style="width:100%;" onclick="affiliate.redeemCommissions()">💰 RESGATAR COMISSÕES PARA A CARTEIRA 🚀</button>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="js/app.js"></script>
+    <script src="js/affiliate.js"></script>
+</body>
+</html>
