@@ -15,6 +15,7 @@ import React from "react";
 import OptionsMenu from "@/components/OptionsMenu";
 import { MenuStateType, useAppState } from "@/hooks/useAppState";
 import MainMenu from "@/components/MainMenu";
+import { LandingScreen } from "@/components/LandingScreen";
 import HighScores from "@/components/HighScoresMenu";
 import { PieceParticle } from "@/components/PieceParticle";
 import { LinearGradient } from 'expo-linear-gradient';
@@ -75,6 +76,7 @@ export default function App() {
 				))}
 			</View>
 
+			{ (appState.containsState(MenuStateType.LANDING) && !gameMode) && <LandingScreen></LandingScreen> }
 			{ (appState.containsState(MenuStateType.MENU) && !gameMode) && <MainMenu></MainMenu> }
 			{ gameMode && <Game gameMode={gameMode}></Game> }
 			{ appState.containsState(MenuStateType.OPTIONS) && <OptionsMenu></OptionsMenu> }

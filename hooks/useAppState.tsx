@@ -1,6 +1,7 @@
 import { SetStateAction, atom, useAtom, useAtomValue, useSetAtom } from "jotai";
 
 export enum MenuStateType {
+	LANDING = 'landing',
 	MENU = 'menu',
 	OPTIONS = 'options', 
 	HIGH_SCORES = 'highscores'
@@ -51,7 +52,7 @@ export class AppState {
 	}
 }
 
-const appStateAtom = atom<AppState>(new AppState(MenuStateType.MENU));
+const appStateAtom = atom<AppState>(new AppState(MenuStateType.LANDING));
 
 function createAppStateFunctions(setAppStateAtom: (...args: any) => void): [SetAppState, AppendAppState, PopAppState] {
 	const setAppState = (value: AppStateType | AppState) => {
