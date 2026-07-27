@@ -5,8 +5,8 @@ import path from 'path';
 console.log('🚀 Iniciando compilação do Blockerino Expo Web...');
 
 try {
-  // 1. Executa o export do Expo Web para a pasta 'dist'
-  execSync('npx expo export -p web', { stdio: 'inherit' });
+  // 1. Executa o export do Expo Web para a pasta 'dist' limpando o cache
+  execSync('npx expo export -p web -c', { stdio: 'inherit' });
 
   const srcDir = path.resolve('dist');
   const destDir = path.resolve('public');
