@@ -1,187 +1,184 @@
-// Controller Principal da Plataforma BLOCK777
-
-async function fetchAPI(endpoint, method = 'GET', data = null) {
-  const token = localStorage.getItem('token');
-  const headers = {
-    'Content-Type': 'application/json'
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-
-  const options = { method, headers };
-  if (data) {
-    options.body = JSON.stringify(data);
-  }
-
-  try {
-    const res = await fetch(endpoint, options);
-    const text = await res.text();
-    let json;
-    try {
-      json = JSON.parse(text);
-    } catch (e) {
-      json = { error: text || 'Resposta inválida do servidor' };
-    }
-
-    if (!res.ok) {
-      throw new Error(json.error || json.message || 'Erro na requisição');
-    }
-    return json;
-  } catch (err) {
-    console.warn(`API Error [${endpoint}]:`, err.message);
-    app.showToast(err.message || 'Erro de conexão com o servidor', 'danger');
-    throw err;
-  }
-}
-
 const app = {
   token: localStorage.getItem('token'),
   user: null,
 
   init() {
-    // Captura parâmetros de indicação ref / subref da URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const ref = urlParams.get('ref');
-    const subref = urlParams.get('subref');
-    if (ref) localStorage.setItem('ref_code', ref);
-    if (subref) localStorage.setItem('subref_code', subref);
+    this.captureRefs();
+    this.setupListeners();
 
-    // Verifica autenticação inicial
     if (this.token) {
       this.loadUserData();
     } else {
       this.showScreen('landing-screen');
     }
-
-    this.bindForms();
   },
 
-  showScreen(screenId) {
-    document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
-    const target = document.getElementById(screenId);
-    if (target) {
-      target.classList.add('active');
-    }
-
-    const navActions = document.getElementById('nav-actions');
-    if (navActions) {
-      navActions.style.display = this.token ? 'flex' : 'none';
-    }
+  captureRefs() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.has('ref')) localStorage.setItem('ref', urlParams.get('ref'));
+    if (urlParams.has('subref')) localStorage.setItem('subref', urlParams.get('subref'));
   },
 
   toggleAuthTab(tab) {
     const loginForm = document.getElementById('login-form');
     const regForm = document.getElementById('register-form');
-    const tabLogin = document.getElementById('tab-login-btn');
-    const tabReg = document.getElementById('tab-reg-btn');
+    const loginBtn = document.getElementById('tab-login-btn');
+    const regBtn = document.getElementById('tab-reg-btn');
 
     if (tab === 'login') {
       loginForm.style.display = 'block';
       regForm.style.display = 'none';
-      tabLogin.className = 'btn btn-primary';
-      tabReg.className = 'btn btn-wood';
+      loginBtn.className = 'btn btn-primary';
+      regBtn.className = 'btn btn-wood';
     } else {
       loginForm.style.display = 'none';
       regForm.style.display = 'block';
-      tabLogin.className = 'btn btn-wood';
-      tabReg.className = 'btn btn-success';
+      loginBtn.className = 'btn btn-wood';
+      regBtn.className = 'btn btn-primary';
+    }
+  },
+
+  showScreen(screenId) {
+    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+    const screen = document.getElementById(screenId);
+    if (screen) screen.classList.add('active');
+
+    const navActions = document.getElementById('nav-actions');
+    if (navActions) {
+      navActions.style.display = this.token ? 'flex' : 'none';
+    }
+
+    if (screenId === 'landing-screen' && window.game) {
+      setTimeout(() => window.game.initLandingDemo(), 100);
+    }
+
+    if (screenId === 'game-screen' && window.game) {
+      window.game.init();
+    }
+
+    if (screenId === 'wallet-screen' && window.wallet) {
+      window.wallet.loadWallet();
+    }
+  },
+
+  async fetchAPI(url, options = {}) {
+    options.headers = options.headers || {};
+    options.headers['Content-Type'] = 'application/json';
+    if (this.token) {
+      options.headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    try {
+      const res = await fetch(url, options);
+      const text = await res.text();
+      let data;
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        throw new Error('Erro de comunicação com o servidor. Verifique as credenciais Firebase na Vercel.');
+      }
+
+      if (!res.ok) throw new Error(data.error || 'Erro na requisição');
+      return data;
+    } catch (err) {
+      this.showToast(err.message);
+      throw err;
     }
   },
 
   async loadUserData() {
     try {
-      const data = await fetchAPI('/api/auth/me');
-      this.user = data.user || data;
-      this.updateBalanceDisplays(this.user.balance || 0);
+      this.user = await this.fetchAPI('/api/auth/me');
+      this.updateBalanceDisplays();
 
       const adminBtn = document.getElementById('btn-admin-link');
       if (adminBtn) {
-        adminBtn.style.display = (this.user.role === 'admin' || this.user.is_admin) ? 'block' : 'none';
+        adminBtn.style.display = this.user.role === 'admin' ? 'block' : 'none';
       }
 
-      if (document.getElementById('landing-screen').classList.contains('active')) {
-        this.showScreen('menu-screen');
-      }
+      this.showScreen('menu-screen');
     } catch (e) {
       this.logout();
     }
   },
 
-  updateBalanceDisplays(centavos) {
-    const brl = (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-    const navVal = document.getElementById('nav-balance');
-    const walletVal = document.getElementById('wallet-balance-val');
-    if (navVal) navVal.innerText = brl;
-    if (walletVal) walletVal.innerText = brl;
+  updateBalanceDisplays() {
+    if (!this.user) return;
+    const str = this.formatBRL(this.user.balance);
+    const navBal = document.getElementById('nav-balance');
+    const wallBal = document.getElementById('wallet-balance-val');
+
+    if (navBal) navBal.textContent = str;
+    if (wallBal) wallBal.textContent = str;
   },
 
-  bindForms() {
+  formatBRL(centavos) {
+    if (isNaN(centavos)) centavos = 0;
+    return 'R$ ' + (centavos / 100).toFixed(2).replace('.', ',');
+  },
+
+  setupListeners() {
     const loginForm = document.getElementById('login-form');
     if (loginForm) {
-      loginForm.addEventListener('submit', async (e) => {
+      loginForm.onsubmit = async (e) => {
         e.preventDefault();
-        const email = document.getElementById('login-email').value;
-        const password = document.getElementById('login-password').value;
-
         try {
-          const res = await fetchAPI('/api/auth/login', 'POST', { email, password });
-          this.token = res.token;
-          localStorage.setItem('token', res.token);
-          this.showToast('Login efetuado com sucesso! 🚀', 'success');
+          const data = await this.fetchAPI('/api/auth/login', {
+            method: 'POST',
+            body: JSON.stringify({
+              email: loginForm['login-email'].value,
+              password: loginForm['login-password'].value
+            })
+          });
+          this.token = data.token;
+          localStorage.setItem('token', data.token);
+          this.showToast('🎉 Login realizado com sucesso! Bem-vindo.');
           await this.loadUserData();
-          this.showScreen('menu-screen');
         } catch (e) {}
-      });
+      };
     }
 
     const regForm = document.getElementById('register-form');
     if (regForm) {
-      regForm.addEventListener('submit', async (e) => {
+      regForm.onsubmit = async (e) => {
         e.preventDefault();
-        const username = document.getElementById('reg-username').value;
-        const email = document.getElementById('reg-email').value;
-        const password = document.getElementById('reg-password').value;
-        const referred_by = localStorage.getItem('ref_code');
-        const sub_referred_by = localStorage.getItem('subref_code');
-
         try {
-          const res = await fetchAPI('/api/auth/register', 'POST', {
-            username,
-            email,
-            password,
-            referred_by,
-            sub_referred_by
+          const data = await this.fetchAPI('/api/auth/register', {
+            method: 'POST',
+            body: JSON.stringify({
+              username: regForm['reg-username'].value,
+              email: regForm['reg-email'].value,
+              password: regForm['reg-password'].value,
+              referred_by: localStorage.getItem('ref') || null,
+              sub_referred_by: localStorage.getItem('subref') || null
+            })
           });
-          this.token = res.token;
-          localStorage.setItem('token', res.token);
-          this.showToast('Conta criada com sucesso! Bônus de 300% Ativado 🌽', 'success');
+          this.token = data.token;
+          localStorage.setItem('token', data.token);
+          this.showToast('🎁 Conta criada! Bônus de 300% pronto para ativação.');
           await this.loadUserData();
-          this.showScreen('menu-screen');
         } catch (e) {}
-      });
+      };
     }
   },
 
   logout() {
-    localStorage.removeItem('token');
     this.token = null;
     this.user = null;
+    localStorage.removeItem('token');
     this.showScreen('landing-screen');
-    this.showToast('Você saiu da sua conta', 'info');
+    this.showToast('Sessão encerrada com sucesso.');
   },
 
-  showToast(message, type = 'info') {
+  showToast(msg) {
     const container = document.getElementById('toast-container');
     if (!container) return;
     const toast = document.createElement('div');
-    toast.className = `toast toast-${type}`;
-    toast.innerText = message;
+    toast.className = 'toast';
+    toast.textContent = msg;
     container.appendChild(toast);
-    setTimeout(() => toast.remove(), 3500);
+    setTimeout(() => toast.remove(), 4000);
   }
 };
 
-document.addEventListener('DOMContentLoaded', () => {
-  app.init();
-});
+document.addEventListener('DOMContentLoaded', () => app.init());

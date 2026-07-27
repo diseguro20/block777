@@ -5,17 +5,12 @@ import { MenuStateType, useSetAppState, GameModeType } from '@/hooks/useAppState
 import { BettingHud } from './betting/BettingHud';
 import { WalletModal } from './betting/WalletModal';
 import { BetHistoryModal } from './betting/BetHistoryModal';
-import { useBetting, formatBRL } from '@/hooks/useBettingState';
-import { Game } from './game/Game';
-import { calculatePayout } from '@/constants/Betting';
+import { useBetting } from '@/hooks/useBettingState';
 
 export default function MainMenu() {
   const [_, appendAppState] = useSetAppState();
-  const { balance, bet, setStatus, setMultiplier, multiplier, isDemo, setIsWalletOpen, setIsHistoryOpen } =
+  const { balance, bet, setStatus, setMultiplier, isDemo, setIsWalletOpen, setIsHistoryOpen } =
     useBetting();
-
-  const currentPayout = calculatePayout(bet, multiplier);
-  const formattedPayout = formatBRL(currentPayout);
 
   const handleStartGame = (mode: GameModeType) => {
     if (!isDemo && balance < bet) {
@@ -45,7 +40,7 @@ export default function MainMenu() {
           </View>
         </Animated.View>
 
-        {/* Banner de Marketing Agressivo */}
+        {/* Banner de Marketing Agressivo de Landing Page */}
         <View style={styles.promoCard}>
           <View style={styles.promoHeaderBadge}>
             <Text style={styles.promoHeaderBadgeText}>🔥 OFERTA EXCLUSIVA DE BOAS-VINDAS 🚀</Text>
@@ -57,32 +52,18 @@ export default function MainMenu() {
           <Text style={styles.promoSubText}>
             Aproveite os multiplicadores de até 10X e saques PIX instantâneos no Arraiá!
           </Text>
-        </View>
-
-        {/* Jogo Real Blockerino 8x8 na Prévia Principal */}
-        <View style={styles.previewGameCard}>
-          <Text style={styles.previewTitle}>🎮 JOGO REAL EM PRÉVIA GRATUITA:</Text>
-          <Text style={styles.previewSubTitle}>
-            Arraste as peças abaixo para o grid original 8x8 e teste seus prêmios:
-          </Text>
-
-          <View style={styles.previewGameContainer}>
-            <Game gameMode={GameModeType.Classic} />
-          </View>
-
-          {/* CTA Dinâmico com Lucro em Tempo Real */}
           <TouchableOpacity
-            style={styles.ctaButton}
+            style={styles.promoCtaBtn}
             onPress={() => setIsWalletOpen(true)}
             activeOpacity={0.85}
           >
-            <Text style={styles.ctaButtonText}>
-              🔥 GANHAR {formattedPayout} DE VERDADE (RESGATAR 300%) 🚀
+            <Text style={styles.promoCtaBtnText}>
+              🔥 DEPOSITAR R$ 20 E RECEBER R$ 60 AGORA 🚀
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* Seletor de Modos de Jogo */}
+        {/* Seletor dos Modos Originais do Blockerino */}
         <View style={styles.menuButtonsContainer}>
           <TouchableOpacity
             style={[styles.playBtn, styles.classicBtn]}
@@ -93,7 +74,7 @@ export default function MainMenu() {
               <Text style={{ fontSize: 24 }}>🌽</Text>
               <View style={styles.btnTextCol}>
                 <Text style={styles.btnMainText}>MODO CLÁSSICO 8x8</Text>
-                <Text style={styles.btnSubText}>Aposta tradicional com quebra de linhas</Text>
+                <Text style={styles.btnSubText}>Jogo Original Blockerino com Quebra de Linhas</Text>
               </View>
             </View>
           </TouchableOpacity>
@@ -124,6 +105,18 @@ export default function MainMenu() {
             <TouchableOpacity style={styles.subBtn} onPress={() => setIsHistoryOpen(true)}>
               <Text style={{ fontSize: 16 }}>📜</Text>
               <Text style={styles.subBtnText}>HISTÓRICO</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.subGrid}>
+            <TouchableOpacity style={styles.subBtn} onPress={() => appendAppState(MenuStateType.HIGH_SCORES)}>
+              <Text style={{ fontSize: 16 }}>🏆</Text>
+              <Text style={[styles.subBtnText, { color: '#E8432F' }]}>RANKING</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.subBtn} onPress={() => appendAppState(MenuStateType.OPTIONS)}>
+              <Text style={{ fontSize: 16 }}>⚙️</Text>
+              <Text style={[styles.subBtnText, { color: '#aaa' }]}>OPÇÕES</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -158,7 +151,7 @@ const styles = StyleSheet.create({
   },
   logoTitle: {
     fontFamily: 'Silkscreen',
-    fontSize: 26,
+    fontSize: 28,
     color: '#F7B731',
     textAlign: 'center',
     letterSpacing: 2,
@@ -184,7 +177,7 @@ const styles = StyleSheet.create({
   promoCard: {
     width: '92%',
     maxWidth: 420,
-    backgroundColor: 'rgba(232, 67, 47, 0.2)',
+    backgroundColor: 'rgba(232, 67, 47, 0.25)',
     borderWidth: 2,
     borderColor: '#F7B731',
     borderRadius: 16,
@@ -235,52 +228,21 @@ const styles = StyleSheet.create({
     color: '#F5E6C8',
     opacity: 0.8,
     textAlign: 'center',
-  },
-  previewGameCard: {
-    width: '92%',
-    maxWidth: 420,
-    backgroundColor: 'rgba(26, 10, 46, 0.92)',
-    borderWidth: 2,
-    borderColor: '#8B5E3C',
-    borderRadius: 16,
-    padding: 14,
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  previewTitle: {
-    fontFamily: 'Silkscreen',
-    fontSize: 12,
-    color: '#F7B731',
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-  previewSubTitle: {
-    fontFamily: 'Silkscreen',
-    fontSize: 8.5,
-    color: '#F5E6C8',
-    opacity: 0.75,
     marginBottom: 10,
-    textAlign: 'center',
   },
-  previewGameContainer: {
-    width: '100%',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ctaButton: {
+  promoCtaBtn: {
     width: '100%',
     backgroundColor: '#F7B731',
     borderWidth: 2,
     borderColor: '#E8432F',
     borderRadius: 12,
-    paddingVertical: 14,
-    paddingHorizontal: 10,
-    marginTop: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
     alignItems: 'center',
   },
-  ctaButtonText: {
+  promoCtaBtnText: {
     fontFamily: 'Silkscreen',
-    fontSize: 11,
+    fontSize: 10.5,
     color: '#1a0a2e',
     fontWeight: 'bold',
     textAlign: 'center',

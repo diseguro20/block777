@@ -69,13 +69,14 @@ function ComboBar({ lastBrokenLine, handSize }: ComboBarProps) {
 		})
 	})
 	const animatedStyle = useAnimatedStyle(() => {
-		const scaleVal = lastBrokenLine.value == handSize - 1 ? 1.08 : 1;
 		return {
 			width: `${fillPercentage.value}%`,
 			backgroundColor: interpolateColor(fillPercentage.value / 100, [0, 1/5, 1], ['transparent', comboBarBadColor, comboBarGoodColor]),
 			transform: [
 				{
-					scale: withTiming(scaleVal, { duration: 300 })
+					scale: lastBrokenLine.value == handSize - 1 ? withRepeat(
+						withDelay(500, withRepeat(withSequence(withTiming(1.1), withTiming(1)), 2))
+					, 1000) : 1
 				}
 			]
 		};

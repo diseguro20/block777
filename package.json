@@ -3,14 +3,16 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "node api/index.js",
+    "start": "expo start",
     "reset-project": "node ./scripts/reset-project.js",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "dev": "node api/index.js",
-    "build": "echo Build ready",
-    "vercel-build": "echo Build ready"
+    "server": "node server/index.js",
+    "test": "jest --watchAll",
+    "lint": "expo lint",
+    "deploy": "gh-pages --nojekyll -d dist",
+    "predeploy": "expo export -p web"
   },
   "jest": {
     "preset": "jest-expo"
@@ -24,7 +26,6 @@
     "@supabase/supabase-js": "^2.110.8",
     "@types/react-test-renderer": "^19.0.0",
     "babel-plugin-react-compiler": "^19.0.0-beta-e552027-20250112",
-    "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "expo": "~52.0.31",
@@ -44,9 +45,7 @@
     "expo-system-ui": "~4.0.8",
     "expo-web-browser": "~14.0.2",
     "express": "^5.2.1",
-    "firebase-admin": "^14.2.0",
     "jotai": "^2.11.1",
-    "jsonwebtoken": "^9.0.3",
     "react": "18.3.1",
     "react-compiler-runtime": "^19.0.0-beta-27714ef-20250124",
     "react-dom": "18.3.1",
