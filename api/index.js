@@ -4,9 +4,6 @@ import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
-import { initializeApp, cert, getApps } from 'firebase-admin/app';
-import { getFirestore, FieldValue as FirestoreFieldValue } from 'firebase-admin/firestore';
-import { getAuth } from 'firebase-admin/auth';
 
 const app = express();
 app.use(cors());
@@ -17,57 +14,69 @@ const projectId = process.env.FIREBASE_PROJECT_ID || 'block777';
 
 let firebaseApp;
 let db;
+let FieldValue;
 let hasFirebaseCredentials = !!(process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY);
 
-if (hasFirebaseCredentials) {
-  try {
-    if (!getApps().length) {
-      firebaseApp = initializeApp({
-        credential: cert({
-          projectId: projectId,
-          clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-          privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-        }),
-      });
-    } else {
-      firebaseApp = getApps()[0];
+// Inicialização dinâmica e preguiçosa do Firebase para evitar que a Vercel trave
+// ao tentar resolver importações estáticas de pacotes nativos pesados (como grpc/protobuf)
+async function initFirebase() {
+  if (hasFirebaseCredentials) {
+    try {
+      const { initializeApp, cert, getApps } = await import('firebase-admin/app');
+      const { getFirestore, FieldValue: FirestoreFieldValue } = await import('firebase-admin/firestore');
+
+      if (!getApps().length) {
+        firebaseApp = initializeApp({
+          credential: cert({
+            projectId: projectId,
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+          }),
+        });
+      } else {
+        firebaseApp = getApps()[0];
+      }
+      db = getFirestore(firebaseApp);
+      FieldValue = FirestoreFieldValue;
+      console.log('🔥 Firebase inicializado com sucesso.');
+    } catch (e) {
+      console.warn('Erro ao carregar Firebase Admin dinamicamente, alternando para Mock DB:', e.message);
+      hasFirebaseCredentials = false;
     }
-    db = getFirestore(firebaseApp);
-  } catch (e) {
-    console.warn('Firebase init error, switching to mock db:', e.message);
-    hasFirebaseCredentials = false;
+  }
+
+  if (!hasFirebaseCredentials) {
+    console.log('⚠️ Usando Banco de Dados Simulado (Mock DB) para evitar travamentos.');
+    db = {
+      collection: () => ({
+        doc: () => ({
+          get: async () => ({ exists: false, data: () => ({}) }),
+          set: async () => ({}),
+          update: async () => ({}),
+          delete: async () => ({})
+        }),
+        where: () => ({
+          limit: () => ({ get: async () => ({ empty: true, docs: [], size: 0 }) }),
+          get: async () => ({ empty: true, docs: [], size: 0 })
+        }),
+        get: async () => ({ empty: true, docs: [], size: 0 }),
+        add: async () => ({ id: 'mock_id_' + Date.now() })
+      }),
+      runTransaction: async (cb) => cb({
+        get: async () => ({ exists: false, data: () => ({}) }),
+        set: () => {},
+        update: () => {}
+      })
+    };
+    FieldValue = {
+      serverTimestamp: () => new Date(),
+      increment: (n) => n
+    };
   }
 }
 
-if (!hasFirebaseCredentials) {
-  console.log('⚠️ Usando Banco de Dados Simulado (Mock DB) para evitar travamentos.');
-  db = {
-    collection: () => ({
-      doc: () => ({
-        get: async () => ({ exists: false, data: () => ({}) }),
-        set: async () => ({}),
-        update: async () => ({}),
-        delete: async () => ({})
-      }),
-      where: () => ({
-        limit: () => ({ get: async () => ({ empty: true, docs: [], size: 0 }) }),
-        get: async () => ({ empty: true, docs: [], size: 0 })
-      }),
-      get: async () => ({ empty: true, docs: [], size: 0 }),
-      add: async () => ({ id: 'mock_id_' + Date.now() })
-    }),
-    runTransaction: async (cb) => cb({
-      get: async () => ({ exists: false, data: () => ({}) }),
-      set: () => {},
-      update: () => {}
-    })
-  };
-}
-
-const FieldValue = (hasFirebaseCredentials && FirestoreFieldValue) ? FirestoreFieldValue : {
-  serverTimestamp: () => new Date(),
-  increment: (n) => n
-};
+// Executa a inicialização de forma assíncrona no boot do servidor
+await initFirebase();
 
 // Middlewares
 function authenticateToken(req, res, next) {
@@ -96,7 +105,7 @@ async function requireAdmin(req, res, next) {
 
 // Master Admin Seed
 async function ensureMasterAdmin() {
-  if (!hasFirebaseCredentials) return; // Não tenta gravar no mock db em background
+  if (!hasFirebaseCredentials) return;
   try {
     const adminEmail = 'admin@block777.com';
     const snapshot = await db.collection('users').where('email', '==', adminEmail).limit(1).get();
