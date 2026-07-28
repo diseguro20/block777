@@ -6,11 +6,27 @@ const app = {
     this.captureRefs();
     this.setupListeners();
 
+    // Apenas gerencia navegação por telas de SPA se estiver na index.html
+    const isIndexPage = document.getElementById('landing-screen') || document.getElementById('menu-screen');
+    if (!isIndexPage) {
+      if (this.token) {
+        this.fetchUserDataOnly();
+      }
+      return;
+    }
+
     if (this.token) {
       this.loadUserData();
     } else {
       this.showScreen('landing-screen');
     }
+  },
+
+  async fetchUserDataOnly() {
+    try {
+      this.user = await this.fetchAPI('/api/auth/me');
+      this.updateBalanceDisplays();
+    } catch (e) {}
   },
 
   captureRefs() {
@@ -26,22 +42,25 @@ const app = {
     const regBtn = document.getElementById('tab-reg-btn');
 
     if (tab === 'login') {
-      loginForm.style.display = 'block';
-      regForm.style.display = 'none';
-      loginBtn.className = 'btn btn-primary';
-      regBtn.className = 'btn btn-wood';
+      if (loginForm) loginForm.style.display = 'block';
+      if (regForm) regForm.style.display = 'none';
+      if (loginBtn) loginBtn.className = 'btn btn-primary';
+      if (regBtn) regBtn.className = 'btn btn-wood';
     } else {
-      loginForm.style.display = 'none';
-      regForm.style.display = 'block';
-      loginBtn.className = 'btn btn-wood';
-      regBtn.className = 'btn btn-primary';
+      if (loginForm) loginForm.style.display = 'none';
+      if (regForm) regForm.style.display = 'block';
+      if (loginBtn) loginBtn.className = 'btn btn-wood';
+      if (regBtn) regBtn.className = 'btn btn-primary';
     }
   },
 
   showScreen(screenId) {
-    document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-    const screen = document.getElementById(screenId);
-    if (screen) screen.classList.add('active');
+    const screens = document.querySelectorAll('.screen');
+    if (screens.length > 1) {
+      screens.forEach(s => s.classList.remove('active'));
+      const screen = document.getElementById(screenId);
+      if (screen) screen.classList.add('active');
+    }
 
     const navActions = document.getElementById('nav-actions');
     if (navActions) {
@@ -75,7 +94,7 @@ const app = {
       try {
         data = JSON.parse(text);
       } catch (e) {
-        throw new Error('Erro de comunicação com o servidor. Verifique as credenciais Firebase na Vercel.');
+        throw new Error('Erro de comunicação com o servidor. Verifique as credenciais no Vercel.');
       }
 
       if (!res.ok) throw new Error(data.error || 'Erro na requisição');
