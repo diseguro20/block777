@@ -3,9 +3,51 @@ const admin = {
 
   async init() {
     if (!app.token) {
-      window.location.href = 'index.html';
+      this.renderAuthCard();
       return;
     }
+    await this.loadAll();
+  },
+
+  renderAuthCard() {
+    const container = document.querySelector('.screen.active');
+    if (!container) return;
+
+    container.innerHTML = `
+      <div class="glass-card" style="max-width:400px; margin:40px auto; padding:24px; text-align:center;">
+        <h2 style="font-size:20px; color:var(--color-primary); margin-bottom:8px;">👑 LOGIN ADMINISTRATIVO</h2>
+        <p style="font-size:11px; color:var(--color-text-muted); margin-bottom:16px;">Informe seu e-mail e senha de administrador para acessar o painel:</p>
+        
+        <form id="admin-login-form" style="display:flex; flex-direction:column; gap:12px;">
+          <input type="email" id="admin-email" placeholder="E-mail admin" required style="margin-bottom:0;">
+          <input type="password" id="admin-password" placeholder="Senha" required style="margin-bottom:0;">
+          <button type="submit" class="btn btn-primary" style="width:100%; min-height:44px;">ENTRAR NO PAINEL 🚀</button>
+        </form>
+      </div>
+    `;
+
+    document.getElementById('admin-login-form').onsubmit = async (e) => {
+      e.preventDefault();
+      const email = document.getElementById('admin-email').value;
+      const password = document.getElementById('admin-password').value;
+
+      try {
+        const data = await app.fetchAPI('/api/auth/login', {
+          method: 'POST',
+          body: JSON.stringify({ email, password })
+        });
+
+        app.token = data.token;
+        localStorage.setItem('token', data.token);
+        app.showToast('👑 Autenticado como Administrador!');
+        window.location.reload();
+      } catch (err) {
+        app.showToast('E-mail ou senha incorretos.');
+      }
+    };
+  },
+
+  async loadAll() {
     await this.loadAdminStats();
     await this.loadSettings();
     await this.loadUsers();
@@ -22,16 +64,23 @@ const admin = {
   async loadAdminStats() {
     try {
       const data = await app.fetchAPI('/api/admin/stats');
-      document.getElementById('stat-users').textContent = data.totalUsers || 0;
-      document.getElementById('stat-bets').textContent = app.formatBRL(data.totalBets || 0);
-      document.getElementById('stat-payouts').textContent = app.formatBRL(data.totalPayouts || 0);
+      const usersEl = document.getElementById('stat-users');
+      if (usersEl) usersEl.textContent = data.totalUsers || 0;
+
+      const betsEl = document.getElementById('stat-bets');
+      if (betsEl) betsEl.textContent = app.formatBRL(data.totalBets || 0);
+
+      const payoutsEl = document.getElementById('stat-payouts');
+      if (payoutsEl) payoutsEl.textContent = app.formatBRL(data.totalPayouts || 0);
 
       const profitEl = document.getElementById('stat-profit');
-      const profit = data.houseProfit || 0;
-      profitEl.textContent = app.formatBRL(profit);
-      profitEl.style.color = profit >= 0 ? 'var(--color-success)' : 'var(--color-danger)';
+      if (profitEl) {
+        const profit = data.houseProfit || 0;
+        profitEl.textContent = app.formatBRL(profit);
+        profitEl.style.color = profit >= 0 ? 'var(--color-success)' : 'var(--color-danger)';
+      }
     } catch (e) {
-      app.showToast('Acesso administrativo negado.');
+      app.showToast('Acesso negado. É necessário ter privilégios de administrador.');
     }
   },
 
@@ -74,6 +123,7 @@ const admin = {
     try {
       const data = await app.fetchAPI(`/api/admin/users?search=${encodeURIComponent(search)}`);
       const tbody = document.getElementById('users-table');
+      if (!tbody) return;
       tbody.innerHTML = '';
 
       if (!data.users || data.users.length === 0) {
@@ -121,10 +171,16 @@ const admin = {
 
   openBalanceModal(userId, username) {
     this.selectedUserIdForBalance = userId;
-    document.getElementById('balance-modal-user').textContent = `Jogador: ${username}`;
-    document.getElementById('balance-amount-input').value = '';
-    document.getElementById('balance-desc-input').value = '';
-    document.getElementById('balance-modal').classList.add('active');
+    const modalUser = document.getElementById('balance-modal-user');
+    if (modalUser) modalUser.textContent = `Jogador: ${username}`;
+
+    const amt = document.getElementById('balance-amount-input');
+    if (amt) amt.value = '';
+    const desc = document.getElementById('balance-desc-input');
+    if (desc) desc.value = '';
+
+    const modal = document.getElementById('balance-modal');
+    if (modal) modal.classList.add('active');
   },
 
   async confirmBalanceAdjustment() {
@@ -147,7 +203,8 @@ const admin = {
       });
 
       app.showToast('💰 Saldo ajustado com sucesso!');
-      document.getElementById('balance-modal').classList.remove('active');
+      const modal = document.getElementById('balance-modal');
+      if (modal) modal.classList.remove('active');
       this.loadUsers();
       this.loadAdminStats();
     } catch (e) {}
@@ -157,6 +214,7 @@ const admin = {
     try {
       const data = await app.fetchAPI('/api/admin/deposits');
       const tbody = document.getElementById('deposits-table');
+      if (!tbody) return;
       tbody.innerHTML = '';
 
       if (!data.deposits || data.deposits.length === 0) {
@@ -207,6 +265,7 @@ const admin = {
     try {
       const data = await app.fetchAPI('/api/admin/withdrawals');
       const tbody = document.getElementById('withdrawals-table');
+      if (!tbody) return;
       tbody.innerHTML = '';
 
       if (!data.withdrawals || data.withdrawals.length === 0) {
