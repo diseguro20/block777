@@ -17,12 +17,40 @@ let db;
 let FieldValue;
 let hasFirebaseCredentials = !!(process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY);
 
-// Inicialização dinâmica e preguiçosa do Firebase para evitar que a Vercel trave
-// ao tentar resolver importações estáticas de pacotes nativos pesados (como grpc/protobuf)
-async function initFirebase() {
-  if (hasFirebaseCredentials) {
+// Inicialização SÍNCRONA inicial com Mock DB para garantir que a Vercel
+// carregue e exporte o handler da API de forma instantânea sem travar com top-level await
+console.log('⚠️ Inicializando Mock DB síncrono padrão...');
+db = {
+  collection: () => ({
+    doc: () => ({
+      get: async () => ({ exists: false, data: () => ({}) }),
+      set: async () => ({}),
+      update: async () => ({}),
+      delete: async () => ({})
+    }),
+    where: () => ({
+      limit: () => ({ get: async () => ({ empty: true, docs: [], size: 0 }) }),
+      get: async () => ({ empty: true, docs: [], size: 0 })
+    }),
+    get: async () => ({ empty: true, docs: [], size: 0 }),
+    add: async () => ({ id: 'mock_id_' + Date.now() })
+  }),
+  runTransaction: async (cb) => cb({
+    get: async () => ({ exists: false, data: () => ({}) }),
+    set: () => {},
+    update: () => {}
+  })
+};
+
+FieldValue = {
+  serverTimestamp: () => new Date(),
+  increment: (n) => n
+};
+
+// Inicialização assíncrona em background apenas se as credenciais existirem no Vercel
+if (hasFirebaseCredentials) {
+  import('firebase-admin/app').then(async ({ initializeApp, cert, getApps }) => {
     try {
-      const { initializeApp, cert, getApps } = await import('firebase-admin/app');
       const { getFirestore, FieldValue: FirestoreFieldValue } = await import('firebase-admin/firestore');
 
       if (!getApps().length) {
@@ -38,45 +66,14 @@ async function initFirebase() {
       }
       db = getFirestore(firebaseApp);
       FieldValue = FirestoreFieldValue;
-      console.log('🔥 Firebase inicializado com sucesso.');
+      console.log('🔥 Firebase inicializado em background com sucesso.');
     } catch (e) {
-      console.warn('Erro ao carregar Firebase Admin dinamicamente, alternando para Mock DB:', e.message);
-      hasFirebaseCredentials = false;
+      console.warn('Erro ao inicializar Firebase em background:', e.message);
     }
-  }
-
-  if (!hasFirebaseCredentials) {
-    console.log('⚠️ Usando Banco de Dados Simulado (Mock DB) para evitar travamentos.');
-    db = {
-      collection: () => ({
-        doc: () => ({
-          get: async () => ({ exists: false, data: () => ({}) }),
-          set: async () => ({}),
-          update: async () => ({}),
-          delete: async () => ({})
-        }),
-        where: () => ({
-          limit: () => ({ get: async () => ({ empty: true, docs: [], size: 0 }) }),
-          get: async () => ({ empty: true, docs: [], size: 0 })
-        }),
-        get: async () => ({ empty: true, docs: [], size: 0 }),
-        add: async () => ({ id: 'mock_id_' + Date.now() })
-      }),
-      runTransaction: async (cb) => cb({
-        get: async () => ({ exists: false, data: () => ({}) }),
-        set: () => {},
-        update: () => {}
-      })
-    };
-    FieldValue = {
-      serverTimestamp: () => new Date(),
-      increment: (n) => n
-    };
-  }
+  }).catch(err => {
+    console.warn('Falha no carregamento assíncrono do Firebase Admin:', err.message);
+  });
 }
-
-// Executa a inicialização de forma assíncrona no boot do servidor
-await initFirebase();
 
 // Middlewares
 function authenticateToken(req, res, next) {
