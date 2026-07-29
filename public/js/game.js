@@ -62,11 +62,13 @@ const game = {
   combo: 0,
   misses: 0,
   eventsBound: false,
+  landingEventsBound: false,
 
   draggedPieceIndex: null,
   dragX: 0,
   dragY: 0,
   isDragging: false,
+  dragLift: 30,
 
   // Jogo Real em Prévia Gratuita na Landing Page (8x8 Completo)
   landingDemo: {
@@ -79,6 +81,7 @@ const game = {
     draggedIndex: null,
     dragX: 0,
     dragY: 0,
+    dragLift: 25,
     betBase: 2000 // R$ 20,00 base
   },
 
@@ -103,8 +106,8 @@ const game = {
     this.landingCtx = this.landingCanvas.getContext('2d');
 
     const container = this.landingCanvas.parentElement;
-    const containerW = (container && container.clientWidth > 50) ? container.clientWidth - 16 : 340;
-    const size = Math.max(Math.min(containerW, 400), 290);
+    const containerW = (container && container.clientWidth > 50) ? container.clientWidth : 340;
+    const size = Math.max(Math.min(containerW, 480), 260);
 
     this.landingCanvas.width = size;
     this.landingCanvas.height = size + 120; // Grid 8x8 + Mão de Peças
@@ -125,9 +128,22 @@ const game = {
     this.landingDemo.multiplier = 1.0;
     this.landingDemo.linesCleared = 0;
     this.generateLandingHand();
-    this.setupLandingEvents();
+    if (!this.landingEventsBound) {
+      this.setupLandingEvents();
+      this.landingEventsBound = true;
+      window.addEventListener('resize', () => this.resizeLandingCanvas(), { passive: true });
+    }
     this.drawLandingDemo();
     this.updateLandingHud();
+  },
+
+  resizeLandingCanvas() {
+    if (!this.landingCanvas || !this.landingCanvas.parentElement) return;
+    const width = Math.max(Math.min(this.landingCanvas.parentElement.clientWidth, 480), 260);
+    if (Math.abs(this.landingCanvas.width - width) < 2 && Math.abs(this.landingCanvas.height - (width + 120)) < 2) return;
+    this.landingCanvas.width = width;
+    this.landingCanvas.height = width + 120;
+    this.drawLandingDemo();
   },
 
   generateLandingHand() {
@@ -145,15 +161,14 @@ const game = {
 
     const getPos = (e) => {
       const rect = this.landingCanvas.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
       return {
-        x: (clientX - rect.left) * (this.landingCanvas.width / rect.width),
-        y: (clientY - rect.top) * (this.landingCanvas.height / rect.height)
+        x: (e.clientX - rect.left) * (this.landingCanvas.width / rect.width),
+        y: (e.clientY - rect.top) * (this.landingCanvas.height / rect.height)
       };
     };
 
     const handleStart = (e) => {
+      if (!e.isPrimary) return;
       const pos = getPos(e);
       const handAreaY = this.landingCanvas.width;
       if (pos.y >= handAreaY) {
@@ -164,6 +179,9 @@ const game = {
           this.landingDemo.draggedIndex = idx;
           this.landingDemo.dragX = pos.x;
           this.landingDemo.dragY = pos.y;
+          this.landingDemo.dragLift = e.pointerType === 'touch' ? Math.min(72, this.landingCanvas.width * 0.2) : 25;
+          this.landingCanvas.setPointerCapture?.(e.pointerId);
+          e.preventDefault();
           this.drawLandingDemo();
         }
       }
@@ -178,21 +196,30 @@ const game = {
       this.drawLandingDemo();
     };
 
-    const handleEnd = () => {
+    const handleEnd = (e) => {
       if (!this.landingDemo.isDragging) return;
+      const pos = getPos(e);
+      this.landingDemo.dragX = pos.x;
+      this.landingDemo.dragY = pos.y;
       this.landingDemo.isDragging = false;
       this.tryPlaceLandingPiece();
       this.landingDemo.draggedIndex = null;
+      this.landingCanvas.releasePointerCapture?.(e.pointerId);
       this.drawLandingDemo();
     };
 
-    this.landingCanvas.onmousedown = handleStart;
-    this.landingCanvas.onmousemove = handleMove;
-    this.landingCanvas.onmouseup = handleEnd;
+    const handleCancel = (e) => {
+      if (!this.landingDemo.isDragging) return;
+      this.landingDemo.isDragging = false;
+      this.landingDemo.draggedIndex = null;
+      this.landingCanvas.releasePointerCapture?.(e.pointerId);
+      this.drawLandingDemo();
+    };
 
-    this.landingCanvas.ontouchstart = handleStart;
-    this.landingCanvas.ontouchmove = handleMove;
-    this.landingCanvas.ontouchend = handleEnd;
+    this.landingCanvas.addEventListener('pointerdown', handleStart);
+    this.landingCanvas.addEventListener('pointermove', handleMove);
+    this.landingCanvas.addEventListener('pointerup', handleEnd);
+    this.landingCanvas.addEventListener('pointercancel', handleCancel);
   },
 
   tryPlaceLandingPiece() {
@@ -205,7 +232,7 @@ const game = {
     const cellSize = gridW / 8;
 
     const col = Math.floor((this.landingDemo.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
-    const row = Math.floor((this.landingDemo.dragY - 25 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
+    const row = Math.floor((this.landingDemo.dragY - this.landingDemo.dragLift - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
 
     if (this.canPlaceOnGrid(this.landingDemo.board, piece.shape, row, col, 8)) {
       for (let r = 0; r < piece.shape.length; r++) {
@@ -303,7 +330,7 @@ const game = {
       const piece = this.landingDemo.hand[this.landingDemo.draggedIndex];
       if (piece) {
         const col = Math.floor((this.landingDemo.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
-        const row = Math.floor((this.landingDemo.dragY - 25 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
+        const row = Math.floor((this.landingDemo.dragY - this.landingDemo.dragLift - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
         if (this.canPlaceOnGrid(this.landingDemo.board, piece.shape, row, col, 8)) {
           ctx.globalAlpha = 0.5;
           for (let r = 0; r < piece.shape.length; r++) {
@@ -333,7 +360,7 @@ const game = {
         const pW = p.shape[0].length * cellSize;
         const pH = p.shape.length * cellSize;
         const startX = this.landingDemo.dragX - pW / 2;
-        const startY = this.landingDemo.dragY - 25 - pH / 2;
+        const startY = this.landingDemo.dragY - this.landingDemo.dragLift - pH / 2;
         for (let r = 0; r < p.shape.length; r++) {
           for (let c = 0; c < p.shape[r].length; c++) {
             if (p.shape[r][c]) this.drawBlockCtx(ctx, startX + c * cellSize, startY + r * cellSize, cellSize, p.color);
@@ -369,20 +396,18 @@ const game = {
   },
 
   setupEvents() {
-    window.addEventListener('resize', () => this.resizeCanvas());
+    window.addEventListener('resize', () => this.resizeCanvas(), { passive: true });
 
     const getPos = (e) => {
       const rect = this.canvas.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
       return {
-        x: (clientX - rect.left) * (this.canvas.width / rect.width),
-        y: (clientY - rect.top) * (this.canvas.height / rect.height)
+        x: (e.clientX - rect.left) * (this.canvas.width / rect.width),
+        y: (e.clientY - rect.top) * (this.canvas.height / rect.height)
       };
     };
 
     const handleStart = (e) => {
-      if (!this.isPlaying) return;
+      if (!this.isPlaying || !e.isPrimary) return;
       const pos = getPos(e);
       const handAreaY = this.canvas.width;
       
@@ -394,6 +419,10 @@ const game = {
           this.draggedPieceIndex = index;
           this.dragX = pos.x;
           this.dragY = pos.y;
+          this.dragLift = e.pointerType === 'touch' ? Math.min(76, this.canvas.width * 0.22) : 30;
+          this.canvas.setPointerCapture?.(e.pointerId);
+          this.canvas.closest('.game-shell')?.classList.add('dragging');
+          e.preventDefault();
           this.draw();
         }
       }
@@ -408,27 +437,39 @@ const game = {
       this.draw();
     };
 
-    const handleEnd = () => {
+    const handleEnd = (e) => {
       if (!this.isDragging) return;
+      const pos = getPos(e);
+      this.dragX = pos.x;
+      this.dragY = pos.y;
       this.isDragging = false;
       this.tryPlacePiece();
       this.draggedPieceIndex = null;
+      this.canvas.releasePointerCapture?.(e.pointerId);
+      this.canvas.closest('.game-shell')?.classList.remove('dragging');
       this.draw();
     };
 
-    this.canvas.onmousedown = handleStart;
-    this.canvas.onmousemove = handleMove;
-    this.canvas.onmouseup = handleEnd;
+    const handleCancel = (e) => {
+      if (!this.isDragging) return;
+      this.isDragging = false;
+      this.draggedPieceIndex = null;
+      this.canvas.releasePointerCapture?.(e.pointerId);
+      this.canvas.closest('.game-shell')?.classList.remove('dragging');
+      this.draw();
+    };
 
-    this.canvas.ontouchstart = handleStart;
-    this.canvas.ontouchmove = handleMove;
-    this.canvas.ontouchend = handleEnd;
+    this.canvas.addEventListener('pointerdown', handleStart);
+    this.canvas.addEventListener('pointermove', handleMove);
+    this.canvas.addEventListener('pointerup', handleEnd);
+    this.canvas.addEventListener('pointercancel', handleCancel);
   },
 
   resizeCanvas() {
     if (!this.canvas) return;
     const container = this.canvas.parentElement;
-    const width = Math.min(container.clientWidth - 16, 420);
+    const width = Math.max(260, Math.min(container.clientWidth, window.innerWidth - 16, 620));
+    if (Math.abs(this.canvas.width - width) < 2 && Math.abs(this.canvas.height - (width + 130)) < 2) return;
     this.canvas.width = width;
     this.canvas.height = width + 130;
     if (this.isPlaying) this.draw();
@@ -577,7 +618,7 @@ const game = {
     const cellSize = boardWidth / this.gridSize;
 
     const col = Math.floor((this.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
-    const row = Math.floor((this.dragY - 30 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
+    const row = Math.floor((this.dragY - this.dragLift - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
 
     if (this.canPlaceOnGrid(this.board, piece.shape, row, col, this.gridSize)) {
       let placedBlocks = 0;
@@ -821,7 +862,7 @@ const game = {
       const piece = this.hand[this.draggedPieceIndex];
       if (piece) {
         const col = Math.floor((this.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
-        const row = Math.floor((this.dragY - 30 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
+        const row = Math.floor((this.dragY - this.dragLift - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
 
         if (this.canPlaceOnGrid(this.board, piece.shape, row, col, this.gridSize)) {
           this.ctx.globalAlpha = 0.45;
@@ -849,7 +890,9 @@ const game = {
     this.ctx.stroke();
 
     const slotWidth = w / this.hand.length;
-    const miniCellSize = Math.min(cellSize * 0.65, 24);
+    const widestPiece = Math.max(1, ...this.hand.map(p => p.shape[0].length));
+    const tallestPiece = Math.max(1, ...this.hand.map(p => p.shape.length));
+    const miniCellSize = Math.min(cellSize * 0.65, 24, (slotWidth - 14) / widestPiece, 92 / tallestPiece);
 
     this.hand.forEach((p, idx) => {
       if (p.used) return;
@@ -858,7 +901,7 @@ const game = {
         const pW = p.shape[0].length * cellSize;
         const pH = p.shape.length * cellSize;
         const startX = this.dragX - pW / 2;
-        const startY = this.dragY - 30 - pH / 2;
+        const startY = this.dragY - this.dragLift - pH / 2;
 
         for (let r = 0; r < p.shape.length; r++) {
           for (let c = 0; c < p.shape[r].length; c++) {

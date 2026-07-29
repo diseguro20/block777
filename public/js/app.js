@@ -165,6 +165,7 @@ const app = {
     document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
     const target = document.getElementById(id);
     if (target) target.classList.add('active');
+    document.body.classList.toggle('game-active', id === 'game-screen');
     if (id === 'landing-screen' && window.game) setTimeout(() => game.initLandingDemo(), 50);
     if (id === 'game-screen' && window.game) setTimeout(() => game.init(), 20);
     if (id === 'wallet-screen' && window.wallet) wallet.loadWallet();
