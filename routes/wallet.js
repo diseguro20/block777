@@ -1,14 +1,19 @@
 import express from 'express';
+import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { createVizzionPix, parseVizzionWebhook, verifyVizzionWebhook, vizzionPayStatus } from '../lib/vizzionpay.js';
+import { createVizzionPix, getVizzionTransaction, parseVizzionWebhook, vizzionPayStatus } from '../lib/vizzionpay.js';
 
 const router = express.Router();
+const onlyDigits = value => String(value || '').replace(/\D/g, '');
+const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 
 router.post('/deposit', authenticateToken, async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { amount, phone, document } = req.body;
+    const cleanPhone = onlyDigits(phone);
+    const cleanDocument = onlyDigits(document);
     let minDeposit = 500;
     try {
       const settingsDoc = await db.collection('settings').doc('global').get();
@@ -17,6 +22,12 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     if (!amount || amount < minDeposit || amount > 100000) {
       return res.status(400).json({ error: `O depósito deve ficar entre R$ ${(minDeposit / 100).toFixed(2)} e R$ 1.000,00.` });
     }
+    if (![10, 11].includes(cleanPhone.length)) {
+      return res.status(400).json({ error: 'Informe um telefone brasileiro válido com DDD.' });
+    }
+    if (![11, 14].includes(cleanDocument.length)) {
+      return res.status(400).json({ error: 'Informe um CPF ou CNPJ válido.' });
+    }
 
     const depositId = uuidv4();
     const docRef = db.collection('deposit_requests').doc();
@@ -24,12 +35,14 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     const user = userDoc.exists ? userDoc.data() : {};
     const webhookUrl = `${req.protocol}://${req.get('host')}/api/wallet/webhook/vizzionpay`;
     const charge = await createVizzionPix({
-      amount,
+      amountCents: amount,
       referenceId: docRef.id,
       webhookUrl,
       customer: {
         name: user.username || req.user.email?.split('@')[0] || 'Jogador Blockerino',
-        email: user.email || req.user.email
+        email: user.email || req.user.email,
+        phone: cleanPhone,
+        document: cleanDocument
       }
     });
 
@@ -43,7 +56,9 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       depositId,
       gateway: 'vizzionpay',
       gatewayId: charge.gatewayId,
-      expires_at: charge.expiresAt || null,
+      gateway_status: charge.status,
+      gateway_fee: charge.fee,
+      gateway_order_id: charge.orderId,
       created_at: FieldValue.serverTimestamp()
     });
 
@@ -73,16 +88,92 @@ router.post('/deposit', authenticateToken, async (req, res) => {
 
 router.post('/webhook/vizzionpay', async (req, res) => {
   try {
-    if (!verifyVizzionWebhook(req.headers, req.body)) {
-      return res.status(401).json({ error: 'Assinatura do webhook inválida.' });
-    }
     const event = parseVizzionWebhook(req.body);
-    if (!event.gatewayId) return res.status(400).json({ error: 'Transação não identificada.' });
-    if (!event.paid) return res.json({ received: true, status: event.status });
+    if (!event.gatewayId && !event.referenceId) {
+      return res.status(400).json({ error: 'Transação não identificada.' });
+    }
+    if (!event.token) {
+      return res.status(401).json({ error: 'Token do webhook não informado.' });
+    }
 
-    const depositSnapshot = await db.collection('deposit_requests').where('gatewayId', '==', event.gatewayId).limit(1).get();
-    if (depositSnapshot.empty) return res.status(404).json({ error: 'Depósito não encontrado.' });
-    const depositRef = depositSnapshot.docs[0].ref;
+    let depositRef = event.referenceId ? db.collection('deposit_requests').doc(event.referenceId) : null;
+    let depositDoc = depositRef ? await depositRef.get() : null;
+    if (!depositDoc?.exists && event.gatewayId) {
+      const snapshot = await db.collection('deposit_requests').where('gatewayId', '==', event.gatewayId).limit(1).get();
+      if (!snapshot.empty) {
+        depositRef = snapshot.docs[0].ref;
+        depositDoc = snapshot.docs[0];
+      }
+    }
+    if (!depositDoc?.exists) return res.status(404).json({ error: 'Depósito não encontrado.' });
+
+    const depositData = depositDoc.data();
+    const gatewayTransaction = await getVizzionTransaction({
+      gatewayId: event.gatewayId || depositData.gatewayId,
+      referenceId: depositRef.id
+    });
+    const verifiedGatewayId = String(gatewayTransaction.id || '');
+    const verifiedReference = String(gatewayTransaction.clientIdentifier || '');
+    const verifiedStatus = String(gatewayTransaction.status || '').toUpperCase();
+    const verifiedAmount = Math.round(Number(gatewayTransaction.chargeAmount ?? gatewayTransaction.amount) * 100);
+
+    if (verifiedGatewayId !== String(depositData.gatewayId) || verifiedReference !== depositRef.id) {
+      return res.status(400).json({ error: 'A transação não corresponde ao depósito informado.' });
+    }
+    if (verifiedAmount !== Number(depositData.amount) || gatewayTransaction.paymentMethod !== 'PIX') {
+      return res.status(400).json({ error: 'Os dados financeiros da transação não conferem.' });
+    }
+
+    const receivedTokenHash = tokenHash(event.token);
+    if (depositData.webhook_token_hash && depositData.webhook_token_hash !== receivedTokenHash) {
+      return res.status(401).json({ error: 'Token do webhook inválido.' });
+    }
+    if (!depositData.webhook_token_hash) {
+      await depositRef.update({ webhook_token_hash: receivedTokenHash });
+    }
+
+    if (verifiedStatus !== 'COMPLETED') {
+      const statusMap = {
+        FAILED: 'failed',
+        REFUNDED: 'refunded',
+        CHARGED_BACK: 'charged_back',
+        PENDING: 'pending'
+      };
+      const nextStatus = statusMap[verifiedStatus] || 'pending';
+
+      if (['REFUNDED', 'CHARGED_BACK'].includes(verifiedStatus) && depositData.status === 'approved') {
+        await db.runTransaction(async transaction => {
+          const freshDeposit = await transaction.get(depositRef);
+          if (!freshDeposit.exists || freshDeposit.data().status !== 'approved') return;
+          const current = freshDeposit.data();
+          const userRef = db.collection('users').doc(current.uid);
+          const userDoc = await transaction.get(userRef);
+          if (!userDoc.exists) throw new Error('Usuário não encontrado.');
+
+          transaction.update(depositRef, {
+            status: nextStatus,
+            gateway_status: verifiedStatus,
+            reversed_at: FieldValue.serverTimestamp()
+          });
+          transaction.update(userRef, { balance: FieldValue.increment(-current.amount) });
+          transaction.set(db.collection('transactions').doc(), {
+            uid: current.uid,
+            type: verifiedStatus === 'REFUNDED' ? 'deposit_refund' : 'chargeback',
+            amount: -current.amount,
+            status: 'completed',
+            reference_id: depositRef.id,
+            gateway: 'vizzionpay',
+            gateway_id: current.gatewayId,
+            balance_after: (userDoc.data().balance || 0) - current.amount,
+            created_at: FieldValue.serverTimestamp()
+          });
+        });
+      } else if (depositData.status === 'pending') {
+        await depositRef.update({ status: nextStatus, gateway_status: verifiedStatus });
+      }
+      return res.json({ received: true, status: verifiedStatus });
+    }
+
     const txSnapshot = await db.collection('transactions').where('reference_id', '==', depositRef.id).limit(1).get();
 
     await db.runTransaction(async transaction => {
@@ -112,7 +203,7 @@ router.post('/webhook/vizzionpay', async (req, res) => {
 
       transaction.update(depositRef, {
         status: 'approved',
-        gateway_status: event.status,
+        gateway_status: verifiedStatus,
         approved_at: FieldValue.serverTimestamp()
       });
       transaction.update(userRef, { balance: FieldValue.increment(deposit.amount) });

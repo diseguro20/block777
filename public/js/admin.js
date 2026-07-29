@@ -190,10 +190,10 @@ const admin = {
         status.className = `badge badge-${ready ? 'success' : 'pending'}`;
       }
       if (mini) mini.textContent = ready ? 'CONECTADO' : 'PENDENTE';
-      if (webhook) webhook.textContent = data.webhookConfigured ? 'webhook configurado' : 'webhook não configurado';
+      if (webhook) webhook.textContent = data.webhookConfigured ? 'webhook com validação ativa' : 'webhook não configurado';
       if (description) description.textContent = ready
         ? 'Gateway conectado. Depósitos PIX serão confirmados e creditados automaticamente.'
-        : 'A integração está instalada. Adicione as chaves reais e o segredo do webhook da sua conta Vizzion Pay para ativar cobranças.';
+        : 'A integração está instalada. Adicione as chaves oficiais da conta Vizzion Pay para ativar as cobranças.';
     } catch (_) {}
   },
 

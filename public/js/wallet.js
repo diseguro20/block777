@@ -21,9 +21,22 @@ const wallet = {
   },
   async requestDeposit() {
     const amount = Number(document.getElementById('dep-amount-input').value);
+    const phone = document.getElementById('dep-phone-input').value.trim();
+    const documentNumber = document.getElementById('dep-document-input').value.trim();
+    const phoneDigits = phone.replace(/\D/g, '');
+    const documentDigits = documentNumber.replace(/\D/g, '');
     if (amount < 5 || amount > 1000) return app.showToast('Deposite entre R$ 5 e R$ 1.000.');
+    if (![10, 11].includes(phoneDigits.length)) return app.showToast('Informe um telefone válido com DDD.');
+    if (![11, 14].includes(documentDigits.length)) return app.showToast('Informe um CPF ou CNPJ válido.');
     try {
-      const data = await app.fetchAPI('/api/wallet/deposit', { method: 'POST', body: JSON.stringify({ amount: Math.round(amount * 100) }) });
+      const data = await app.fetchAPI('/api/wallet/deposit', {
+        method: 'POST',
+        body: JSON.stringify({
+          amount: Math.round(amount * 100),
+          phone: phoneDigits,
+          document: documentDigits
+        })
+      });
       this.pixCode = data.pixCode;
       const qrImage = document.getElementById('pix-qr-image');
       if (qrImage) {
@@ -63,7 +76,7 @@ const wallet = {
       body.innerHTML = '<tr><td colspan="4" class="empty-state">Nenhuma movimentação registrada.</td></tr>';
       return;
     }
-    const names = { deposit: 'Depósito', withdraw: 'Saque', withdraw_request: 'Saque', bet: 'Aposta', win: 'Prêmio', affiliate_redeem: 'Comissão' };
+    const names = { deposit: 'Depósito', deposit_refund: 'Estorno de depósito', chargeback: 'Contestação', withdraw: 'Saque', withdraw_request: 'Saque', bet: 'Aposta', win: 'Prêmio', affiliate_redeem: 'Comissão' };
     body.innerHTML = items.map(tx => `<tr><td>${app.formatDate(tx.created_at)}</td><td>${names[tx.type] || tx.type}</td><td style="color:${Number(tx.amount) > 0 ? 'var(--success)' : 'var(--text)'}">${Number(tx.amount) > 0 ? '+' : ''}${app.formatBRL(tx.amount)}</td><td><span class="badge badge-${tx.status === 'rejected' ? 'danger' : tx.status === 'pending' ? 'pending' : 'success'}">${tx.status === 'pending' ? 'Pendente' : tx.status === 'rejected' ? 'Recusado' : 'Concluído'}</span></td></tr>`).join('');
   }
 };
