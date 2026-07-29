@@ -40,7 +40,7 @@ const defaultData = {
     { id: 'demo_user', username: 'demo', email: 'demo@blockerino.app', password_hash: bcrypt.hashSync('demo123', 10), balance: 5000, cash_balance: 5000, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active', ref_code: 'demo777', referred_by: null, affiliate_balance: 0, affiliate_rate: 10, sub_affiliate_rate: 2, is_influencer: 0, created_at: now() }
   ],
   bets: [], transactions: [], deposits: [], withdrawals: [], commissions: [],
-  settings: { difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false, ...PROMOTION_DEFAULTS }
+  settings: { difficulty: 'impossible', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false, ...PROMOTION_DEFAULTS }
 };
 
 function loadData() {
@@ -183,11 +183,11 @@ app.post('/api/game/start', auth, (req, res) => {
   if (allocation.rolloverCompleted) req.currentUser.rollover_target = 0;
   const sessionId = uuid();
   const seedHash = crypto.createHash('sha256').update(crypto.randomBytes(32)).digest('hex');
-  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : store.settings.difficulty, status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, cashStake: allocation.cashStake, bonusStake: allocation.bonusStake, rolloverCompleted: allocation.rolloverCompleted, created_at: now() });
+  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, cashStake: allocation.cashStake, bonusStake: allocation.bonusStake, rolloverCompleted: allocation.rolloverCompleted, created_at: now() });
   addTransaction(req.currentUser.id, 'bet', -amount);
   if (allocation.rolloverCompleted) addTransaction(req.currentUser.id, 'bonus_unlock', 0, 'completed', { unlocked_amount: allocation.unlockedBonus });
   save();
-  res.json({ sessionId, seed: seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : store.settings.difficulty, balance_after: req.currentUser.balance });
+  res.json({ sessionId, seed: seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', balance_after: req.currentUser.balance });
 });
 
 app.post('/api/game/end', auth, (req, res) => {

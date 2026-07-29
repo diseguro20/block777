@@ -40,6 +40,62 @@ const STRICT_SHAPES = [
   [[1, 1, 1], [0, 0, 1], [0, 0, 1]],
 ];
 
+// Peças IMPOSSÍVEIS — gigantes, desajeitadas, quase impossíveis de encaixar
+const IMPOSSIBLE_SHAPES = [
+  // 3x3 cheio (ocupa 9 células!)
+  [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+  // Barra longa horizontal (4 células)
+  [[1, 1, 1, 1]],
+  // Barra longa vertical (4 células)
+  [[1], [1], [1], [1]],
+  // L gigante torto
+  [[1, 1, 1], [1, 0, 0], [1, 0, 0]],
+  // L gigante invertido
+  [[1, 1, 1], [0, 0, 1], [0, 0, 1]],
+  // T gigante
+  [[1, 1, 1], [0, 1, 0], [0, 1, 0]],
+  // Cruz (5 células, impossível de encaixar)
+  [[0, 1, 0], [1, 1, 1], [0, 1, 0]],
+  // Z enorme
+  [[1, 1, 0], [0, 1, 0], [0, 1, 1]],
+  // S enorme
+  [[0, 1, 1], [0, 1, 0], [1, 1, 0]],
+  // Escada longa
+  [[1, 0, 0], [1, 1, 0], [0, 1, 1]],
+  // U shape (5 células)
+  [[1, 0, 1], [1, 1, 1]],
+  // Barra de 5 horizontal (impossível em grid 8)
+  [[1, 1, 1, 1, 1]],
+  // Barra de 5 vertical
+  [[1], [1], [1], [1], [1]],
+  // 4x2 retângulo enorme
+  [[1, 1, 1, 1], [1, 1, 1, 1]],
+  // L 4-alto
+  [[1, 0], [1, 0], [1, 0], [1, 1]],
+  // L invertido 4-alto
+  [[0, 1], [0, 1], [0, 1], [1, 1]],
+];
+
+// Pesos que favorecem MUITO as peças maiores e mais difíceis
+const IMPOSSIBLE_WEIGHTS = [
+  10,  // 3x3 cheio — aparece MUITO
+  3,   // barra 4h
+  3,   // barra 4v
+  5,   // L gigante
+  5,   // L invertido
+  5,   // T gigante
+  8,   // Cruz — aparece bastante
+  4,   // Z enorme
+  4,   // S enorme
+  4,   // Escada
+  3,   // U shape
+  6,   // Barra 5h — quase não cabe
+  6,   // Barra 5v
+  8,   // 4x2 retângulo
+  4,   // L 4-alto
+  4,   // L invertido 4-alto
+];
+
 const game = {
   canvas: null,
   ctx: null,
@@ -573,16 +629,28 @@ const game = {
     const handSize = this.gameMode === 'chaos' ? 5 : 3;
     this.hand = [];
 
-    let pool = ALL_SHAPES;
+    let pool, weights;
+
     if (this.difficulty === 'easy') {
+      // Influencer: peças pequenas e fáceis
       pool = EASY_SHAPES;
-    } else if (this.difficulty === 'strict' && this.getBoardFillRatio() > 0.4) {
-      pool = STRICT_SHAPES;
+      weights = null;
+    } else if (this.difficulty === 'impossible') {
+      // Normal: peças IMPOSSÍVEIS sempre
+      pool = IMPOSSIBLE_SHAPES;
+      weights = IMPOSSIBLE_WEIGHTS;
+    } else if (this.difficulty === 'strict') {
+      pool = this.getBoardFillRatio() > 0.3 ? STRICT_SHAPES : IMPOSSIBLE_SHAPES;
+      weights = this.getBoardFillRatio() > 0.3 ? null : IMPOSSIBLE_WEIGHTS;
+    } else {
+      // 'balanced' também usa peças difíceis agora
+      pool = IMPOSSIBLE_SHAPES;
+      weights = IMPOSSIBLE_WEIGHTS;
     }
 
     for (let i = 0; i < handSize; i++) {
-      const shape = pool === ALL_SHAPES
-        ? this.pickWeightedShape(ALL_SHAPES, ORIGINAL_WEIGHTS)
+      const shape = weights
+        ? this.pickWeightedShape(pool, weights)
         : pool[Math.floor(Math.random() * pool.length)];
       const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
       this.hand.push({ shape, color, used: false });
@@ -704,8 +772,18 @@ const game = {
       });
 
       this.linesCleared += totalLines;
-      const baseIncrease = totalLines * 0.15;
-      const comboBonus = (this.combo + totalLines) * 0.10;
+
+      // Multiplicador muito menor para modo impossível/normal
+      let baseIncrease, comboBonus;
+      if (this.difficulty === 'easy') {
+        // Influencer: multiplicador sobe rápido
+        baseIncrease = totalLines * 0.25;
+        comboBonus = (this.combo + totalLines) * 0.15;
+      } else {
+        // Normal/Impossível: multiplicador sobe MUITO devagar
+        baseIncrease = totalLines * 0.05;
+        comboBonus = (this.combo + totalLines) * 0.02;
+      }
       this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
       this.score += Math.round(totalLines * this.gridSize * Math.max(1, (this.combo + totalLines) / 2) * Math.max(1, placedBlocks));
 

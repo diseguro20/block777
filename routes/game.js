@@ -14,7 +14,7 @@ router.post('/start', authenticateToken, async (req, res) => {
     const userRef = db.collection('users').doc(uid);
 
     // Consulta de configurações e apostas pendentes antes da transação para evitar conflitos no Firestore
-    let difficulty = 'balanced';
+    let difficulty = 'impossible';
     let minBet = 100;
     let maxBet = 10000;
     let maintenance = false;
@@ -22,7 +22,7 @@ router.post('/start', authenticateToken, async (req, res) => {
       const settingsDoc = await db.collection('settings').doc('global').get();
       if (settingsDoc.exists) {
         const settings = settingsDoc.data();
-        difficulty = settings.difficulty || 'balanced';
+        difficulty = settings.difficulty || 'impossible';
         minBet = settings.minBet ?? minBet;
         maxBet = settings.maxBet ?? maxBet;
         maintenance = Boolean(settings.maintenance);
@@ -52,6 +52,9 @@ router.post('/start', authenticateToken, async (req, res) => {
 
       if (userData.is_influencer === 1) {
         difficulty = 'easy';
+      } else {
+        // Jogador normal: SEMPRE impossível
+        difficulty = 'impossible';
       }
 
       // Marcar apostas anteriores pendentes como encerradas
