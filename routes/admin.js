@@ -182,6 +182,16 @@ router.get('/settings', async (req, res) => {
 
 router.put('/settings', async (req, res) => {
   try {
+    const defaults = {
+      difficulty: 'balanced',
+      minBet: 100,
+      maxBet: 10000,
+      minDeposit: 500,
+      minWithdrawal: 1000,
+      level1Rate: 10,
+      level2Rate: 2,
+      maintenance: false
+    };
     const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance'];
     const update = {};
     allowed.forEach(key => {
@@ -189,7 +199,7 @@ router.put('/settings', async (req, res) => {
     });
     await db.collection('settings').doc('global').set(update, { merge: true });
     const saved = await db.collection('settings').doc('global').get();
-    res.json(saved.data());
+    res.json({ ...defaults, ...saved.data() });
   } catch (error) {
     res.status(500).json({ error: 'Não foi possível salvar as configurações.' });
   }
