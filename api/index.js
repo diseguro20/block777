@@ -7,13 +7,6 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuid } from 'uuid';
-import authRouter from '../routes/auth.js';
-import gameRouter from '../routes/game.js';
-import walletRouter from '../routes/wallet.js';
-import affiliateRouter from '../routes/affiliate.js';
-import adminRouter from '../routes/admin.js';
-import { db as firebaseDb } from '../lib/firebase.js';
-import { authenticateToken as firebaseAuthMiddleware } from '../middleware/auth.js';
 
 const app = express();
 app.use(cors());
@@ -26,6 +19,17 @@ const dataFile = path.join(root, '.data', 'local-db.json');
 const now = () => new Date().toISOString();
 const cleanEmail = value => String(value || '').trim().toLowerCase();
 const useFirebase = Boolean(process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY);
+const firebaseModulesPromise = useFirebase
+  ? Promise.all([
+      import('../routes/auth.js'),
+      import('../routes/game.js'),
+      import('../routes/wallet.js'),
+      import('../routes/affiliate.js'),
+      import('../routes/admin.js'),
+      import('../lib/firebase.js'),
+      import('../middleware/auth.js')
+    ])
+  : Promise.resolve(null);
 
 const defaultData = {
   users: [
@@ -80,13 +84,30 @@ function addTransaction(uid, type, amount, status = 'completed', extra = {}) {
 // Na Vercel, usa as coleções duráveis do Firebase já configuradas no projeto.
 // Localmente, mantém o banco em arquivo para desenvolvimento sem credenciais.
 if (useFirebase) {
-  app.use('/api/auth', authRouter);
-  app.use('/api/game', gameRouter);
-  app.use('/api/wallet', walletRouter);
-  app.use('/api/affiliate', affiliateRouter);
-  app.use('/api/admin', adminRouter);
-  app.get('/api/dashboard', firebaseAuthMiddleware, async (req, res) => {
+  const mountFirebaseRouter = index => async (req, res, next) => {
     try {
+      const modules = await firebaseModulesPromise;
+      return modules[index].default(req, res, next);
+    } catch (error) {
+      next(error);
+    }
+  };
+  app.use('/api/auth', mountFirebaseRouter(0));
+  app.use('/api/game', mountFirebaseRouter(1));
+  app.use('/api/wallet', mountFirebaseRouter(2));
+  app.use('/api/affiliate', mountFirebaseRouter(3));
+  app.use('/api/admin', mountFirebaseRouter(4));
+  app.get('/api/dashboard', async (req, res, next) => {
+    try {
+      const modules = await firebaseModulesPromise;
+      return modules[6].authenticateToken(req, res, next);
+    } catch (error) {
+      next(error);
+    }
+  }, async (req, res) => {
+    try {
+      const modules = await firebaseModulesPromise;
+      const firebaseDb = modules[5].db;
       const [betsSnapshot, transactionsSnapshot] = await Promise.all([
         firebaseDb.collection('bets').where('uid', '==', req.user.uid).get(),
         firebaseDb.collection('transactions').where('uid', '==', req.user.uid).get()
