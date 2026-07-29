@@ -41,44 +41,43 @@ const STRICT_SHAPES = [
 ];
 
 // Peças IMPOSSÍVEIS — SOMENTE formas que criam buracos inevitáveis
-// L, J e T REMOVIDOS pois permitem completar linhas
+// 2x2, 3x3, L, J, T e barras REMOVIDOS — todos ajudam a fechar linhas
 const IMPOSSIBLE_SHAPES = [
-  // S e Z — criam buracos SEMPRE, impossível fechar linha com eles
+  // S e Z — criam buracos SEMPRE
   [[0, 1, 1], [1, 1, 0]],       // S horizontal
   [[1, 1, 0], [0, 1, 1]],       // Z horizontal
   [[0, 1], [1, 1], [1, 0]],     // S vertical
   [[1, 0], [1, 1], [0, 1]],     // Z vertical
-  // Cruz — 4 gaps diagonais impossíveis
+  // S e Z grandes (3x3) — buracos ainda piores
+  [[0, 0, 1], [0, 1, 1], [1, 1, 0]],   // S grande
+  [[1, 0, 0], [1, 1, 0], [0, 1, 1]],   // Z grande
+  [[0, 1, 1], [1, 1, 0], [1, 0, 0]],   // S grande rot
+  [[1, 1, 0], [0, 1, 1], [0, 0, 1]],   // Z grande rot
+  // Cruz — 4 gaps nos cantos
   [[0, 1, 0], [1, 1, 1], [0, 1, 0]],
-  // Escadas — gaps em degrau impossíveis de preencher
-  [[1, 0, 0], [1, 1, 0], [0, 1, 1]],
-  [[0, 0, 1], [0, 1, 1], [1, 1, 0]],
+  // Escadas diagonais — gaps impossíveis
   [[1, 1, 0], [0, 1, 0], [0, 1, 1]],
   [[0, 1, 1], [0, 1, 0], [1, 1, 0]],
-  // U e C — buracos internos
+  // U e C — buraco interno que nada preenche
   [[1, 0, 1], [1, 1, 1]],
   [[1, 1, 1], [1, 0, 1]],
-  // 3x3 cheio — enche o tabuleiro rápido = game over
-  [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
-  // 2x2 — enche espaço sem ajudar a limpar linhas
-  [[1, 1], [1, 1]],
 ];
 
-// S/Z = 70% das peças, o resto são Cruz/Escada/3x3
+// S/Z = 80% das peças
 const IMPOSSIBLE_WEIGHTS = [
-  20,  // S horizontal
-  20,  // Z horizontal
-  20,  // S vertical
-  20,  // Z vertical
-  8,   // Cruz
-  6,   // Escada 1
-  6,   // Escada 2
-  6,   // Escada 3
-  6,   // Escada 4
-  4,   // U
-  4,   // C
-  5,   // 3x3 cheio
-  3,   // 2x2
+  18,  // S horizontal
+  18,  // Z horizontal
+  18,  // S vertical
+  18,  // Z vertical
+  12,  // S grande
+  12,  // Z grande
+  12,  // S grande rot
+  12,  // Z grande rot
+  6,   // Cruz
+  5,   // Escada 1
+  5,   // Escada 2
+  3,   // U
+  3,   // C
 ];
 
 // Multiplicador máximo — praticamente zero lucro
