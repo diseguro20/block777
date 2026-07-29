@@ -21,17 +21,11 @@ const wallet = {
   },
   async requestDeposit() {
     const amount = Number(document.getElementById('dep-amount-input').value);
-    const documentNumber = document.getElementById('dep-document-input').value.trim();
-    const documentDigits = documentNumber.replace(/\D/g, '');
     if (amount < 5 || amount > 1000) return app.showToast('Deposite entre R$ 5 e R$ 1.000.');
-    if (![11, 14].includes(documentDigits.length)) return app.showToast('Informe um CPF ou CNPJ válido.');
     try {
       const data = await app.fetchAPI('/api/wallet/deposit', {
         method: 'POST',
-        body: JSON.stringify({
-          amount: Math.round(amount * 100),
-          document: documentDigits
-        })
+        body: JSON.stringify({ amount: Math.round(amount * 100) })
       });
       this.pixCode = data.pixCode;
       const qrImage = document.getElementById('pix-qr-image');

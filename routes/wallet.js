@@ -6,13 +6,11 @@ import { authenticateToken } from '../middleware/auth.js';
 import { createVizzionPix, getVizzionTransaction, parseVizzionWebhook, vizzionPayStatus } from '../lib/vizzionpay.js';
 
 const router = express.Router();
-const onlyDigits = value => String(value || '').replace(/\D/g, '');
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 
 router.post('/deposit', authenticateToken, async (req, res) => {
   try {
-    const { amount, document } = req.body;
-    const cleanDocument = onlyDigits(document);
+    const { amount } = req.body;
     let minDeposit = 500;
     try {
       const settingsDoc = await db.collection('settings').doc('global').get();
@@ -21,10 +19,6 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     if (!amount || amount < minDeposit || amount > 100000) {
       return res.status(400).json({ error: `O depósito deve ficar entre R$ ${(minDeposit / 100).toFixed(2)} e R$ 1.000,00.` });
     }
-    if (![11, 14].includes(cleanDocument.length)) {
-      return res.status(400).json({ error: 'Informe um CPF ou CNPJ válido.' });
-    }
-
     const depositId = uuidv4();
     const docRef = db.collection('deposit_requests').doc();
     const userDoc = await db.collection('users').doc(req.user.uid).get();
@@ -36,8 +30,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       webhookUrl,
       customer: {
         name: user.username || req.user.email?.split('@')[0] || 'Jogador Blockerino',
-        email: user.email || req.user.email,
-        document: cleanDocument
+        email: user.email || req.user.email
       }
     });
 
