@@ -4,22 +4,37 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { createVizzionPix, getVizzionTransaction, parseVizzionWebhook, vizzionPayStatus } from '../lib/vizzionpay.js';
+import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings } from '../lib/promotion.js';
 
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
+
+router.get('/promotion', async (req, res) => {
+  try {
+    const settingsDoc = await db.collection('settings').doc('global').get();
+    res.json(normalizePromotionSettings(settingsDoc.exists ? settingsDoc.data() : {}));
+  } catch (_) {
+    res.json(normalizePromotionSettings({}));
+  }
+});
 
 router.post('/deposit', authenticateToken, async (req, res) => {
   try {
     const { amount } = req.body;
     let minDeposit = 500;
+    let settings = {};
     try {
       const settingsDoc = await db.collection('settings').doc('global').get();
-      if (settingsDoc.exists) minDeposit = settingsDoc.data().minDeposit ?? minDeposit;
+      if (settingsDoc.exists) {
+        settings = settingsDoc.data();
+        minDeposit = settings.minDeposit ?? minDeposit;
+      }
     } catch (e) {}
     if (!amount || amount < minDeposit || amount > 100000) {
       return res.status(400).json({ error: `O depósito deve ficar entre R$ ${(minDeposit / 100).toFixed(2)} e R$ 1.000,00.` });
     }
     const depositId = uuidv4();
+    const promotion = calculateDepositPromotion(amount, settings);
     const docRef = db.collection('deposit_requests').doc();
     const userDoc = await db.collection('users').doc(req.user.uid).get();
     const user = userDoc.exists ? userDoc.data() : {};
@@ -47,6 +62,11 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       gateway_status: charge.status,
       gateway_fee: charge.fee,
       gateway_order_id: charge.orderId,
+      bonusAmount: promotion.bonusAmount,
+      rolloverRequired: promotion.rolloverRequired,
+      bonusPercent: promotion.bonusPercent,
+      rolloverMultiplier: promotion.rolloverMultiplier,
+      promotionEligible: promotion.eligible,
       created_at: FieldValue.serverTimestamp()
     });
 
@@ -66,7 +86,10 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       pixCode: charge.pixCode,
       qrCodeUrl: charge.qrCodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(charge.pixCode)}`,
       gateway: 'vizzionpay',
-      status: 'pending'
+      status: 'pending',
+      bonusAmount: promotion.bonusAmount,
+      totalAfterPayment: amount + promotion.bonusAmount,
+      rolloverRequired: promotion.rolloverRequired
     });
   } catch (error) {
     console.error('Deposit error:', error);
@@ -137,22 +160,37 @@ router.post('/webhook/vizzionpay', async (req, res) => {
           const userRef = db.collection('users').doc(current.uid);
           const userDoc = await transaction.get(userRef);
           if (!userDoc.exists) throw new Error('Usuário não encontrado.');
+          const wallet = getWalletBuckets(userDoc.data());
+          const bonusToReverse = Math.max(0, Number(current.bonusAmount) || 0);
+          const removedBonus = Math.min(wallet.bonusBalance, bonusToReverse);
+          const cashToReverse = current.amount + (bonusToReverse - removedBonus);
+          const newBonusBalance = wallet.bonusBalance - removedBonus;
+          const newCashBalance = wallet.cashBalance - cashToReverse;
+          const newBalance = newCashBalance + newBonusBalance;
+          const newRolloverRemaining = Math.max(0, wallet.rolloverRemaining - (Number(current.rolloverRequired) || 0));
+          const newRolloverTarget = Math.max(0, wallet.rolloverTarget - (Number(current.rolloverRequired) || 0));
 
           transaction.update(depositRef, {
             status: nextStatus,
             gateway_status: verifiedStatus,
             reversed_at: FieldValue.serverTimestamp()
           });
-          transaction.update(userRef, { balance: FieldValue.increment(-current.amount) });
+          transaction.update(userRef, {
+            balance: newBalance,
+            cash_balance: newCashBalance,
+            bonus_balance: newBonusBalance,
+            rollover_remaining: newRolloverRemaining,
+            rollover_target: newRolloverTarget
+          });
           transaction.set(db.collection('transactions').doc(), {
             uid: current.uid,
             type: verifiedStatus === 'REFUNDED' ? 'deposit_refund' : 'chargeback',
-            amount: -current.amount,
+            amount: -(current.amount + bonusToReverse),
             status: 'completed',
             reference_id: depositRef.id,
             gateway: 'vizzionpay',
             gateway_id: current.gatewayId,
-            balance_after: (userDoc.data().balance || 0) - current.amount,
+            balance_after: newBalance,
             created_at: FieldValue.serverTimestamp()
           });
         });
@@ -175,6 +213,14 @@ router.post('/webhook/vizzionpay', async (req, res) => {
       const userDoc = await transaction.get(userRef);
       if (!userDoc.exists) throw new Error('Usuário não encontrado.');
       const user = userDoc.data();
+      const wallet = getWalletBuckets(user);
+      const bonusAmount = Math.max(0, Math.round(Number(deposit.bonusAmount) || 0));
+      const rolloverRequired = Math.max(0, Math.round(Number(deposit.rolloverRequired) || 0));
+      const newCashBalance = wallet.cashBalance + deposit.amount;
+      const newBonusBalance = wallet.bonusBalance + bonusAmount;
+      const newBalance = newCashBalance + newBonusBalance;
+      const newRolloverRemaining = wallet.rolloverRemaining + rolloverRequired;
+      const newRolloverTarget = wallet.rolloverTarget + rolloverRequired;
 
       let affiliateRef = null;
       let affiliateDoc = null;
@@ -192,14 +238,35 @@ router.post('/webhook/vizzionpay', async (req, res) => {
       transaction.update(depositRef, {
         status: 'approved',
         gateway_status: verifiedStatus,
+        bonusAmount,
+        rolloverRequired,
+        creditedAmount: deposit.amount + bonusAmount,
         approved_at: FieldValue.serverTimestamp()
       });
-      transaction.update(userRef, { balance: FieldValue.increment(deposit.amount) });
+      transaction.update(userRef, {
+        balance: newBalance,
+        cash_balance: newCashBalance,
+        bonus_balance: newBonusBalance,
+        rollover_remaining: newRolloverRemaining,
+        rollover_target: newRolloverTarget
+      });
       if (!txSnapshot.empty) {
         transaction.update(txSnapshot.docs[0].ref, {
           status: 'approved',
-          balance_after: (user.balance || 0) + deposit.amount,
+          balance_after: newBalance,
           completed_at: FieldValue.serverTimestamp()
+        });
+      }
+      if (bonusAmount > 0) {
+        transaction.set(db.collection('transactions').doc(), {
+          uid: deposit.uid,
+          type: 'deposit_bonus',
+          amount: bonusAmount,
+          status: 'locked',
+          reference_id: depositRef.id,
+          balance_after: newBalance,
+          rollover_required: rolloverRequired,
+          created_at: FieldValue.serverTimestamp()
         });
       }
 
@@ -262,10 +329,18 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
       if (!userDoc.exists) throw new Error('User not found');
       
       const userData = userDoc.data();
-      if (userData.balance < amount) throw new Error('Insufficient balance');
+      const wallet = getWalletBuckets(userData);
+      if (wallet.rolloverRemaining > 0) {
+        throw new Error(`Complete o rollover de R$ ${(wallet.rolloverRemaining / 100).toFixed(2)} em apostas antes de sacar.`);
+      }
+      if (wallet.cashBalance < amount) throw new Error('Saldo sacável insuficiente.');
 
-      t.update(userRef, { balance: FieldValue.increment(-amount) });
-      const newBalance = userData.balance - amount;
+      const newBalance = wallet.balance - amount;
+      const newCashBalance = wallet.cashBalance - amount;
+      t.update(userRef, {
+        balance: newBalance,
+        cash_balance: newCashBalance
+      });
 
       const reqRef = db.collection('withdrawal_requests').doc();
       t.set(reqRef, {
@@ -287,7 +362,7 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
         created_at: FieldValue.serverTimestamp()
       });
 
-      return { withdrawalId, status: 'pending' };
+      return { withdrawalId, status: 'pending', balance_after: newBalance };
     });
 
     res.json(result);
@@ -300,9 +375,11 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
 router.get('/history', authenticateToken, async (req, res) => {
   try {
     const uid = req.user.uid;
-    const snapshot = await db.collection('transactions')
-      .where('uid', '==', uid)
-      .get();
+    const [snapshot, userDoc, settingsDoc] = await Promise.all([
+      db.collection('transactions').where('uid', '==', uid).get(),
+      db.collection('users').doc(uid).get(),
+      db.collection('settings').doc('global').get()
+    ]);
 
     const history = snapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
@@ -312,7 +389,22 @@ router.get('/history', authenticateToken, async (req, res) => {
         return bTime - aTime;
       })
       .slice(0, 50);
-    res.json({ transactions: history });
+    const wallet = getWalletBuckets(userDoc.exists ? userDoc.data() : {});
+    const promotion = normalizePromotionSettings(settingsDoc.exists ? settingsDoc.data() : {});
+    const progress = wallet.rolloverTarget > 0
+      ? Math.max(0, Math.min(100, Math.round((1 - wallet.rolloverRemaining / wallet.rolloverTarget) * 100)))
+      : 100;
+    res.json({
+      transactions: history,
+      balance: wallet.balance,
+      cashBalance: wallet.cashBalance,
+      bonusBalance: wallet.bonusBalance,
+      rolloverRemaining: wallet.rolloverRemaining,
+      rolloverTarget: wallet.rolloverTarget,
+      rolloverProgress: progress,
+      withdrawalsLocked: wallet.rolloverRemaining > 0,
+      promotion
+    });
   } catch (error) {
     console.error('History error:', error);
     res.status(500).json({ error: 'Internal server error' });

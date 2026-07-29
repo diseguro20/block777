@@ -2,6 +2,7 @@ import express from 'express';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
+import { calculateDepositPromotion, getWalletBuckets, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 
 const router = express.Router();
 
@@ -20,10 +21,18 @@ router.get('/stats', async (req, res) => {
     let losses = 0;
     let blocksPlaced = 0;
     let linesCleared = 0;
+    let totalBonusGranted = 0;
+    let lockedBonus = 0;
+    let activeRolloverUsers = 0;
 
     try {
       const usersSnapshot = await db.collection('users').get();
       totalUsers = usersSnapshot.size || 1;
+      usersSnapshot.forEach(doc => {
+        const user = doc.data();
+        lockedBonus += Number(user.bonus_balance) || 0;
+        if ((Number(user.rollover_remaining) || 0) > 0) activeRolloverUsers++;
+      });
 
       const betsSnapshot = await db.collection('bets').get();
       betsSnapshot.forEach(doc => {
@@ -42,6 +51,9 @@ router.get('/stats', async (req, res) => {
       const depositsSnapshot = await db.collection('deposit_requests').where('status', '==', 'pending').get();
       pendingDeposits = depositsSnapshot.size || 0;
 
+      const approvedDepositsSnapshot = await db.collection('deposit_requests').where('status', '==', 'approved').get();
+      approvedDepositsSnapshot.forEach(doc => { totalBonusGranted += Number(doc.data().bonusAmount) || 0; });
+
       const withdrawalsSnapshot = await db.collection('withdrawal_requests').where('status', '==', 'pending').get();
       pendingWithdrawals = withdrawalsSnapshot.size || 0;
     } catch (e) {
@@ -49,10 +61,10 @@ router.get('/stats', async (req, res) => {
     }
     
     const houseProfit = totalBets - totalPayouts;
-    res.json({ totalUsers, totalBets, totalPayouts, houseProfit, pendingDeposits, pendingWithdrawals, totalGames, wins, losses, blocksPlaced, linesCleared });
+    res.json({ totalUsers, totalBets, totalPayouts, houseProfit, pendingDeposits, pendingWithdrawals, totalGames, wins, losses, blocksPlaced, linesCleared, totalBonusGranted, lockedBonus, activeRolloverUsers });
   } catch (error) {
     console.error('Admin stats error:', error);
-    res.json({ totalUsers: 1, totalBets: 0, totalPayouts: 0, houseProfit: 0, pendingDeposits: 0, pendingWithdrawals: 0, totalGames: 0, wins: 0, losses: 0, blocksPlaced: 0, linesCleared: 0 });
+    res.json({ totalUsers: 1, totalBets: 0, totalPayouts: 0, houseProfit: 0, pendingDeposits: 0, pendingWithdrawals: 0, totalGames: 0, wins: 0, losses: 0, blocksPlaced: 0, linesCleared: 0, totalBonusGranted: 0, lockedBonus: 0, activeRolloverUsers: 0 });
   }
 });
 
@@ -190,8 +202,10 @@ router.put('/users/:id/balance', async (req, res) => {
         const userRef = db.collection('users').doc(uid);
         const userDoc = await t.get(userRef);
         if (userDoc.exists) {
-          const newBalance = (userDoc.data().balance || 0) + adjustment;
-          t.update(userRef, { balance: FieldValue.increment(adjustment) });
+          const wallet = getWalletBuckets(userDoc.data());
+          const newCashBalance = wallet.cashBalance + adjustment;
+          const newBalance = wallet.balance + adjustment;
+          t.update(userRef, { balance: newBalance, cash_balance: newCashBalance });
         }
       });
     } catch (e) {}
@@ -224,7 +238,8 @@ router.get('/settings', async (req, res) => {
       minWithdrawal: 1000,
       level1Rate: 10,
       level2Rate: 2,
-      maintenance: false
+      maintenance: false,
+      ...PROMOTION_DEFAULTS
     };
     try {
       const doc = await db.collection('settings').doc('global').get();
@@ -234,7 +249,7 @@ router.get('/settings', async (req, res) => {
     } catch (e) {}
     res.json(settings);
   } catch (error) {
-    res.json({ difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false });
+    res.json({ difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false, ...PROMOTION_DEFAULTS });
   }
 });
 
@@ -248,13 +263,18 @@ router.put('/settings', async (req, res) => {
       minWithdrawal: 1000,
       level1Rate: 10,
       level2Rate: 2,
-      maintenance: false
+      maintenance: false,
+      ...PROMOTION_DEFAULTS
     };
-    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance'];
+    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance', 'promoEnabled', 'bonusPercent', 'bonusMinDeposit', 'rolloverMultiplier'];
     const update = {};
     allowed.forEach(key => {
       if (req.body[key] !== undefined) update[key] = req.body[key];
     });
+    if (update.bonusPercent !== undefined) update.bonusPercent = Math.max(0, Math.min(1000, Number(update.bonusPercent) || 0));
+    if (update.bonusMinDeposit !== undefined) update.bonusMinDeposit = Math.max(100, Math.round(Number(update.bonusMinDeposit) || 0));
+    if (update.rolloverMultiplier !== undefined) update.rolloverMultiplier = Math.max(1, Math.min(100, Number(update.rolloverMultiplier) || 1));
+    if (update.promoEnabled !== undefined) update.promoEnabled = Boolean(update.promoEnabled);
     await db.collection('settings').doc('global').set(update, { merge: true });
     const saved = await db.collection('settings').doc('global').get();
     res.json({ ...defaults, ...saved.data() });
@@ -295,10 +315,20 @@ router.put('/deposits/:id/approve', async (req, res) => {
       const depositDoc = await transaction.get(depositRef);
       if (!depositDoc.exists || depositDoc.data().status !== 'pending') throw new Error('Depósito pendente não encontrado');
       const deposit = depositDoc.data();
+      const settingsDoc = await transaction.get(db.collection('settings').doc('global'));
+      const calculatedPromotion = calculateDepositPromotion(deposit.amount, settingsDoc.exists ? settingsDoc.data() : {});
+      const bonusAmount = deposit.bonusAmount == null ? calculatedPromotion.bonusAmount : Number(deposit.bonusAmount);
+      const rolloverRequired = deposit.rolloverRequired == null ? calculatedPromotion.rolloverRequired : Number(deposit.rolloverRequired);
       const userRef = db.collection('users').doc(deposit.uid);
       const userDoc = await transaction.get(userRef);
       if (!userDoc.exists) throw new Error('Usuário não encontrado');
       const user = userDoc.data();
+      const wallet = getWalletBuckets(user);
+      const newCashBalance = wallet.cashBalance + deposit.amount;
+      const newBonusBalance = wallet.bonusBalance + bonusAmount;
+      const newBalance = newCashBalance + newBonusBalance;
+      const newRolloverRemaining = wallet.rolloverRemaining + rolloverRequired;
+      const newRolloverTarget = wallet.rolloverTarget + rolloverRequired;
       let affiliateRef = null;
       let affiliateDoc = null;
       let upperRef = null;
@@ -312,8 +342,32 @@ router.put('/deposits/:id/approve', async (req, res) => {
         }
       }
 
-      transaction.update(depositRef, { status: 'approved', approved_at: FieldValue.serverTimestamp() });
-      transaction.update(userRef, { balance: FieldValue.increment(deposit.amount) });
+      transaction.update(depositRef, {
+        status: 'approved',
+        bonusAmount,
+        rolloverRequired,
+        creditedAmount: deposit.amount + bonusAmount,
+        approved_at: FieldValue.serverTimestamp()
+      });
+      transaction.update(userRef, {
+        balance: newBalance,
+        cash_balance: newCashBalance,
+        bonus_balance: newBonusBalance,
+        rollover_remaining: newRolloverRemaining,
+        rollover_target: newRolloverTarget
+      });
+      if (bonusAmount > 0) {
+        transaction.set(db.collection('transactions').doc(), {
+          uid: deposit.uid,
+          type: 'deposit_bonus',
+          amount: bonusAmount,
+          status: 'locked',
+          reference_id: depositRef.id,
+          balance_after: newBalance,
+          rollover_required: rolloverRequired,
+          created_at: FieldValue.serverTimestamp()
+        });
+      }
       if (affiliateDoc?.exists) {
           const affiliate = affiliateDoc.data();
           const level1Rate = affiliate.affiliate_rate ?? 10;
@@ -380,8 +434,15 @@ router.put('/withdrawals/:id/reject', async (req, res) => {
       const withdrawalDoc = await transaction.get(withdrawalRef);
       if (!withdrawalDoc.exists || withdrawalDoc.data().status !== 'pending') throw new Error('Saque pendente não encontrado');
       const withdrawal = withdrawalDoc.data();
+      const userRef = db.collection('users').doc(withdrawal.uid);
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists) throw new Error('Usuário não encontrado');
+      const wallet = getWalletBuckets(userDoc.data());
       transaction.update(withdrawalRef, { status: 'rejected', rejected_at: FieldValue.serverTimestamp() });
-      transaction.update(db.collection('users').doc(withdrawal.uid), { balance: FieldValue.increment(withdrawal.amount) });
+      transaction.update(userRef, {
+        balance: wallet.balance + withdrawal.amount,
+        cash_balance: wallet.cashBalance + withdrawal.amount
+      });
     });
     res.json({ success: true });
   } catch (error) {

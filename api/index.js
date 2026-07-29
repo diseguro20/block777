@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import crypto from 'crypto';
@@ -8,6 +9,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuid } from 'uuid';
 import { vizzionPayStatus } from '../lib/vizzionpay.js';
+import { allocatePromotionalBet, allocatePromotionalPayout, calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 
 const app = express();
 app.use(cors());
@@ -34,11 +36,11 @@ const firebaseModulesPromise = useFirebase
 
 const defaultData = {
   users: [
-    { id: 'admin_master_uid', username: 'admin', email: 'admin@block777.com', password_hash: bcrypt.hashSync('admin777', 10), balance: 100000, role: 'admin', status: 'active', ref_code: 'admin777', referred_by: null, affiliate_balance: 0, affiliate_rate: 10, sub_affiliate_rate: 2, is_influencer: 1, created_at: now() },
-    { id: 'demo_user', username: 'demo', email: 'demo@blockerino.app', password_hash: bcrypt.hashSync('demo123', 10), balance: 5000, role: 'user', status: 'active', ref_code: 'demo777', referred_by: null, affiliate_balance: 0, affiliate_rate: 10, sub_affiliate_rate: 2, is_influencer: 0, created_at: now() }
+    { id: 'admin_master_uid', username: 'admin', email: 'admin@block777.com', password_hash: bcrypt.hashSync('admin777', 10), balance: 100000, cash_balance: 100000, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'admin', status: 'active', ref_code: 'admin777', referred_by: null, affiliate_balance: 0, affiliate_rate: 10, sub_affiliate_rate: 2, is_influencer: 1, created_at: now() },
+    { id: 'demo_user', username: 'demo', email: 'demo@blockerino.app', password_hash: bcrypt.hashSync('demo123', 10), balance: 5000, cash_balance: 5000, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active', ref_code: 'demo777', referred_by: null, affiliate_balance: 0, affiliate_rate: 10, sub_affiliate_rate: 2, is_influencer: 0, created_at: now() }
   ],
   bets: [], transactions: [], deposits: [], withdrawals: [], commissions: [],
-  settings: { difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false }
+  settings: { difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false, ...PROMOTION_DEFAULTS }
 };
 
 function loadData() {
@@ -48,6 +50,7 @@ function loadData() {
   return structuredClone(defaultData);
 }
 let store = loadData();
+store.settings = { ...defaultData.settings, ...(store.settings || {}) };
 function save() {
   try {
     fs.mkdirSync(path.dirname(dataFile), { recursive: true });
@@ -143,7 +146,7 @@ app.post('/api/auth/register', async (req, res) => {
   if (username.length < 3 || !email.includes('@') || password.length < 6) return res.status(400).json({ error: 'Use um nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
   if (store.users.some(user => user.email === email || user.username.toLowerCase() === username.toLowerCase())) return res.status(409).json({ error: 'E-mail ou nome de usuário já cadastrado.' });
   const referrer = store.users.find(user => user.ref_code === String(req.body.referred_by || '').toLowerCase());
-  const user = { id: uuid(), username, email, password_hash: await bcrypt.hash(password, 10), balance: 0, role: 'user', status: 'active', ref_code: `${username.replace(/\W/g, '').slice(0, 12)}${crypto.randomBytes(2).toString('hex')}`.toLowerCase(), referred_by: referrer?.id || null, affiliate_balance: 0, affiliate_rate: null, sub_affiliate_rate: null, is_influencer: 0, created_at: now() };
+  const user = { id: uuid(), username, email, password_hash: await bcrypt.hash(password, 10), balance: 0, cash_balance: 0, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active', ref_code: `${username.replace(/\W/g, '').slice(0, 12)}${crypto.randomBytes(2).toString('hex')}`.toLowerCase(), referred_by: referrer?.id || null, affiliate_balance: 0, affiliate_rate: null, sub_affiliate_rate: null, is_influencer: 0, created_at: now() };
   store.users.push(user); save();
   res.status(201).json({ token: tokenFor(user), user: publicUser(user) });
 });
@@ -167,15 +170,22 @@ app.post('/api/game/start', auth, (req, res) => {
   const { minBet, maxBet, maintenance } = store.settings;
   if (maintenance) return res.status(503).json({ error: 'As apostas estão temporariamente pausadas.' });
   if (!Number.isFinite(amount) || amount < minBet || amount > maxBet) return res.status(400).json({ error: `A aposta deve ficar entre R$ ${(minBet / 100).toFixed(2)} e R$ ${(maxBet / 100).toFixed(2)}.` });
-  if (req.currentUser.balance < amount) return res.status(400).json({ error: 'Saldo insuficiente.' });
+  const wallet = getWalletBuckets(req.currentUser);
+  if (wallet.balance < amount) return res.status(400).json({ error: 'Saldo insuficiente.' });
   store.bets.filter(bet => bet.uid === req.currentUser.id && bet.status === 'pending').forEach(bet => {
     Object.assign(bet, { status: 'completed', result: 'loss', payout: 0, multiplier: 0, blocksPlaced: 0, linesCleared: 0, score: 0, completed_at: now() });
   });
-  req.currentUser.balance -= amount;
+  const allocation = allocatePromotionalBet(wallet, amount);
+  req.currentUser.balance = allocation.balance;
+  req.currentUser.cash_balance = allocation.cashBalance;
+  req.currentUser.bonus_balance = allocation.bonusBalance;
+  req.currentUser.rollover_remaining = allocation.rolloverRemaining;
+  if (allocation.rolloverCompleted) req.currentUser.rollover_target = 0;
   const sessionId = uuid();
   const seedHash = crypto.createHash('sha256').update(crypto.randomBytes(32)).digest('hex');
-  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : store.settings.difficulty, status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, created_at: now() });
+  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : store.settings.difficulty, status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, cashStake: allocation.cashStake, bonusStake: allocation.bonusStake, rolloverCompleted: allocation.rolloverCompleted, created_at: now() });
   addTransaction(req.currentUser.id, 'bet', -amount);
+  if (allocation.rolloverCompleted) addTransaction(req.currentUser.id, 'bonus_unlock', 0, 'completed', { unlocked_amount: allocation.unlockedBonus });
   save();
   res.json({ sessionId, seed: seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : store.settings.difficulty, balance_after: req.currentUser.balance });
 });
@@ -190,31 +200,47 @@ app.post('/api/game/end', auth, (req, res) => {
   const score = Math.max(0, Math.floor(Number(req.body.score) || 0));
   const result = payout > 0 ? 'win' : 'loss';
   Object.assign(bet, { status: 'completed', result, payout, multiplier, floorsReached: linesCleared, linesCleared, blocksPlaced, score, completed_at: now() });
-  if (payout) { req.currentUser.balance += payout; addTransaction(req.currentUser.id, 'win', payout); }
+  if (payout) {
+    const payoutAllocation = allocatePromotionalPayout(getWalletBuckets(req.currentUser), payout, bet);
+    req.currentUser.balance = payoutAllocation.balance;
+    req.currentUser.cash_balance = payoutAllocation.cashBalance;
+    req.currentUser.bonus_balance = payoutAllocation.bonusBalance;
+    addTransaction(req.currentUser.id, 'win', payout, 'completed', { cash_amount: payoutAllocation.cashPayout, bonus_amount: payoutAllocation.bonusPayout });
+  }
   save();
   res.json({ payout, multiplier, result, blocksPlaced, linesCleared, score, balance_after: req.currentUser.balance, seedHash: bet.seedHash });
 });
 app.post('/api/game/demo/start', (_, res) => res.json({ sessionId: uuid(), seed: crypto.createHash('sha256').update(crypto.randomBytes(32)).digest('hex'), difficulty: 'easy' }));
 
+app.get('/api/wallet/promotion', (_, res) => res.json(normalizePromotionSettings(store.settings)));
 app.post('/api/wallet/deposit', auth, (req, res) => {
   const amount = Math.round(Number(req.body.amount));
   if (amount < store.settings.minDeposit || amount > 100000) return res.status(400).json({ error: 'O depósito deve ficar entre R$ 5 e R$ 1.000.' });
+  const promotion = calculateDepositPromotion(amount, store.settings);
   const depositId = uuid();
   const pixCode = `00020101021226890014BR.GOV.BCB.PIX2567pix.blockerino.app/${depositId}520400005303986540${(amount / 100).toFixed(2)}5802BR5910BLOCKERINO6009SAO PAULO62070503***6304B777`;
-  store.deposits.unshift({ id: depositId, uid: req.currentUser.id, username: req.currentUser.username, amount, pixCode, status: 'pending', created_at: now() });
+  store.deposits.unshift({ id: depositId, uid: req.currentUser.id, username: req.currentUser.username, amount, pixCode, status: 'pending', bonusAmount: promotion.bonusAmount, rolloverRequired: promotion.rolloverRequired, bonusPercent: promotion.bonusPercent, rolloverMultiplier: promotion.rolloverMultiplier, created_at: now() });
   addTransaction(req.currentUser.id, 'deposit', amount, 'pending', { reference_id: depositId });
-  save(); res.json({ depositId, pixCode, status: 'pending' });
+  save(); res.json({ depositId, pixCode, status: 'pending', bonusAmount: promotion.bonusAmount, totalAfterPayment: amount + promotion.bonusAmount, rolloverRequired: promotion.rolloverRequired });
 });
 app.post('/api/wallet/withdraw', auth, (req, res) => {
   const amount = Math.round(Number(req.body.amount)); const pixKey = String(req.body.pixKey || '').trim();
   if (amount < store.settings.minWithdrawal || !pixKey) return res.status(400).json({ error: 'Informe uma chave PIX e saque no mínimo R$ 10.' });
-  if (req.currentUser.balance < amount) return res.status(400).json({ error: 'Saldo insuficiente.' });
-  req.currentUser.balance -= amount;
+  const wallet = getWalletBuckets(req.currentUser);
+  if (wallet.rolloverRemaining > 0) return res.status(400).json({ error: `Complete o rollover de R$ ${(wallet.rolloverRemaining / 100).toFixed(2)} em apostas antes de sacar.` });
+  if (wallet.cashBalance < amount) return res.status(400).json({ error: 'Saldo sacável insuficiente.' });
+  req.currentUser.balance = wallet.balance - amount;
+  req.currentUser.cash_balance = wallet.cashBalance - amount;
   const withdrawal = { id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, pixKey, status: 'pending', created_at: now() };
   store.withdrawals.unshift(withdrawal); addTransaction(req.currentUser.id, 'withdraw', -amount, 'pending', { reference_id: withdrawal.id }); save();
   res.json({ id: withdrawal.id, status: 'pending', balance_after: req.currentUser.balance });
 });
-app.get('/api/wallet/history', auth, (req, res) => res.json({ balance: req.currentUser.balance, transactions: store.transactions.filter(tx => tx.uid === req.currentUser.id).slice(0, 50) }));
+app.get('/api/wallet/history', auth, (req, res) => {
+  const wallet = getWalletBuckets(req.currentUser);
+  const promotion = normalizePromotionSettings(store.settings);
+  const rolloverProgress = wallet.rolloverTarget > 0 ? Math.max(0, Math.min(100, Math.round((1 - wallet.rolloverRemaining / wallet.rolloverTarget) * 100))) : 100;
+  res.json({ balance: wallet.balance, cashBalance: wallet.cashBalance, bonusBalance: wallet.bonusBalance, rolloverRemaining: wallet.rolloverRemaining, rolloverTarget: wallet.rolloverTarget, rolloverProgress, withdrawalsLocked: wallet.rolloverRemaining > 0, promotion, transactions: store.transactions.filter(tx => tx.uid === req.currentUser.id).slice(0, 50) });
+});
 app.get('/api/wallet/gateway/status', auth, (req, res) => res.json({
   provider: vizzionPayStatus.provider,
   configured: vizzionPayStatus.configured,
@@ -251,7 +277,10 @@ app.get('/api/admin/stats', auth, admin, (_, res) => {
     wins: completedBets.filter(bet => bet.result === 'win' || bet.payout > 0).length,
     losses: completedBets.filter(bet => bet.result === 'loss' || !bet.payout).length,
     blocksPlaced: completedBets.reduce((sum, bet) => sum + (bet.blocksPlaced || 0), 0),
-    linesCleared: completedBets.reduce((sum, bet) => sum + (bet.linesCleared || bet.floorsReached || 0), 0)
+    linesCleared: completedBets.reduce((sum, bet) => sum + (bet.linesCleared || bet.floorsReached || 0), 0),
+    totalBonusGranted: store.deposits.filter(item => item.status === 'approved').reduce((sum, item) => sum + (item.bonusAmount || 0), 0),
+    lockedBonus: store.users.reduce((sum, user) => sum + (user.bonus_balance || 0), 0),
+    activeRolloverUsers: store.users.filter(user => (user.rollover_remaining || 0) > 0).length
   });
 });
 app.get('/api/admin/users', auth, admin, (req, res) => {
@@ -292,7 +321,10 @@ app.put('/api/admin/users/:id/balance', auth, admin, (req, res) => {
   const user = store.users.find(item => item.id === req.params.id); if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
   const amount = Math.max(0, Math.round(Number(req.body.amount) || 0)); if (!amount) return res.status(400).json({ error: 'Informe um valor válido.' });
   const delta = req.body.type === 'debit' ? -amount : amount; if (user.balance + delta < 0) return res.status(400).json({ error: 'O saldo não pode ficar negativo.' });
-  user.balance += delta; addTransaction(user.id, 'admin_adjustment', delta, 'completed', { description: String(req.body.description || 'Ajuste administrativo') }); save();
+  const wallet = getWalletBuckets(user);
+  user.balance = wallet.balance + delta;
+  user.cash_balance = wallet.cashBalance + delta;
+  addTransaction(user.id, 'admin_adjustment', delta, 'completed', { description: String(req.body.description || 'Ajuste administrativo') }); save();
   res.json({ balance: user.balance });
 });
 app.get('/api/admin/settings', auth, admin, (_, res) => res.json(store.settings));
@@ -311,7 +343,20 @@ app.put('/api/admin/deposits/:id/:action', auth, admin, (req, res) => {
   const deposit = store.deposits.find(item => item.id === req.params.id); if (!deposit || deposit.status !== 'pending') return res.status(404).json({ error: 'Depósito pendente não encontrado.' });
   const approved = req.params.action === 'approve'; deposit.status = approved ? 'approved' : 'rejected'; updateTx(deposit.id, deposit.status);
   if (approved) {
-    const user = store.users.find(item => item.id === deposit.uid); if (user) user.balance += deposit.amount;
+    const user = store.users.find(item => item.id === deposit.uid);
+    const promotion = deposit.bonusAmount == null ? calculateDepositPromotion(deposit.amount, store.settings) : { bonusAmount: deposit.bonusAmount, rolloverRequired: deposit.rolloverRequired || 0 };
+    deposit.bonusAmount = promotion.bonusAmount;
+    deposit.rolloverRequired = promotion.rolloverRequired;
+    deposit.creditedAmount = deposit.amount + promotion.bonusAmount;
+    if (user) {
+      const wallet = getWalletBuckets(user);
+      user.cash_balance = wallet.cashBalance + deposit.amount;
+      user.bonus_balance = wallet.bonusBalance + promotion.bonusAmount;
+      user.balance = user.cash_balance + user.bonus_balance;
+      user.rollover_remaining = wallet.rolloverRemaining + promotion.rolloverRequired;
+      user.rollover_target = wallet.rolloverTarget + promotion.rolloverRequired;
+      if (promotion.bonusAmount > 0) addTransaction(user.id, 'deposit_bonus', promotion.bonusAmount, 'locked', { reference_id: deposit.id, rollover_required: promotion.rolloverRequired });
+    }
     const direct = user && store.users.find(item => item.id === user.referred_by);
     if (direct) {
       const amount = Math.floor(deposit.amount * (direct.affiliate_rate ?? store.settings.level1Rate) / 100); direct.affiliate_balance += amount; store.commissions.unshift({ id: uuid(), affiliate_id: direct.id, source_user_id: user.id, level: 1, amount, created_at: now() });
@@ -324,7 +369,14 @@ app.put('/api/admin/deposits/:id/:action', auth, admin, (req, res) => {
 app.put('/api/admin/withdrawals/:id/:action', auth, admin, (req, res) => {
   const withdrawal = store.withdrawals.find(item => item.id === req.params.id); if (!withdrawal || withdrawal.status !== 'pending') return res.status(404).json({ error: 'Saque pendente não encontrado.' });
   const approved = req.params.action === 'approve'; withdrawal.status = approved ? 'approved' : 'rejected'; updateTx(withdrawal.id, withdrawal.status);
-  if (!approved) { const user = store.users.find(item => item.id === withdrawal.uid); if (user) user.balance += withdrawal.amount; }
+  if (!approved) {
+    const user = store.users.find(item => item.id === withdrawal.uid);
+    if (user) {
+      const wallet = getWalletBuckets(user);
+      user.balance = wallet.balance + withdrawal.amount;
+      user.cash_balance = wallet.cashBalance + withdrawal.amount;
+    }
+  }
   save(); res.json({ success: true });
 });
 

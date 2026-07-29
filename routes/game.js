@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { allocatePromotionalBet, allocatePromotionalPayout, getWalletBuckets } from '../lib/promotion.js';
 
 const router = express.Router();
 
@@ -46,7 +47,8 @@ router.post('/start', authenticateToken, async (req, res) => {
       if (!userDoc.exists) throw new Error('Usuário não encontrado');
 
       const userData = userDoc.data();
-      if (userData.balance < amount) throw new Error('Saldo insuficiente para realizar a aposta.');
+      const wallet = getWalletBuckets(userData);
+      if (wallet.balance < amount) throw new Error('Saldo insuficiente para realizar a aposta.');
 
       if (userData.is_influencer === 1) {
         difficulty = 'easy';
@@ -65,8 +67,25 @@ router.post('/start', authenticateToken, async (req, res) => {
         });
       });
 
-      t.update(userRef, { balance: FieldValue.increment(-amount) });
-      const newBalance = userData.balance - amount;
+      const allocation = allocatePromotionalBet(wallet, amount);
+      const {
+        bonusStake,
+        cashStake,
+        balance: newBalance,
+        bonusBalance: newBonusBalance,
+        cashBalance: newCashBalance,
+        rolloverRemaining: newRolloverRemaining,
+        rolloverCompleted,
+        unlockedBonus
+      } = allocation;
+
+      t.update(userRef, {
+        balance: newBalance,
+        cash_balance: newCashBalance,
+        bonus_balance: newBonusBalance,
+        rollover_remaining: newRolloverRemaining,
+        ...(rolloverCompleted ? { rollover_target: 0, rollover_completed_at: FieldValue.serverTimestamp() } : {})
+      });
 
       const betRef = db.collection('bets').doc();
       t.set(betRef, {
@@ -80,6 +99,9 @@ router.post('/start', authenticateToken, async (req, res) => {
         blocksPlaced: 0,
         linesCleared: 0,
         score: 0,
+        cashStake,
+        bonusStake,
+        rolloverCompleted,
         created_at: FieldValue.serverTimestamp()
       });
 
@@ -92,8 +114,27 @@ router.post('/start', authenticateToken, async (req, res) => {
         reference_id: betRef.id,
         created_at: FieldValue.serverTimestamp()
       });
+      if (rolloverCompleted) {
+        t.set(db.collection('transactions').doc(), {
+          uid,
+          type: 'bonus_unlock',
+          amount: 0,
+          unlocked_amount: unlockedBonus,
+          status: 'completed',
+          balance_after: newBalance,
+          reference_id: betRef.id,
+          created_at: FieldValue.serverTimestamp()
+        });
+      }
 
-      return { sessionId, seed: seedHash, difficulty, balance_after: newBalance };
+      return {
+        sessionId,
+        seed: seedHash,
+        difficulty,
+        balance_after: newBalance,
+        rollover_remaining: newRolloverRemaining,
+        rollover_completed: rolloverCompleted
+      };
     });
 
     res.json(result);
@@ -137,7 +178,10 @@ router.post('/end', authenticateToken, async (req, res) => {
       const userDoc = await t.get(userRef);
       if (!userDoc.exists) throw new Error('Usuário não encontrado');
 
-      let newBalance = userDoc.data().balance;
+      const wallet = getWalletBuckets(userDoc.data());
+      let newBalance = wallet.balance;
+      let newCashBalance = wallet.cashBalance;
+      let newBonusBalance = wallet.bonusBalance;
 
       t.update(betDoc.ref, {
         status: 'completed',
@@ -152,14 +196,30 @@ router.post('/end', authenticateToken, async (req, res) => {
       });
 
       if (payout > 0) {
-        t.update(userRef, { balance: FieldValue.increment(payout) });
-        newBalance += payout;
+        const payoutAllocation = allocatePromotionalPayout(wallet, payout, betData);
+        const {
+          bonusPayout,
+          cashPayout,
+          balance: payoutBalance,
+          cashBalance: payoutCashBalance,
+          bonusBalance: payoutBonusBalance
+        } = payoutAllocation;
+        newBalance = payoutBalance;
+        newCashBalance = payoutCashBalance;
+        newBonusBalance = payoutBonusBalance;
+        t.update(userRef, {
+          balance: newBalance,
+          cash_balance: newCashBalance,
+          bonus_balance: newBonusBalance
+        });
 
         const txRef = db.collection('transactions').doc();
         t.set(txRef, {
           uid,
           type: 'win',
           amount: payout,
+          cash_amount: cashPayout,
+          bonus_amount: bonusPayout,
           balance_after: newBalance,
           reference_id: betDoc.id,
           created_at: FieldValue.serverTimestamp()

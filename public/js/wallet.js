@@ -1,5 +1,7 @@
 const wallet = {
   pixCode: '',
+  data: null,
+  promotion: { promoEnabled: true, bonusPercent: 300, bonusMinDeposit: 2000, rolloverMultiplier: 10 },
   toggleTab(tab) {
     const deposit = tab === 'deposit';
     document.getElementById('dep-content').hidden = !deposit;
@@ -10,12 +12,51 @@ const wallet = {
   selectPreset(value) {
     document.getElementById('dep-amount-input').value = value;
     document.querySelectorAll('.quick-values button').forEach(button => button.classList.toggle('active', button.textContent.includes(` ${value}`)));
+    this.updatePromoPreview();
+  },
+  updatePromoPreview() {
+    const input = document.getElementById('dep-amount-input');
+    if (!input) return;
+    const amount = Math.max(0, Number(input.value) || 0);
+    const eligible = this.promotion.promoEnabled && amount * 100 >= this.promotion.bonusMinDeposit;
+    const bonus = eligible ? amount * this.promotion.bonusPercent / 100 : 0;
+    const depositValue = document.getElementById('promo-deposit-value');
+    const totalValue = document.getElementById('promo-total-value');
+    const detail = document.getElementById('promo-bonus-detail');
+    const badge = document.getElementById('deposit-promo-badge');
+    const button = document.getElementById('deposit-promo-button');
+    if (depositValue) depositValue.textContent = app.formatBRL(amount * 100);
+    if (totalValue) totalValue.textContent = app.formatBRL((amount + bonus) * 100);
+    if (detail) detail.textContent = eligible
+      ? `${app.formatBRL(bonus * 100)} em bônus adicionados automaticamente após a confirmação do PIX.`
+      : `Deposite pelo menos ${app.formatBRL(this.promotion.bonusMinDeposit)} para ativar o bônus.`;
+    if (badge) badge.textContent = `${this.promotion.bonusPercent}% DE BÔNUS`;
+    if (button) button.textContent = eligible
+      ? `Gerar PIX e ativar ${this.promotion.bonusPercent}%`
+      : 'Gerar PIX';
   },
   async loadWallet() {
     try {
       const data = await app.fetchAPI('/api/wallet/history');
-      if (data.balance != null && app.user) app.user.balance = data.balance;
+      this.data = data;
+      this.promotion = { ...this.promotion, ...(data.promotion || {}) };
+      if (app.user) {
+        app.user.balance = data.balance;
+        app.user.cash_balance = data.cashBalance;
+        app.user.bonus_balance = data.bonusBalance;
+        app.user.rollover_remaining = data.rolloverRemaining;
+      }
       app.updateBalanceDisplays();
+      document.getElementById('wallet-cash-val').textContent = app.formatBRL(data.cashBalance || 0);
+      document.getElementById('wallet-bonus-val').textContent = app.formatBRL(data.bonusBalance || 0);
+      document.getElementById('rollover-progress').style.width = `${data.rolloverProgress || 0}%`;
+      document.getElementById('rollover-status').textContent = data.withdrawalsLocked ? `${data.rolloverProgress || 0}% concluído` : 'Concluído';
+      document.getElementById('rollover-detail').textContent = data.withdrawalsLocked
+        ? `Aposte mais ${app.formatBRL(data.rolloverRemaining)} para liberar os saques.`
+        : 'Seu saldo está liberado para saque.';
+      document.getElementById('rollover-box').classList.toggle('active', Boolean(data.withdrawalsLocked));
+      document.getElementById('withdraw-lock-note').hidden = !data.withdrawalsLocked;
+      this.updatePromoPreview();
       this.renderHistory(data.transactions || data || []);
     } catch (_) {}
   },
@@ -35,7 +76,9 @@ const wallet = {
       }
       document.getElementById('pix-code-display').value = data.pixCode;
       document.getElementById('pix-result-container').style.display = 'block';
-      app.showToast('PIX gerado. Aguardando confirmação do pagamento.');
+      app.showToast(data.bonusAmount > 0
+        ? `PIX gerado. Após pagar, você recebe ${app.formatBRL(data.bonusAmount)} de bônus.`
+        : 'PIX gerado. Aguardando confirmação do pagamento.');
       await this.loadWallet();
     } catch (_) {}
   },
@@ -47,6 +90,7 @@ const wallet = {
   async requestWithdraw() {
     const amount = Number(document.getElementById('with-amount-input').value);
     const pixKey = document.getElementById('with-key-input').value.trim();
+    if (this.data?.withdrawalsLocked) return app.showToast(`Complete o rollover de ${app.formatBRL(this.data.rolloverRemaining)} antes de sacar.`);
     if (amount < 10) return app.showToast('O saque mínimo é de R$ 10.');
     if (!pixKey) return app.showToast('Informe uma chave PIX.');
     try {
@@ -66,8 +110,12 @@ const wallet = {
       body.innerHTML = '<tr><td colspan="4" class="empty-state">Nenhuma movimentação registrada.</td></tr>';
       return;
     }
-    const names = { deposit: 'Depósito', deposit_refund: 'Estorno de depósito', chargeback: 'Contestação', withdraw: 'Saque', withdraw_request: 'Saque', bet: 'Aposta', win: 'Prêmio', affiliate_redeem: 'Comissão' };
-    body.innerHTML = items.map(tx => `<tr><td>${app.formatDate(tx.created_at)}</td><td>${names[tx.type] || tx.type}</td><td style="color:${Number(tx.amount) > 0 ? 'var(--success)' : 'var(--text)'}">${Number(tx.amount) > 0 ? '+' : ''}${app.formatBRL(tx.amount)}</td><td><span class="badge badge-${tx.status === 'rejected' ? 'danger' : tx.status === 'pending' ? 'pending' : 'success'}">${tx.status === 'pending' ? 'Pendente' : tx.status === 'rejected' ? 'Recusado' : 'Concluído'}</span></td></tr>`).join('');
+    const names = { deposit: 'Depósito', deposit_bonus: 'Bônus promocional', bonus_unlock: 'Rollover concluído', deposit_refund: 'Estorno de depósito', chargeback: 'Contestação', withdraw: 'Saque', withdraw_request: 'Saque', bet: 'Aposta', win: 'Prêmio', affiliate_redeem: 'Comissão' };
+    body.innerHTML = items.map(tx => {
+      const status = tx.status === 'locked' ? 'locked' : tx.status;
+      const statusLabel = status === 'pending' ? 'Pendente' : status === 'rejected' ? 'Recusado' : status === 'locked' ? 'Bloqueado' : 'Concluído';
+      return `<tr><td>${app.formatDate(tx.created_at)}</td><td>${names[tx.type] || tx.type}</td><td style="color:${Number(tx.amount) > 0 ? 'var(--success)' : 'var(--text)'}">${Number(tx.amount) > 0 ? '+' : ''}${app.formatBRL(tx.amount)}</td><td><span class="badge badge-${status === 'rejected' ? 'danger' : ['pending', 'locked'].includes(status) ? 'pending' : 'success'}">${statusLabel}</span></td></tr>`;
+    }).join('');
   }
 };
 

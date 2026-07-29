@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#070b0b">
   <title>Blockerino Control — Admin</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260729-3">
-  <link rel="stylesheet" href="/css/admin.css?v=20260729-3">
+  <link rel="stylesheet" href="/css/style.css?v=20260729-7">
+  <link rel="stylesheet" href="/css/admin.css?v=20260729-7">
 </head>
 <body class="admin-body">
   <div class="admin-layout">
@@ -41,6 +41,11 @@
           <article class="metric"><span>RESULTADO DA CASA</span><strong id="stat-profit">R$ 0,00</strong></article>
           <article class="metric"><span>VIZZION PAY</span><strong class="gateway-mini" id="gateway-status-mini">VERIFICANDO</strong><small id="gateway-webhook-mini">webhook</small></article>
         </div>
+        <div class="metrics admin-stats promo-stats">
+          <article class="metric"><span>BÔNUS CONCEDIDO</span><strong id="stat-bonus-granted">R$ 0,00</strong><small>campanha acumulada</small></article>
+          <article class="metric"><span>BÔNUS BLOQUEADO</span><strong id="stat-bonus-locked">R$ 0,00</strong><small>em rollover</small></article>
+          <article class="metric"><span>ROLLOVER ATIVO</span><strong id="stat-rollover-users">0</strong><small>jogadores</small></article>
+        </div>
         <div class="admin-grid">
           <article class="panel">
             <div class="panel-title"><div><small>OPERAÇÃO</small><h3>Filas financeiras</h3></div></div>
@@ -63,7 +68,7 @@
       <section class="admin-view" id="view-players">
         <div class="admin-section-head"><div><small>BASE DE USUÁRIOS</small><h3>Jogadores e desempenho</h3></div><input id="search-users" placeholder="Buscar nome ou e-mail" oninput="admin.loadUsers(this.value)"></div>
         <article class="panel table-wrap">
-          <table><thead><tr><th>Jogador</th><th>Saldo</th><th>Partidas</th><th>V / D</th><th>Blocos</th><th>Linhas</th><th>Status</th><th>Influencer</th><th>Ação</th></tr></thead><tbody id="users-table"></tbody></table>
+          <table><thead><tr><th>Jogador</th><th>Saldo</th><th>Bônus</th><th>Rollover</th><th>Partidas</th><th>V / D</th><th>Blocos</th><th>Linhas</th><th>Status</th><th>Influencer</th><th>Ação</th></tr></thead><tbody id="users-table"></tbody></table>
         </article>
       </section>
 
@@ -83,7 +88,7 @@
           </article>
           <article class="panel">
             <div class="panel-title"><div><small>PIX ENTRADA</small><h3>Depósitos pendentes</h3></div></div>
-            <div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Valor</th><th>Gateway</th><th>Data</th><th>Ações</th></tr></thead><tbody id="deposits-table"></tbody></table></div>
+            <div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Depósito</th><th>Bônus</th><th>Total</th><th>Gateway</th><th>Data</th><th>Ações</th></tr></thead><tbody id="deposits-table"></tbody></table></div>
           </article>
           <article class="panel">
             <div class="panel-title"><div><small>PIX SAÍDA</small><h3>Saques pendentes</h3></div></div>
@@ -102,6 +107,10 @@
             <label>Saque mínimo<input id="set-min-withdrawal" type="number" min="1"></label>
             <label>Comissão nível 1 (%)<input id="set-level1" type="number" min="0" max="100"></label>
             <label>Comissão nível 2 (%)<input id="set-level2" type="number" min="0" max="100"></label>
+            <label>Bônus sobre depósito (%)<input id="set-bonus-percent" type="number" min="0" max="1000"></label>
+            <label>Depósito mínimo para bônus<input id="set-bonus-min" type="number" min="1"></label>
+            <label>Rollover sobre o bônus (x)<input id="set-rollover" type="number" min="1" max="100" step="0.5"></label>
+            <label class="switch-row"><span><b>Campanha de bônus</b><small>Ativa o bônus automático nos depósitos elegíveis</small></span><input id="set-promo-enabled" type="checkbox"></label>
             <label class="switch-row"><span><b>Modo manutenção</b><small>Interrompe novas apostas temporariamente</small></span><input id="set-maintenance" type="checkbox"></label>
             <button class="btn btn-primary" type="submit">Salvar configurações</button>
           </form>
@@ -116,7 +125,7 @@
 
   <div class="modal" id="balance-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('balance-modal')">×</button><small>AJUSTE MANUAL</small><h3 id="balance-modal-user">Jogador</h3><label>Operação</label><select id="balance-type-select"><option value="credit">Adicionar saldo</option><option value="debit">Remover saldo</option></select><label>Valor em R$</label><input id="balance-amount-input" type="number" min="1"><label>Motivo</label><input id="balance-desc-input"><button class="btn btn-primary btn-wide" onclick="admin.confirmBalanceAdjustment()">Confirmar ajuste</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="/js/app.js?v=20260729-3"></script>
-  <script src="/js/admin.js?v=20260729-3"></script>
+  <script src="/js/app.js?v=20260729-7"></script>
+  <script src="/js/admin.js?v=20260729-7"></script>
 </body>
 </html>

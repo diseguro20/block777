@@ -85,6 +85,9 @@ const admin = {
       document.getElementById('stat-record').textContent = `${Number(data.wins || 0).toLocaleString('pt-BR')}V · ${Number(data.losses || 0).toLocaleString('pt-BR')}D`;
       document.getElementById('stat-blocks').textContent = Number(data.blocksPlaced || 0).toLocaleString('pt-BR');
       document.getElementById('stat-lines').textContent = Number(data.linesCleared || 0).toLocaleString('pt-BR');
+      document.getElementById('stat-bonus-granted').textContent = app.formatBRL(data.totalBonusGranted || 0);
+      document.getElementById('stat-bonus-locked').textContent = app.formatBRL(data.lockedBonus || 0);
+      document.getElementById('stat-rollover-users').textContent = Number(data.activeRolloverUsers || 0).toLocaleString('pt-BR');
     } catch (error) {
       if (!silent) app.showToast(error.message);
     }
@@ -99,7 +102,10 @@ const admin = {
       'set-min-deposit': data.minDeposit / 100,
       'set-min-withdrawal': data.minWithdrawal / 100,
       'set-level1': data.level1Rate,
-      'set-level2': data.level2Rate
+      'set-level2': data.level2Rate,
+      'set-bonus-percent': data.bonusPercent,
+      'set-bonus-min': data.bonusMinDeposit / 100,
+      'set-rollover': data.rolloverMultiplier
     };
     Object.entries(fields).forEach(([id, value]) => {
       const element = document.getElementById(id);
@@ -107,6 +113,8 @@ const admin = {
     });
     const maintenance = document.getElementById('set-maintenance');
     if (maintenance) maintenance.checked = Boolean(data.maintenance);
+    const promoEnabled = document.getElementById('set-promo-enabled');
+    if (promoEnabled) promoEnabled.checked = Boolean(data.promoEnabled);
   },
 
   bindSettings() {
@@ -121,6 +129,10 @@ const admin = {
         minWithdrawal: Math.round(Number(document.getElementById('set-min-withdrawal').value) * 100),
         level1Rate: Number(document.getElementById('set-level1').value),
         level2Rate: Number(document.getElementById('set-level2').value),
+        bonusPercent: Number(document.getElementById('set-bonus-percent').value),
+        bonusMinDeposit: Math.round(Number(document.getElementById('set-bonus-min').value) * 100),
+        rolloverMultiplier: Number(document.getElementById('set-rollover').value),
+        promoEnabled: document.getElementById('set-promo-enabled').checked,
         maintenance: document.getElementById('set-maintenance').checked
       };
       await app.fetchAPI('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });
@@ -146,6 +158,8 @@ const admin = {
       <tr>
         <td><div class="user-cell"><b>${this.escape(user.username)}</b><span>${this.escape(user.email)}</span></div></td>
         <td class="mono">${app.formatBRL(user.balance)}</td>
+        <td class="mono positive">${app.formatBRL(user.bonus_balance || 0)}</td>
+        <td class="mono">${app.formatBRL(user.rollover_remaining || 0)}</td>
         <td class="mono">${Number(user.gamesPlayed || 0).toLocaleString('pt-BR')}</td>
         <td><span class="badge badge-success">${Number(user.wins || 0)}V</span> <span class="badge badge-danger">${Number(user.losses || 0)}D</span></td>
         <td class="mono">${Number(user.blocksPlaced || 0).toLocaleString('pt-BR')}</td>
@@ -153,7 +167,7 @@ const admin = {
         <td><button class="badge badge-${user.status === 'active' ? 'success' : 'danger'}" onclick="admin.toggleStatus('${user.id}','${user.status}')">${user.status === 'active' ? 'Ativo' : 'Suspenso'}</button></td>
         <td><button class="badge ${user.is_influencer ? 'badge-success' : ''}" onclick="admin.toggleInfluencer('${user.id}',${Boolean(user.is_influencer)})">${user.is_influencer ? 'Ativo' : 'Padrão'}</button></td>
         <td><button class="table-action" onclick="admin.openBalanceModal('${user.id}','${this.escape(user.username)}')">Saldo</button></td>
-      </tr>`).join('') : '<tr><td colspan="9" class="empty-state">Nenhum jogador encontrado.</td></tr>';
+      </tr>`).join('') : '<tr><td colspan="11" class="empty-state">Nenhum jogador encontrado.</td></tr>';
   },
 
   async loadGameLogs(search = '') {
@@ -242,10 +256,12 @@ const admin = {
     body.innerHTML = deposits.length ? deposits.map(item => `<tr>
       <td>${this.escape(item.username || item.uid)}</td>
       <td class="mono positive">${app.formatBRL(item.amount)}</td>
+      <td class="mono positive">${app.formatBRL(item.bonusAmount || 0)}</td>
+      <td class="mono">${app.formatBRL(Number(item.amount || 0) + Number(item.bonusAmount || 0))}</td>
       <td><span class="badge">${this.escape(item.gateway || 'manual')}</span></td>
       <td>${app.formatDate(item.created_at)}</td>
       <td class="actions"><button class="approve" onclick="admin.resolveDeposit('${item.id}','approve')">Aprovar</button><button onclick="admin.resolveDeposit('${item.id}','reject')">Recusar</button></td>
-    </tr>`).join('') : '<tr><td colspan="5" class="empty-state">Nenhum depósito pendente.</td></tr>';
+    </tr>`).join('') : '<tr><td colspan="7" class="empty-state">Nenhum depósito pendente.</td></tr>';
   },
 
   async resolveDeposit(id, action) {

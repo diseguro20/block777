@@ -5,6 +5,7 @@ const app = {
   init() {
     this.captureRef();
     this.bindForms();
+    this.loadPublicPromotion();
     if (location.protocol === 'file:') {
       fetch('http://localhost:3001/api/health')
         .then(response => {
@@ -25,6 +26,48 @@ const app = {
   captureRef() {
     const params = new URLSearchParams(location.search);
     if (params.get('ref')) localStorage.setItem('ref', params.get('ref'));
+  },
+
+  async loadPublicPromotion() {
+    try {
+      const response = await fetch('/api/wallet/promotion');
+      if (!response.ok) return;
+      const promo = await response.json();
+      if (window.wallet) {
+        wallet.promotion = { ...wallet.promotion, ...promo };
+        wallet.updatePromoPreview();
+      }
+      if (!promo.promoEnabled) return;
+
+      const percent = Number(promo.bonusPercent || 0);
+      const minimum = Number(promo.bonusMinDeposit || 0);
+      const bonus = Math.floor(minimum * percent / 100);
+      const total = minimum + bonus;
+      const minLabel = this.formatBRL(minimum);
+      const bonusLabel = this.formatBRL(bonus);
+      const totalLabel = this.formatBRL(total);
+      const rollover = Number(promo.rolloverMultiplier || 1);
+
+      const setText = (id, text) => {
+        const element = document.getElementById(id);
+        if (element) element.textContent = text;
+      };
+      setText('hero-promo-eyebrow', `OFERTA ATIVA · ${percent}% DE BÔNUS`);
+      const title = document.getElementById('hero-promo-title');
+      if (title) title.innerHTML = `Deposite<br><em>${minLabel}.</em><br>Jogue com ${totalLabel}.`;
+      setText('hero-promo-copy', `Seu depósito vale mais. Deposite a partir de ${minLabel}, receba ${percent}% de bônus automático e entre no Blockerino com mais saldo para jogar.`);
+      setText('hero-promo-terms', `Bônus promocional sujeito a rollover de ${rollover}x sobre o valor do bônus. Saques ficam indisponíveis até a conclusão do requisito. Consulte as regras na carteira.`);
+      const cta = document.getElementById('hero-promo-cta');
+      if (cta) cta.innerHTML = `Quero meus ${percent}% <span>→</span>`;
+      const trust = document.getElementById('hero-promo-trust');
+      if (trust) trust.innerHTML = `<b>+${percent}%</b> a partir de ${minLabel}`;
+      setText('hero-example-deposit', minLabel);
+      setText('hero-example-bonus', bonusLabel);
+      setText('hero-example-total', `= ${totalLabel} PARA JOGAR`);
+      setText('dashboard-promo-title', `${percent}% de bônus em depósitos a partir de ${minLabel}`);
+      setText('dashboard-promo-copy', `${minLabel} viram ${totalLabel} para jogar. O progresso do rollover aparece na sua carteira.`);
+      setText('deposit-promo-legal', `Oferta para depósitos a partir de ${minLabel}. Bônus de ${percent}% sujeito a rollover de ${rollover}x sobre o bônus. Saques permanecem bloqueados enquanto houver requisito pendente. Valores abaixo de ${minLabel} não recebem bônus.`);
+    } catch (_) {}
   },
 
   bindForms() {
@@ -113,7 +156,7 @@ const app = {
     }
     root.innerHTML = items.slice(0, 6).map(tx => {
       const positive = Number(tx.amount) > 0;
-      const label = ({ bet: 'Aposta', win: 'Resgate', deposit: 'Depósito', withdraw: 'Saque', affiliate_redeem: 'Comissão' })[tx.type] || 'Movimentação';
+      const label = ({ bet: 'Aposta', win: 'Resgate', deposit: 'Depósito', deposit_bonus: 'Bônus de 300%', bonus_unlock: 'Bônus liberado', withdraw: 'Saque', affiliate_redeem: 'Comissão' })[tx.type] || 'Movimentação';
       return `<div class="activity-item"><span class="activity-icon">${positive ? '↗' : '↙'}</span><div><b>${label}</b><span>${this.formatDate(tx.created_at)}</span></div><strong class="activity-amount" style="color:${positive ? 'var(--success)' : 'var(--text)'}">${positive ? '+' : ''}${this.formatBRL(tx.amount)}</strong></div>`;
     }).join('');
   },
