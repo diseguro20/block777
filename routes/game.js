@@ -54,7 +54,15 @@ router.post('/start', authenticateToken, async (req, res) => {
 
       // Marcar apostas anteriores pendentes como encerradas
       pendingBets.docs.forEach(betDoc => {
-        t.update(betDoc.ref, { status: 'completed', payout: 0, completed_at: FieldValue.serverTimestamp() });
+        t.update(betDoc.ref, {
+          status: 'completed',
+          result: 'loss',
+          payout: 0,
+          multiplier: 0,
+          blocksPlaced: 0,
+          linesCleared: 0,
+          completed_at: FieldValue.serverTimestamp()
+        });
       });
 
       t.update(userRef, { balance: FieldValue.increment(-amount) });
@@ -68,6 +76,10 @@ router.post('/start', authenticateToken, async (req, res) => {
         seedHash,
         difficulty,
         status: 'pending',
+        result: 'pending',
+        blocksPlaced: 0,
+        linesCleared: 0,
+        score: 0,
         created_at: FieldValue.serverTimestamp()
       });
 
@@ -93,13 +105,13 @@ router.post('/start', authenticateToken, async (req, res) => {
 
 router.post('/end', authenticateToken, async (req, res) => {
   try {
-    const { sessionId, floorsReached, multiplier } = req.body;
+    const { sessionId, floorsReached, multiplier, blocksPlaced, score } = req.body;
     if (!sessionId || multiplier == null) {
       return res.status(400).json({ error: 'Dados da partida incompletos' });
     }
 
     const uid = req.user.uid;
-    const finalMultiplier = Math.min(Number(multiplier), 10);
+    const finalMultiplier = Math.max(0, Math.min(Number(multiplier) || 0, 10));
 
     const betsSnapshot = await db.collection('bets')
       .where('uid', '==', uid)
@@ -115,6 +127,10 @@ router.post('/end', authenticateToken, async (req, res) => {
     const betDoc = betsSnapshot.docs[0];
     const betData = betDoc.data();
     const payout = Math.floor(betData.amount * finalMultiplier);
+    const safeLines = Math.max(0, Math.floor(Number(floorsReached) || 0));
+    const safeBlocks = Math.max(0, Math.floor(Number(blocksPlaced) || 0));
+    const safeScore = Math.max(0, Math.floor(Number(score) || 0));
+    const resultLabel = payout > 0 ? 'win' : 'loss';
     const userRef = db.collection('users').doc(uid);
 
     const result = await db.runTransaction(async (t) => {
@@ -125,7 +141,11 @@ router.post('/end', authenticateToken, async (req, res) => {
 
       t.update(betDoc.ref, {
         status: 'completed',
-        floorsReached: floorsReached || 0,
+        result: resultLabel,
+        floorsReached: safeLines,
+        linesCleared: safeLines,
+        blocksPlaced: safeBlocks,
+        score: safeScore,
         multiplier: finalMultiplier,
         payout,
         completed_at: FieldValue.serverTimestamp()
@@ -146,7 +166,15 @@ router.post('/end', authenticateToken, async (req, res) => {
         });
       }
 
-      return { payout, balance_after: newBalance, multiplier: finalMultiplier };
+      return {
+        payout,
+        balance_after: newBalance,
+        multiplier: finalMultiplier,
+        result: resultLabel,
+        blocksPlaced: safeBlocks,
+        linesCleared: safeLines,
+        score: safeScore
+      };
     });
 
     res.json(result);

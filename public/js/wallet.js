@@ -25,6 +25,11 @@ const wallet = {
     try {
       const data = await app.fetchAPI('/api/wallet/deposit', { method: 'POST', body: JSON.stringify({ amount: Math.round(amount * 100) }) });
       this.pixCode = data.pixCode;
+      const qrImage = document.getElementById('pix-qr-image');
+      if (qrImage) {
+        qrImage.src = data.qrCodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(data.pixCode)}`;
+        qrImage.hidden = false;
+      }
       document.getElementById('pix-code-display').value = data.pixCode;
       document.getElementById('pix-result-container').style.display = 'block';
       app.showToast('PIX gerado. Aguardando confirmação do pagamento.');

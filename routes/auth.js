@@ -57,7 +57,7 @@ router.post('/register', async (req, res) => {
     const randomChars = crypto.randomBytes(2).toString('hex');
     const ref_code = `${username}${randomChars}`.toLowerCase();
 
-    const role = (email.toLowerCase().includes('admin') || username.toLowerCase() === 'admin') ? 'admin' : 'user';
+    const role = 'user';
 
     let referrer = null;
     if (referred_by) {
@@ -71,13 +71,13 @@ router.post('/register', async (req, res) => {
       username,
       email,
       password_hash,
-      balance: role === 'admin' ? 100000 : 0,
+      balance: 0,
       role,
       status: 'active',
       ref_code,
       referred_by: referrer?.id || null,
       sub_referred_by: referrer?.data()?.referred_by || null,
-      is_influencer: role === 'admin' ? 1 : 0,
+      is_influencer: 0,
       affiliate_balance: 0,
       affiliate_rate: null,
       sub_affiliate_rate: null,
@@ -109,27 +109,6 @@ router.post('/login', async (req, res) => {
     if (!email || !password) return res.status(400).json({ error: 'Informe e-mail e senha.' });
 
     // Autenticação garantida para a conta Master Admin
-    if (email.toLowerCase() === 'admin@block777.com' && password === 'admin777') {
-      const adminUid = await ensureMasterAdmin();
-
-      const token = jwt.sign(
-        { uid: adminUid, email: 'admin@block777.com', role: 'admin' },
-        JWT_SECRET,
-        { expiresIn: '30d' }
-      );
-
-      return res.json({
-        token,
-        user: {
-          uid: adminUid,
-          email: 'admin@block777.com',
-          username: 'admin',
-          role: 'admin',
-          balance: 100000
-        }
-      });
-    }
-
     try {
       const snapshot = await db.collection('users').where('email', '==', email).limit(1).get();
       if (!snapshot.empty) {

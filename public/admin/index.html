@@ -1,24 +1,122 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070b0b"><title>Blockerino Control</title><link rel="stylesheet" href="../css/style.css"><link rel="stylesheet" href="../css/admin.css"></head>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#070b0b">
+  <title>Blockerino Control — Admin</title>
+  <link rel="stylesheet" href="/css/style.css?v=20260729-3">
+  <link rel="stylesheet" href="/css/admin.css?v=20260729-3">
+</head>
 <body class="admin-body">
-<div class="admin-layout">
-  <aside class="admin-sidebar">
-    <a class="brand" href="../"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO<small>CONTROL</small></span></a>
-    <nav class="side-nav"><button class="active" data-view="overview" onclick="admin.showView('overview',this)">⌁ <span>Visão geral</span></button><button data-view="players" onclick="admin.showView('players',this)">◎ <span>Jogadores</span></button><button data-view="finance" onclick="admin.showView('finance',this)">◇ <span>Financeiro</span></button><button data-view="settings" onclick="admin.showView('settings',this)">⚙ <span>Configurações</span></button></nav>
-    <div class="side-bottom"><span class="system-online"><i></i> SISTEMA ONLINE</span><a href="../">← Voltar ao jogo</a></div>
-  </aside>
-  <main class="admin-main">
-    <header class="admin-top"><div><small>PAINEL ADMINISTRATIVO</small><h1 id="admin-page-title">Visão geral</h1></div><div class="admin-profile"><span>Administrador<small>Controle total</small></span><b>AD</b></div></header>
-    <div id="admin-auth" class="admin-auth" hidden><div class="modal-card"><div class="brand auth-brand"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO</span></div><h3>Acesso restrito.</h3><p>Entre com uma conta administrativa.</p><form id="admin-login-form"><label>E-mail</label><input id="admin-email" type="email" required><label>Senha</label><input id="admin-password" type="password" required><button class="btn btn-primary btn-wide">Entrar no painel</button></form></div></div>
-    <section class="admin-view active" id="view-overview">
-      <div class="stats-grid admin-stats"><article class="metric metric-main"><small>RECEITA DA CASA</small><strong id="stat-profit">R$ 0,00</strong><span>apostas menos prêmios</span></article><article class="metric"><small>VOLUME APOSTADO</small><strong id="stat-bets">R$ 0,00</strong><span>volume acumulado</span></article><article class="metric"><small>PRÊMIOS PAGOS</small><strong id="stat-payouts">R$ 0,00</strong><span>retorno aos jogadores</span></article><article class="metric"><small>JOGADORES</small><strong id="stat-users">0</strong><span>contas cadastradas</span></article></div>
-      <div class="admin-grid"><article class="panel"><div class="panel-title"><div><small>OPERAÇÃO</small><h3>Fila financeira</h3></div><span class="live-dot">TEMPO REAL</span></div><div class="queue-grid"><button onclick="admin.showView('finance')"><small>DEPÓSITOS PENDENTES</small><strong id="stat-pending-deposits">0</strong><span>Revisar agora →</span></button><button onclick="admin.showView('finance')"><small>SAQUES PENDENTES</small><strong id="stat-pending-withdrawals">0</strong><span>Revisar agora →</span></button></div></article>
-      <article class="panel"><div class="panel-title"><div><small>RISCO E JOGO</small><h3>Dificuldade global</h3></div></div><div class="difficulty-control"><button id="diff-easy-btn" onclick="admin.changeDifficulty('easy')"><b>Suave</b><span>Peças mais simples</span></button><button id="diff-balanced-btn" onclick="admin.changeDifficulty('balanced')"><b>Equilibrado</b><span>Experiência padrão</span></button><button id="diff-strict-btn" onclick="admin.changeDifficulty('strict')"><b>Avançado</b><span>Peças desafiadoras</span></button></div></article></div>
+  <div class="admin-layout">
+    <aside class="admin-sidebar">
+      <a class="brand" href="/"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO</span></a>
+      <nav class="side-nav">
+        <button class="active" data-view="overview" onclick="admin.showView('overview',this)"><b>⌂</b><span>Visão geral</span></button>
+        <button data-view="players" onclick="admin.showView('players',this)"><b>◎</b><span>Jogadores</span></button>
+        <button data-view="games" onclick="admin.showView('games',this)"><b>▦</b><span>Partidas</span></button>
+        <button data-view="finance" onclick="admin.showView('finance',this)"><b>R$</b><span>Financeiro</span></button>
+        <button data-view="settings" onclick="admin.showView('settings',this)"><b>⚙</b><span>Configurações</span></button>
+      </nav>
+      <div class="side-bottom"><span class="system-online"><i></i>SISTEMA ONLINE</span><a href="/">← Voltar ao jogo</a></div>
+    </aside>
+
+    <main class="admin-main">
+      <header class="admin-top">
+        <div><small>PAINEL ADMINISTRATIVO</small><h1 id="admin-page-title">Visão geral</h1></div>
+        <div class="admin-profile"><span><b>Administrador</b><small>Controle total da operação</small></span><b>AD</b></div>
+      </header>
+
+      <section class="admin-view active" id="view-overview">
+        <div class="metrics admin-stats">
+          <article class="metric"><span>USUÁRIOS</span><strong id="stat-users">0</strong><small>cadastros</small></article>
+          <article class="metric"><span>PARTIDAS</span><strong id="stat-games">0</strong><small id="stat-record">0V · 0D</small></article>
+          <article class="metric"><span>BLOCOS</span><strong id="stat-blocks">0</strong><small>encaixados</small></article>
+          <article class="metric"><span>LINHAS</span><strong id="stat-lines">0</strong><small>completadas</small></article>
+        </div>
+        <div class="metrics admin-stats finance-stats">
+          <article class="metric"><span>TOTAL APOSTADO</span><strong id="stat-bets">R$ 0,00</strong></article>
+          <article class="metric"><span>TOTAL PAGO</span><strong id="stat-payouts">R$ 0,00</strong></article>
+          <article class="metric"><span>RESULTADO DA CASA</span><strong id="stat-profit">R$ 0,00</strong></article>
+          <article class="metric"><span>VIZZION PAY</span><strong class="gateway-mini" id="gateway-status-mini">VERIFICANDO</strong><small id="gateway-webhook-mini">webhook</small></article>
+        </div>
+        <div class="admin-grid">
+          <article class="panel">
+            <div class="panel-title"><div><small>OPERAÇÃO</small><h3>Filas financeiras</h3></div></div>
+            <div class="queue-grid">
+              <button onclick="admin.showView('finance')"><small>DEPÓSITOS PENDENTES</small><strong id="stat-pending-deposits">0</strong><span>Revisar solicitações →</span></button>
+              <button onclick="admin.showView('finance')"><small>SAQUES PENDENTES</small><strong id="stat-pending-withdrawals">0</strong><span>Revisar solicitações →</span></button>
+            </div>
+          </article>
+          <article class="panel">
+            <div class="panel-title"><div><small>JOGO</small><h3>Dificuldade global</h3></div></div>
+            <div class="difficulty-control">
+              <button id="diff-easy-btn" onclick="admin.changeDifficulty('easy')"><b>Fácil</b><span>Distribuição favorável</span></button>
+              <button id="diff-balanced-btn" onclick="admin.changeDifficulty('balanced')"><b>Equilibrado</b><span>Experiência padrão</span></button>
+              <button id="diff-strict-btn" onclick="admin.changeDifficulty('strict')"><b>Difícil</b><span>Peças mais exigentes</span></button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="admin-view" id="view-players">
+        <div class="admin-section-head"><div><small>BASE DE USUÁRIOS</small><h3>Jogadores e desempenho</h3></div><input id="search-users" placeholder="Buscar nome ou e-mail" oninput="admin.loadUsers(this.value)"></div>
+        <article class="panel table-wrap">
+          <table><thead><tr><th>Jogador</th><th>Saldo</th><th>Partidas</th><th>V / D</th><th>Blocos</th><th>Linhas</th><th>Status</th><th>Influencer</th><th>Ação</th></tr></thead><tbody id="users-table"></tbody></table>
+        </article>
+      </section>
+
+      <section class="admin-view" id="view-games">
+        <div class="admin-section-head"><div><small>AUDITORIA DO JOGO</small><h3>Logs completos das partidas</h3></div><input id="search-games" placeholder="Jogador, e-mail ou sessão" oninput="admin.loadGameLogs(this.value)"></div>
+        <article class="panel table-wrap">
+          <table><thead><tr><th>Data</th><th>Jogador</th><th>Resultado</th><th>Aposta</th><th>Prêmio</th><th>Multiplicador</th><th>Blocos</th><th>Linhas</th><th>Pontos</th><th>Sessão</th></tr></thead><tbody id="games-table"></tbody></table>
+        </article>
+      </section>
+
+      <section class="admin-view" id="view-finance">
+        <div class="finance-grid">
+          <article class="panel gateway-panel">
+            <div class="panel-title"><div><small>GATEWAY PIX</small><h3>Vizzion Pay</h3></div><span class="badge" id="gateway-status">Verificando</span></div>
+            <p id="gateway-description">Consultando a conexão do gateway.</p>
+            <div class="gateway-details"><span>Depósitos automáticos via PIX</span><span>Confirmação e crédito por webhook</span><span>Comissões de afiliados automáticas</span></div>
+          </article>
+          <article class="panel">
+            <div class="panel-title"><div><small>PIX ENTRADA</small><h3>Depósitos pendentes</h3></div></div>
+            <div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Valor</th><th>Gateway</th><th>Data</th><th>Ações</th></tr></thead><tbody id="deposits-table"></tbody></table></div>
+          </article>
+          <article class="panel">
+            <div class="panel-title"><div><small>PIX SAÍDA</small><h3>Saques pendentes</h3></div></div>
+            <div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Valor</th><th>Chave PIX</th><th>Ações</th></tr></thead><tbody id="withdrawals-table"></tbody></table></div>
+          </article>
+        </div>
+      </section>
+
+      <section class="admin-view" id="view-settings">
+        <article class="panel settings-panel">
+          <div class="panel-title"><div><small>REGRAS DA PLATAFORMA</small><h3>Configurações gerais</h3></div></div>
+          <form id="settings-form" class="settings-grid">
+            <label>Aposta mínima<input id="set-min-bet" type="number" min="1"></label>
+            <label>Aposta máxima<input id="set-max-bet" type="number" min="1"></label>
+            <label>Depósito mínimo<input id="set-min-deposit" type="number" min="1"></label>
+            <label>Saque mínimo<input id="set-min-withdrawal" type="number" min="1"></label>
+            <label>Comissão nível 1 (%)<input id="set-level1" type="number" min="0" max="100"></label>
+            <label>Comissão nível 2 (%)<input id="set-level2" type="number" min="0" max="100"></label>
+            <label class="switch-row"><span><b>Modo manutenção</b><small>Interrompe novas apostas temporariamente</small></span><input id="set-maintenance" type="checkbox"></label>
+            <button class="btn btn-primary" type="submit">Salvar configurações</button>
+          </form>
+        </article>
+      </section>
+    </main>
+
+    <section class="admin-auth" id="admin-auth" hidden>
+      <form class="modal-card" id="admin-login-form"><small>ACESSO RESTRITO</small><h3>Entrar no painel</h3><label>E-mail</label><input id="admin-email" type="email" required><label>Senha</label><input id="admin-password" type="password" required><button class="btn btn-primary btn-wide">Entrar</button></form>
     </section>
-    <section class="admin-view" id="view-players"><article class="panel"><div class="admin-section-head"><div><small>GESTÃO DE CONTAS</small><h3>Jogadores cadastrados</h3></div><input id="search-users" placeholder="Buscar nome ou e-mail…" oninput="admin.loadUsers(this.value)"></div><div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Saldo</th><th>Função</th><th>Status</th><th>Afiliado</th><th>Ações</th></tr></thead><tbody id="users-table"></tbody></table></div></article></section>
-    <section class="admin-view" id="view-finance"><div class="finance-grid"><article class="panel"><div class="panel-title"><div><small>ENTRADAS</small><h3>Depósitos PIX pendentes</h3></div></div><div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Valor</th><th>Data</th><th>Ações</th></tr></thead><tbody id="deposits-table"></tbody></table></div></article><article class="panel"><div class="panel-title"><div><small>SAÍDAS</small><h3>Saques PIX pendentes</h3></div></div><div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Valor</th><th>Chave PIX</th><th>Ações</th></tr></thead><tbody id="withdrawals-table"></tbody></table></div></article></div></section>
-    <section class="admin-view" id="view-settings"><article class="panel settings-panel"><div class="panel-title"><div><small>REGRAS DA PLATAFORMA</small><h3>Limites e comissões</h3></div></div><form id="settings-form" class="settings-grid"><div><label>Aposta mínima (R$)</label><input id="set-min-bet" type="number" min="1"></div><div><label>Aposta máxima (R$)</label><input id="set-max-bet" type="number" min="1"></div><div><label>Depósito mínimo (R$)</label><input id="set-min-deposit" type="number" min="1"></div><div><label>Saque mínimo (R$)</label><input id="set-min-withdrawal" type="number" min="1"></div><div><label>Comissão nível 1 (%)</label><input id="set-level1" type="number" min="0" max="100"></div><div><label>Comissão nível 2 (%)</label><input id="set-level2" type="number" min="0" max="100"></div><label class="switch-row"><span><b>Modo manutenção</b><small>Pausa novas apostas sem derrubar o painel</small></span><input id="set-maintenance" type="checkbox"></label><button class="btn btn-primary" type="submit">Salvar configurações</button></form></article></section>
-  </main>
-</div>
-<div class="modal" id="balance-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('balance-modal')">×</button><small>AJUSTE DE CARTEIRA</small><h3 id="balance-modal-user">Jogador</h3><label>Operação</label><select id="balance-type-select"><option value="credit">Adicionar saldo</option><option value="debit">Remover saldo</option></select><label>Valor (R$)</label><input id="balance-amount-input" type="number" min="1"><label>Motivo</label><input id="balance-desc-input" placeholder="Ex.: correção financeira"><button class="btn btn-primary btn-wide" onclick="admin.confirmBalanceAdjustment()">Confirmar ajuste</button></div></div>
-<div class="toast-container" id="toast-container"></div><script src="../js/app.js"></script><script src="../js/admin.js"></script></body></html>
+  </div>
+
+  <div class="modal" id="balance-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('balance-modal')">×</button><small>AJUSTE MANUAL</small><h3 id="balance-modal-user">Jogador</h3><label>Operação</label><select id="balance-type-select"><option value="credit">Adicionar saldo</option><option value="debit">Remover saldo</option></select><label>Valor em R$</label><input id="balance-amount-input" type="number" min="1"><label>Motivo</label><input id="balance-desc-input"><button class="btn btn-primary btn-wide" onclick="admin.confirmBalanceAdjustment()">Confirmar ajuste</button></div></div>
+  <div class="toast-container" id="toast-container"></div>
+  <script src="/js/app.js?v=20260729-3"></script>
+  <script src="/js/admin.js?v=20260729-3"></script>
+</body>
+</html>

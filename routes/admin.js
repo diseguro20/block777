@@ -15,6 +15,11 @@ router.get('/stats', async (req, res) => {
     let totalPayouts = 0;
     let pendingDeposits = 0;
     let pendingWithdrawals = 0;
+    let totalGames = 0;
+    let wins = 0;
+    let losses = 0;
+    let blocksPlaced = 0;
+    let linesCleared = 0;
 
     try {
       const usersSnapshot = await db.collection('users').get();
@@ -25,6 +30,13 @@ router.get('/stats', async (req, res) => {
         const data = doc.data();
         totalBets += data.amount || 0;
         totalPayouts += data.payout || 0;
+        if (data.status === 'completed') {
+          totalGames++;
+          if (data.result === 'win' || data.payout > 0) wins++;
+          else losses++;
+          blocksPlaced += data.blocksPlaced || 0;
+          linesCleared += data.linesCleared || data.floorsReached || 0;
+        }
       });
 
       const depositsSnapshot = await db.collection('deposit_requests').where('status', '==', 'pending').get();
@@ -37,10 +49,10 @@ router.get('/stats', async (req, res) => {
     }
     
     const houseProfit = totalBets - totalPayouts;
-    res.json({ totalUsers, totalBets, totalPayouts, houseProfit, pendingDeposits, pendingWithdrawals });
+    res.json({ totalUsers, totalBets, totalPayouts, houseProfit, pendingDeposits, pendingWithdrawals, totalGames, wins, losses, blocksPlaced, linesCleared });
   } catch (error) {
     console.error('Admin stats error:', error);
-    res.json({ totalUsers: 1, totalBets: 0, totalPayouts: 0, houseProfit: 0, pendingDeposits: 0, pendingWithdrawals: 0 });
+    res.json({ totalUsers: 1, totalBets: 0, totalPayouts: 0, houseProfit: 0, pendingDeposits: 0, pendingWithdrawals: 0, totalGames: 0, wins: 0, losses: 0, blocksPlaced: 0, linesCleared: 0 });
   }
 });
 
@@ -71,6 +83,27 @@ router.get('/users', async (req, res) => {
       ];
     }
 
+    const gameStats = new Map();
+    try {
+      const betsSnapshot = await db.collection('bets').get();
+      betsSnapshot.forEach(doc => {
+        const bet = doc.data();
+        if (bet.status !== 'completed') return;
+        const stats = gameStats.get(bet.uid) || { gamesPlayed: 0, wins: 0, losses: 0, blocksPlaced: 0, linesCleared: 0 };
+        stats.gamesPlayed++;
+        if (bet.result === 'win' || bet.payout > 0) stats.wins++;
+        else stats.losses++;
+        stats.blocksPlaced += bet.blocksPlaced || 0;
+        stats.linesCleared += bet.linesCleared || bet.floorsReached || 0;
+        gameStats.set(bet.uid, stats);
+      });
+    } catch (e) {}
+
+    users = users.map(user => ({
+      ...user,
+      ...(gameStats.get(user.id) || { gamesPlayed: 0, wins: 0, losses: 0, blocksPlaced: 0, linesCleared: 0 })
+    }));
+
     if (search) {
       users = users.filter(u => 
         (u.username && u.username.toLowerCase().includes(search)) || 
@@ -94,6 +127,31 @@ router.get('/users', async (req, res) => {
         }
       ]
     });
+  }
+});
+
+router.get('/game-logs', async (req, res) => {
+  try {
+    const search = String(req.query.search || '').trim().toLowerCase();
+    const [betsSnapshot, usersSnapshot] = await Promise.all([
+      db.collection('bets').get(),
+      db.collection('users').get()
+    ]);
+    const users = new Map(usersSnapshot.docs.map(doc => [doc.id, doc.data()]));
+    const toMillis = value => value?.toMillis?.() || new Date(value || 0).getTime();
+    const games = betsSnapshot.docs
+      .map(doc => {
+        const bet = doc.data();
+        const user = users.get(bet.uid) || {};
+        return { id: doc.id, ...bet, username: user.username || bet.uid, email: user.email || '' };
+      })
+      .filter(bet => bet.status === 'completed')
+      .filter(bet => !search || String(bet.username).toLowerCase().includes(search) || String(bet.email).toLowerCase().includes(search) || String(bet.sessionId || '').toLowerCase().includes(search))
+      .sort((a, b) => toMillis(b.completed_at || b.created_at) - toMillis(a.completed_at || a.created_at))
+      .slice(0, 250);
+    res.json({ games });
+  } catch (error) {
+    res.status(500).json({ error: 'Não foi possível carregar os registros das partidas.' });
   }
 });
 

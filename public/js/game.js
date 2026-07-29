@@ -58,6 +58,7 @@ const game = {
   multiplier: 1.0,
   linesCleared: 0,
   score: 0,
+  blocksPlaced: 0,
   combo: 0,
   misses: 0,
   eventsBound: false,
@@ -476,6 +477,7 @@ const game = {
       this.multiplier = 1.0;
       this.linesCleared = 0;
       this.score = 0;
+      this.blocksPlaced = 0;
       this.combo = 0;
       this.misses = 0;
 
@@ -501,6 +503,7 @@ const game = {
     this.multiplier = 1.0;
     this.linesCleared = 0;
     this.score = 0;
+    this.blocksPlaced = 0;
     this.combo = 0;
     this.misses = 0;
     this.mode = 'demo';
@@ -589,6 +592,7 @@ const game = {
 
       piece.used = true;
       this.score += placedBlocks;
+      this.blocksPlaced += placedBlocks;
       const clearedLines = this.checkLines(placedBlocks);
 
       if (clearedLines === 0) {
@@ -699,7 +703,9 @@ const game = {
         body: JSON.stringify({
           sessionId: this.sessionId,
           floorsReached: this.linesCleared,
-          multiplier: this.multiplier
+          multiplier: this.multiplier,
+          blocksPlaced: this.blocksPlaced,
+          score: this.score
         })
       });
 
@@ -735,7 +741,9 @@ const game = {
         body: JSON.stringify({
           sessionId: this.sessionId,
           floorsReached: this.linesCleared,
-          multiplier: 0
+          multiplier: 0,
+          blocksPlaced: this.blocksPlaced,
+          score: this.score
         })
       });
       if (app.user && data.balance_after != null) {
@@ -761,7 +769,9 @@ const game = {
           body: JSON.stringify({
             sessionId: this.sessionId,
             floorsReached: this.linesCleared,
-            multiplier: 0
+            multiplier: 0,
+            blocksPlaced: this.blocksPlaced,
+            score: this.score
           })
         });
         if (app.user && data.balance_after != null) {

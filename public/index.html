@@ -13,7 +13,7 @@
   <meta name="twitter:title" content="Blockerino — Encaixe. Quebre. Multiplique.">
   <meta name="twitter:image" content="/og.png">
   <title>Blockerino — jogue, quebre linhas, multiplique</title>
-  <link rel="stylesheet" href="./css/style.css?v=20260729-2">
+  <link rel="stylesheet" href="./css/style.css?v=20260729-3">
 </head>
 <body>
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
@@ -105,7 +105,7 @@
             <label>Valor do depósito</label><div class="money-input"><span>R$</span><input id="dep-amount-input" type="number" min="5" value="50"></div>
             <div class="quick-values"><button onclick="wallet.selectPreset(20)">R$ 20</button><button onclick="wallet.selectPreset(50)" class="active">R$ 50</button><button onclick="wallet.selectPreset(100)">R$ 100</button><button onclick="wallet.selectPreset(200)">R$ 200</button></div>
             <button class="btn btn-primary btn-wide" onclick="wallet.requestDeposit()">Gerar PIX copia e cola</button>
-            <div id="pix-result-container" class="pix-result"><label>Código PIX</label><textarea id="pix-code-display" readonly></textarea><button class="btn btn-ghost btn-wide" onclick="wallet.copyPixCode()">Copiar código</button></div>
+            <div id="pix-result-container" class="pix-result"><img id="pix-qr-image" class="pix-qr" alt="QR Code PIX" hidden><label>Código PIX</label><textarea id="pix-code-display" readonly></textarea><button class="btn btn-ghost btn-wide" onclick="wallet.copyPixCode()">Copiar código</button></div>
           </div>
           <div id="with-content" hidden>
             <label>Valor do saque</label><div class="money-input"><span>R$</span><input id="with-amount-input" type="number" min="10" placeholder="0,00"></div>
@@ -123,6 +123,6 @@
   <div class="modal" id="win-modal"><div class="modal-card result-card"><div class="result-icon">✓</div><small>RESGATE CONCLUÍDO</small><h3 id="win-modal-payout">R$ 0,00</h3><p>Multiplicador final: <b id="win-modal-mult">1.00x</b></p><button class="btn btn-primary btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="modal" id="gameover-modal"><div class="modal-card result-card"><div class="result-icon danger">×</div><small>FIM DE PARTIDA</small><h3>Sem movimentos</h3><p>A rodada foi encerrada. Revise sua estratégia e tente novamente.</p><button class="btn btn-primary btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/app.js?v=20260729-2"></script><script src="./js/wallet.js?v=20260729-2"></script><script src="./js/game.js?v=20260729-2"></script>
+  <script src="./js/app.js?v=20260729-3"></script><script src="./js/wallet.js?v=20260729-3"></script><script src="./js/game.js?v=20260729-3"></script>
 </body>
 </html>

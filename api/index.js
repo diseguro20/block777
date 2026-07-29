@@ -7,6 +7,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { v4 as uuid } from 'uuid';
+import { vizzionPayStatus } from '../lib/vizzionpay.js';
 
 const app = express();
 app.use(cors());
@@ -167,11 +168,13 @@ app.post('/api/game/start', auth, (req, res) => {
   if (maintenance) return res.status(503).json({ error: 'As apostas estão temporariamente pausadas.' });
   if (!Number.isFinite(amount) || amount < minBet || amount > maxBet) return res.status(400).json({ error: `A aposta deve ficar entre R$ ${(minBet / 100).toFixed(2)} e R$ ${(maxBet / 100).toFixed(2)}.` });
   if (req.currentUser.balance < amount) return res.status(400).json({ error: 'Saldo insuficiente.' });
-  store.bets.filter(bet => bet.uid === req.currentUser.id && bet.status === 'pending').forEach(bet => { bet.status = 'completed'; bet.payout = 0; bet.multiplier = 0; bet.completed_at = now(); });
+  store.bets.filter(bet => bet.uid === req.currentUser.id && bet.status === 'pending').forEach(bet => {
+    Object.assign(bet, { status: 'completed', result: 'loss', payout: 0, multiplier: 0, blocksPlaced: 0, linesCleared: 0, score: 0, completed_at: now() });
+  });
   req.currentUser.balance -= amount;
   const sessionId = uuid();
   const seedHash = crypto.createHash('sha256').update(crypto.randomBytes(32)).digest('hex');
-  store.bets.push({ id: uuid(), uid: req.currentUser.id, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : store.settings.difficulty, status: 'pending', payout: 0, created_at: now() });
+  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : store.settings.difficulty, status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, created_at: now() });
   addTransaction(req.currentUser.id, 'bet', -amount);
   save();
   res.json({ sessionId, seed: seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : store.settings.difficulty, balance_after: req.currentUser.balance });
@@ -182,10 +185,14 @@ app.post('/api/game/end', auth, (req, res) => {
   if (!bet) return res.status(409).json({ error: 'Esta partida já foi encerrada.' });
   const multiplier = Math.max(0, Math.min(10, Number(req.body.multiplier) || 0));
   const payout = Math.floor(bet.amount * multiplier);
-  Object.assign(bet, { status: 'completed', payout, multiplier, floorsReached: Math.max(0, Number(req.body.floorsReached) || 0), completed_at: now() });
+  const linesCleared = Math.max(0, Math.floor(Number(req.body.floorsReached) || 0));
+  const blocksPlaced = Math.max(0, Math.floor(Number(req.body.blocksPlaced) || 0));
+  const score = Math.max(0, Math.floor(Number(req.body.score) || 0));
+  const result = payout > 0 ? 'win' : 'loss';
+  Object.assign(bet, { status: 'completed', result, payout, multiplier, floorsReached: linesCleared, linesCleared, blocksPlaced, score, completed_at: now() });
   if (payout) { req.currentUser.balance += payout; addTransaction(req.currentUser.id, 'win', payout); }
   save();
-  res.json({ payout, multiplier, balance_after: req.currentUser.balance, seedHash: bet.seedHash });
+  res.json({ payout, multiplier, result, blocksPlaced, linesCleared, score, balance_after: req.currentUser.balance, seedHash: bet.seedHash });
 });
 app.post('/api/game/demo/start', (_, res) => res.json({ sessionId: uuid(), seed: crypto.createHash('sha256').update(crypto.randomBytes(32)).digest('hex'), difficulty: 'easy' }));
 
@@ -208,6 +215,11 @@ app.post('/api/wallet/withdraw', auth, (req, res) => {
   res.json({ id: withdrawal.id, status: 'pending', balance_after: req.currentUser.balance });
 });
 app.get('/api/wallet/history', auth, (req, res) => res.json({ balance: req.currentUser.balance, transactions: store.transactions.filter(tx => tx.uid === req.currentUser.id).slice(0, 50) }));
+app.get('/api/wallet/gateway/status', auth, (req, res) => res.json({
+  provider: vizzionPayStatus.provider,
+  configured: vizzionPayStatus.configured,
+  webhookConfigured: vizzionPayStatus.webhookConfigured
+}));
 
 app.get('/api/affiliate/stats', auth, (req, res) => {
   const direct = store.users.filter(user => user.referred_by === req.currentUser.id);
@@ -227,11 +239,49 @@ app.get('/api/admin/stats', auth, admin, (_, res) => {
   const completedBets = store.bets.filter(bet => bet.status === 'completed');
   const totalBets = completedBets.reduce((sum, bet) => sum + bet.amount, 0);
   const totalPayouts = completedBets.reduce((sum, bet) => sum + (bet.payout || 0), 0);
-  res.json({ totalUsers: store.users.length, totalBets, totalPayouts, houseProfit: totalBets - totalPayouts, pendingDeposits: store.deposits.filter(item => item.status === 'pending').length, pendingWithdrawals: store.withdrawals.filter(item => item.status === 'pending').length, activeUsers: store.users.filter(user => user.status === 'active').length, totalGames: store.bets.length });
+  res.json({
+    totalUsers: store.users.length,
+    totalBets,
+    totalPayouts,
+    houseProfit: totalBets - totalPayouts,
+    pendingDeposits: store.deposits.filter(item => item.status === 'pending').length,
+    pendingWithdrawals: store.withdrawals.filter(item => item.status === 'pending').length,
+    activeUsers: store.users.filter(user => user.status === 'active').length,
+    totalGames: completedBets.length,
+    wins: completedBets.filter(bet => bet.result === 'win' || bet.payout > 0).length,
+    losses: completedBets.filter(bet => bet.result === 'loss' || !bet.payout).length,
+    blocksPlaced: completedBets.reduce((sum, bet) => sum + (bet.blocksPlaced || 0), 0),
+    linesCleared: completedBets.reduce((sum, bet) => sum + (bet.linesCleared || bet.floorsReached || 0), 0)
+  });
 });
 app.get('/api/admin/users', auth, admin, (req, res) => {
   const search = String(req.query.search || '').toLowerCase();
-  res.json({ users: store.users.filter(user => !search || user.username.toLowerCase().includes(search) || user.email.includes(search)).map(user => ({ ...publicUser(user), id: user.id })) });
+  res.json({ users: store.users.filter(user => !search || user.username.toLowerCase().includes(search) || user.email.includes(search)).map(user => {
+    const games = store.bets.filter(bet => bet.uid === user.id && bet.status === 'completed');
+    return {
+      ...publicUser(user),
+      id: user.id,
+      gamesPlayed: games.length,
+      wins: games.filter(bet => bet.result === 'win' || bet.payout > 0).length,
+      losses: games.filter(bet => bet.result === 'loss' || !bet.payout).length,
+      blocksPlaced: games.reduce((sum, bet) => sum + (bet.blocksPlaced || 0), 0),
+      linesCleared: games.reduce((sum, bet) => sum + (bet.linesCleared || bet.floorsReached || 0), 0)
+    };
+  }) });
+});
+app.get('/api/admin/game-logs', auth, admin, (req, res) => {
+  const search = String(req.query.search || '').trim().toLowerCase();
+  const usersById = new Map(store.users.map(user => [user.id, user]));
+  const games = store.bets
+    .filter(bet => bet.status === 'completed')
+    .map(bet => {
+      const user = usersById.get(bet.uid);
+      return { ...bet, username: bet.username || user?.username || bet.uid, email: user?.email || '' };
+    })
+    .filter(bet => !search || bet.username.toLowerCase().includes(search) || bet.email.toLowerCase().includes(search) || bet.sessionId?.toLowerCase().includes(search))
+    .sort((a, b) => new Date(b.completed_at || b.created_at || 0) - new Date(a.completed_at || a.created_at || 0))
+    .slice(0, 250);
+  res.json({ games });
 });
 app.put('/api/admin/users/:id', auth, admin, (req, res) => {
   const user = store.users.find(item => item.id === req.params.id); if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
