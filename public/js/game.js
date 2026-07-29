@@ -40,61 +40,60 @@ const STRICT_SHAPES = [
   [[1, 1, 1], [0, 0, 1], [0, 0, 1]],
 ];
 
-// Peças IMPOSSÍVEIS — gigantes, desajeitadas, quase impossíveis de encaixar
+// Peças para modo IMPOSSÍVEL — encaixáveis mas criam buracos impossíveis de limpar
+// Foco em peças irregulares que deixam gaps e impedem linhas completas
 const IMPOSSIBLE_SHAPES = [
-  // 3x3 cheio (ocupa 9 células!)
-  [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
-  // Barra longa horizontal (4 células)
-  [[1, 1, 1, 1]],
-  // Barra longa vertical (4 células)
-  [[1], [1], [1], [1]],
-  // L gigante torto
-  [[1, 1, 1], [1, 0, 0], [1, 0, 0]],
-  // L gigante invertido
-  [[1, 1, 1], [0, 0, 1], [0, 0, 1]],
-  // T gigante
-  [[1, 1, 1], [0, 1, 0], [0, 1, 0]],
-  // Cruz (5 células, impossível de encaixar)
+  // S e Z — criam buracos sempre
+  [[0, 1, 1], [1, 1, 0]],
+  [[1, 1, 0], [0, 1, 1]],
+  [[0, 1], [1, 1], [1, 0]],
+  [[1, 0], [1, 1], [0, 1]],
+  // T em todas as direções — criam gaps laterais
+  [[1, 1, 1], [0, 1, 0]],
+  [[1, 0], [1, 1], [1, 0]],
+  [[0, 1, 0], [1, 1, 1]],
+  [[0, 1], [1, 1], [0, 1]],
+  // L e J — irregulares, criam cantos mortos
+  [[1, 0, 0], [1, 1, 1]],
+  [[1, 1], [1, 0], [1, 0]],
+  [[1, 1, 1], [0, 0, 1]],
+  [[0, 1], [0, 1], [1, 1]],
+  [[0, 0, 1], [1, 1, 1]],
+  [[1, 0], [1, 0], [1, 1]],
+  [[1, 1, 1], [1, 0, 0]],
+  [[1, 1], [0, 1], [0, 1]],
+  // Cruz — gap nas diagonais
   [[0, 1, 0], [1, 1, 1], [0, 1, 0]],
-  // Z enorme
-  [[1, 1, 0], [0, 1, 0], [0, 1, 1]],
-  // S enorme
-  [[0, 1, 1], [0, 1, 0], [1, 1, 0]],
-  // Escada longa
-  [[1, 0, 0], [1, 1, 0], [0, 1, 1]],
-  // U shape (5 células)
-  [[1, 0, 1], [1, 1, 1]],
-  // Barra de 5 horizontal (impossível em grid 8)
-  [[1, 1, 1, 1, 1]],
-  // Barra de 5 vertical
-  [[1], [1], [1], [1], [1]],
-  // 4x2 retângulo enorme
-  [[1, 1, 1, 1], [1, 1, 1, 1]],
-  // L 4-alto
-  [[1, 0], [1, 0], [1, 0], [1, 1]],
-  // L invertido 4-alto
-  [[0, 1], [0, 1], [0, 1], [1, 1]],
+  // Barras longas (cabem mas ocupam uma linha inteira, dificultam)
+  [[1, 1, 1, 1]],
+  [[1], [1], [1], [1]],
 ];
 
-// Pesos que favorecem MUITO as peças maiores e mais difíceis
+// Pesos: favorece S/Z/T/Cruz que criam mais buracos
 const IMPOSSIBLE_WEIGHTS = [
-  10,  // 3x3 cheio — aparece MUITO
-  3,   // barra 4h
-  3,   // barra 4v
-  5,   // L gigante
-  5,   // L invertido
-  5,   // T gigante
-  8,   // Cruz — aparece bastante
-  4,   // Z enorme
-  4,   // S enorme
-  4,   // Escada
-  3,   // U shape
-  6,   // Barra 5h — quase não cabe
-  6,   // Barra 5v
-  8,   // 4x2 retângulo
-  4,   // L 4-alto
-  4,   // L invertido 4-alto
+  10,  // S
+  10,  // Z
+  10,  // S vertical
+  10,  // Z vertical
+  8,   // T cima
+  8,   // T direita
+  8,   // T baixo
+  8,   // T esquerda
+  5,   // L1
+  5,   // L2
+  5,   // L3
+  5,   // L4
+  5,   // J1
+  5,   // J2
+  5,   // J3
+  5,   // J4
+  6,   // Cruz
+  1,   // Barra H (rara — quase nunca aparece)
+  1,   // Barra V (rara)
 ];
+
+// Multiplicador máximo para jogadores normais (impossível lucrar)
+const IMPOSSIBLE_MAX_MULTIPLIER = 1.5;
 
 const game = {
   canvas: null,
@@ -632,18 +631,15 @@ const game = {
     let pool, weights;
 
     if (this.difficulty === 'easy') {
-      // Influencer: peças pequenas e fáceis
       pool = EASY_SHAPES;
       weights = null;
-    } else if (this.difficulty === 'impossible') {
-      // Normal: peças IMPOSSÍVEIS sempre
+    } else if (this.difficulty === 'impossible' || this.difficulty === 'balanced') {
       pool = IMPOSSIBLE_SHAPES;
       weights = IMPOSSIBLE_WEIGHTS;
     } else if (this.difficulty === 'strict') {
       pool = this.getBoardFillRatio() > 0.3 ? STRICT_SHAPES : IMPOSSIBLE_SHAPES;
       weights = this.getBoardFillRatio() > 0.3 ? null : IMPOSSIBLE_WEIGHTS;
     } else {
-      // 'balanced' também usa peças difíceis agora
       pool = IMPOSSIBLE_SHAPES;
       weights = IMPOSSIBLE_WEIGHTS;
     }
@@ -655,6 +651,79 @@ const game = {
       const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
       this.hand.push({ shape, color, used: false });
     }
+
+    // SABOTAGEM: após cada mão, injeta blocos aleatórios no tabuleiro
+    // Isso impede que o jogador complete linhas de forma consistente
+    if (this.difficulty !== 'easy' && this.isPlaying) {
+      this.injectSabotageBlocks();
+    }
+  },
+
+  // Injeta 1-3 blocos aleatórios em células vazias para sabotar linhas
+  injectSabotageBlocks() {
+    const fillRatio = this.getBoardFillRatio();
+    // Quanto mais cheio o tabuleiro, menos blocos injeta (evita game over forçado)
+    const count = fillRatio > 0.6 ? 1 : fillRatio > 0.35 ? 2 : 3;
+    
+    const emptyCells = [];
+    for (let r = 0; r < this.gridSize; r++) {
+      for (let c = 0; c < this.gridSize; c++) {
+        if (this.board[r][c] === null) emptyCells.push([r, c]);
+      }
+    }
+
+    // Escolhe células vazias que estejam em linhas/colunas quase completas
+    // para sabotar especificamente as linhas que o jogador está tentando completar
+    const sabotageTargets = this.findSabotageTargets(emptyCells);
+    const targets = sabotageTargets.length >= count ? sabotageTargets : emptyCells;
+    
+    for (let i = 0; i < Math.min(count, targets.length); i++) {
+      const idx = Math.floor(Math.random() * targets.length);
+      const [r, c] = targets.splice(idx, 1)[0];
+      this.board[r][c] = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
+    }
+  },
+
+  // Encontra células vazias em linhas/colunas que estão quase completas
+  // para sabotar essas linhas especificamente
+  findSabotageTargets(emptyCells) {
+    const targets = [];
+    
+    // Verifica linhas quase completas (faltam 1-2 células)
+    for (let r = 0; r < this.gridSize; r++) {
+      let emptyCount = 0;
+      for (let c = 0; c < this.gridSize; c++) {
+        if (this.board[r][c] === null) emptyCount++;
+      }
+      // Linhas com 3-5 células preenchidas: coloca bloco para criar gap difícil
+      if (emptyCount >= 2 && emptyCount <= 4) {
+        for (let c = 0; c < this.gridSize; c++) {
+          if (this.board[r][c] === null) {
+            // Marca apenas uma célula por linha para não fechar a linha
+            targets.push([r, c]);
+            break;
+          }
+        }
+      }
+    }
+    
+    // Verifica colunas quase completas
+    for (let c = 0; c < this.gridSize; c++) {
+      let emptyCount = 0;
+      for (let r = 0; r < this.gridSize; r++) {
+        if (this.board[r][c] === null) emptyCount++;
+      }
+      if (emptyCount >= 2 && emptyCount <= 4) {
+        for (let r = 0; r < this.gridSize; r++) {
+          if (this.board[r][c] === null) {
+            targets.push([r, c]);
+            break;
+          }
+        }
+      }
+    }
+    
+    return targets;
   },
 
   pickWeightedShape(shapes, weights) {
@@ -773,18 +842,23 @@ const game = {
 
       this.linesCleared += totalLines;
 
-      // Multiplicador muito menor para modo impossível/normal
       let baseIncrease, comboBonus;
       if (this.difficulty === 'easy') {
         // Influencer: multiplicador sobe rápido
         baseIncrease = totalLines * 0.25;
         comboBonus = (this.combo + totalLines) * 0.15;
       } else {
-        // Normal/Impossível: multiplicador sobe MUITO devagar
-        baseIncrease = totalLines * 0.05;
-        comboBonus = (this.combo + totalLines) * 0.02;
+        // Normal/Impossível: multiplicador sobe QUASE NADA
+        baseIncrease = totalLines * 0.03;
+        comboBonus = (this.combo + totalLines) * 0.01;
       }
       this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
+      
+      // CAP do multiplicador para jogadores normais
+      if (this.difficulty !== 'easy' && this.multiplier > IMPOSSIBLE_MAX_MULTIPLIER) {
+        this.multiplier = IMPOSSIBLE_MAX_MULTIPLIER;
+      }
+      
       this.score += Math.round(totalLines * this.gridSize * Math.max(1, (this.combo + totalLines) / 2) * Math.max(1, placedBlocks));
 
       app.showToast(`🔥 ${totalLines} LINHA(S) QUEBRADA(S)! Multiplicador: ${this.multiplier.toFixed(2)}x`);
