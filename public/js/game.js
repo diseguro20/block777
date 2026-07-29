@@ -40,73 +40,49 @@ const STRICT_SHAPES = [
   [[1, 1, 1], [0, 0, 1], [0, 0, 1]],
 ];
 
-// Peças IMPOSSÍVEIS — todas irregulares, sem barras, impossível limpar linhas
+// Peças IMPOSSÍVEIS — SOMENTE formas que criam buracos inevitáveis
+// L, J e T REMOVIDOS pois permitem completar linhas
 const IMPOSSIBLE_SHAPES = [
-  // S e Z — SEMPRE criam buracos inevitáveis
-  [[0, 1, 1], [1, 1, 0]],
-  [[1, 1, 0], [0, 1, 1]],
-  [[0, 1], [1, 1], [1, 0]],
-  [[1, 0], [1, 1], [0, 1]],
-  // T em todas as rotações
-  [[1, 1, 1], [0, 1, 0]],
-  [[1, 0], [1, 1], [1, 0]],
-  [[0, 1, 0], [1, 1, 1]],
-  [[0, 1], [1, 1], [0, 1]],
-  // L e J — cantos mortos
-  [[1, 0, 0], [1, 1, 1]],
-  [[1, 1], [1, 0], [1, 0]],
-  [[1, 1, 1], [0, 0, 1]],
-  [[0, 1], [0, 1], [1, 1]],
-  [[0, 0, 1], [1, 1, 1]],
-  [[1, 0], [1, 0], [1, 1]],
-  [[1, 1, 1], [1, 0, 0]],
-  [[1, 1], [0, 1], [0, 1]],
-  // Cruz — gap diagonal impossível
+  // S e Z — criam buracos SEMPRE, impossível fechar linha com eles
+  [[0, 1, 1], [1, 1, 0]],       // S horizontal
+  [[1, 1, 0], [0, 1, 1]],       // Z horizontal
+  [[0, 1], [1, 1], [1, 0]],     // S vertical
+  [[1, 0], [1, 1], [0, 1]],     // Z vertical
+  // Cruz — 4 gaps diagonais impossíveis
   [[0, 1, 0], [1, 1, 1], [0, 1, 0]],
-  // Formas 3x3 irregulares — ocupam muito espaço com buracos
-  [[1, 1, 1], [1, 0, 0], [1, 0, 0]],   // L grande
-  [[1, 1, 1], [0, 0, 1], [0, 0, 1]],   // J grande
-  [[1, 0, 0], [1, 0, 0], [1, 1, 1]],   // L grande rotação
-  [[0, 0, 1], [0, 0, 1], [1, 1, 1]],   // J grande rotação
-  // Escadas — impossível preencher gaps
+  // Escadas — gaps em degrau impossíveis de preencher
   [[1, 0, 0], [1, 1, 0], [0, 1, 1]],
   [[0, 0, 1], [0, 1, 1], [1, 1, 0]],
+  [[1, 1, 0], [0, 1, 0], [0, 1, 1]],
+  [[0, 1, 1], [0, 1, 0], [1, 1, 0]],
   // U e C — buracos internos
   [[1, 0, 1], [1, 1, 1]],
   [[1, 1, 1], [1, 0, 1]],
+  // 3x3 cheio — enche o tabuleiro rápido = game over
+  [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+  // 2x2 — enche espaço sem ajudar a limpar linhas
+  [[1, 1], [1, 1]],
 ];
 
-// Pesos: S/Z e formas 3x3 dominam — máxima dificuldade
+// S/Z = 70% das peças, o resto são Cruz/Escada/3x3
 const IMPOSSIBLE_WEIGHTS = [
-  14,  // S
-  14,  // Z
-  14,  // S vertical
-  14,  // Z vertical
-  6,   // T cima
-  6,   // T direita
-  6,   // T baixo
-  6,   // T esquerda
-  3,   // L1
-  3,   // L2
-  3,   // L3
-  3,   // L4
-  3,   // J1
-  3,   // J2
-  3,   // J3
-  3,   // J4
-  10,  // Cruz
-  8,   // L grande
-  8,   // J grande
-  8,   // L grande rot
-  8,   // J grande rot
-  7,   // Escada 1
-  7,   // Escada 2
-  5,   // U
-  5,   // C
+  20,  // S horizontal
+  20,  // Z horizontal
+  20,  // S vertical
+  20,  // Z vertical
+  8,   // Cruz
+  6,   // Escada 1
+  6,   // Escada 2
+  6,   // Escada 3
+  6,   // Escada 4
+  4,   // U
+  4,   // C
+  5,   // 3x3 cheio
+  3,   // 2x2
 ];
 
-// Multiplicador máximo para jogadores normais
-const IMPOSSIBLE_MAX_MULTIPLIER = 1.3;
+// Multiplicador máximo — praticamente zero lucro
+const IMPOSSIBLE_MAX_MULTIPLIER = 1.1;
 
 const game = {
   canvas: null,
@@ -784,13 +760,12 @@ const game = {
 
       let baseIncrease, comboBonus;
       if (this.difficulty === 'easy') {
-        // Influencer: multiplicador sobe rápido
         baseIncrease = totalLines * 0.25;
         comboBonus = (this.combo + totalLines) * 0.15;
       } else {
-        // Normal/Impossível: multiplicador sobe QUASE NADA
-        baseIncrease = totalLines * 0.03;
-        comboBonus = (this.combo + totalLines) * 0.01;
+        // Praticamente zero — impossível lucrar
+        baseIncrease = totalLines * 0.01;
+        comboBonus = (this.combo + totalLines) * 0.005;
       }
       this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
       
