@@ -13,7 +13,7 @@
   <meta name="twitter:title" content="Blockerino — Encaixe. Quebre. Multiplique.">
   <meta name="twitter:image" content="/og.png">
   <title>Blockerino — Deposite R$ 20 e jogue com R$ 80</title>
-  <link rel="stylesheet" href="./css/style.css?v=20260729-7">
+  <link rel="stylesheet" href="./css/style.css?v=20260729-8">
 </head>
 <body>
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
@@ -56,6 +56,31 @@
           <p>Arraste uma peça para experimentar</p>
         </div>
       </div>
+      <section class="security-section" aria-labelledby="security-title">
+        <div class="security-heading">
+          <span>SEGURANÇA EM TODAS AS ETAPAS</span>
+          <h2 id="security-title">Ambiente verificado. Operação protegida.</h2>
+        </div>
+        <div class="security-seals">
+          <article class="security-seal">
+            <span class="seal-mark" aria-hidden="true">✓</span>
+            <div><small>SITE VERIFICADO</small><strong>Conexão segura HTTPS</strong><p>Seus dados trafegam por conexão criptografada.</p></div>
+          </article>
+          <article class="security-seal">
+            <span class="seal-mark" aria-hidden="true">✓</span>
+            <div><small>PAGAMENTO VERIFICADO</small><strong>PIX com confirmação</strong><p>Depósitos confirmados automaticamente pelo gateway.</p></div>
+          </article>
+          <article class="security-seal">
+            <span class="seal-mark" aria-hidden="true">✓</span>
+            <div><small>DADOS PROTEGIDOS</small><strong>Firebase autenticado</strong><p>Acesso à conta protegido por autenticação.</p></div>
+          </article>
+          <article class="security-seal">
+            <span class="seal-mark" aria-hidden="true">✓</span>
+            <div><small>JOGO AUDITÁVEL</small><strong>Verificação SHA-256</strong><p>Partidas e resultados registrados no sistema.</p></div>
+          </article>
+        </div>
+        <p class="security-disclaimer">Indicadores técnicos da plataforma. Os selos não representam certificação de órgão externo.</p>
+      </section>
       <div class="proof-strip"><span>ATIVE EM 3 PASSOS</span><b>01</b><p>Deposite a partir de R$ 20</p><b>02</b><p>Receba 300% automaticamente</p><b>03</b><p>Jogue e complete o rollover</p></div>
     </section>
 
@@ -113,6 +138,7 @@
           <div class="tabs"><button id="tab-dep-btn" class="active" onclick="wallet.toggleTab('deposit')">Depositar</button><button id="tab-with-btn" onclick="wallet.toggleTab('withdraw')">Sacar</button></div>
           <div id="dep-content">
             <div class="deposit-promo"><span id="deposit-promo-badge">300% DE BÔNUS</span><h3>Deposite <b id="promo-deposit-value">R$ 20</b> e jogue com <strong id="promo-total-value">R$ 80</strong></h3><p id="promo-bonus-detail">R$ 60 em bônus adicionados automaticamente após a confirmação do PIX.</p></div>
+            <div class="wallet-security-strip" aria-label="Segurança do depósito"><span>✓ PIX verificado</span><span>✓ HTTPS ativo</span><span>✓ Confirmação automática</span></div>
             <label>Valor do depósito</label><div class="money-input"><span>R$</span><input id="dep-amount-input" type="number" min="5" value="20" oninput="wallet.updatePromoPreview()"></div>
             <div class="quick-values"><button onclick="wallet.selectPreset(20)" class="active">R$ 20</button><button onclick="wallet.selectPreset(50)">R$ 50</button><button onclick="wallet.selectPreset(100)">R$ 100</button><button onclick="wallet.selectPreset(200)">R$ 200</button></div>
             <button class="btn btn-primary btn-wide pulse-cta" id="deposit-promo-button" onclick="wallet.requestDeposit()">Gerar PIX e ativar 300%</button>
