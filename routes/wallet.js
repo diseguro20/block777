@@ -100,12 +100,17 @@ router.get('/history', authenticateToken, async (req, res) => {
     const uid = req.user.uid;
     const snapshot = await db.collection('transactions')
       .where('uid', '==', uid)
-      .orderBy('created_at', 'desc')
-      .limit(50)
       .get();
 
-    const history = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json(history);
+    const history = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => {
+        const aTime = a.created_at?.toMillis?.() || new Date(a.created_at || 0).getTime();
+        const bTime = b.created_at?.toMillis?.() || new Date(b.created_at || 0).getTime();
+        return bTime - aTime;
+      })
+      .slice(0, 50);
+    res.json({ transactions: history });
   } catch (error) {
     console.error('History error:', error);
     res.status(500).json({ error: 'Internal server error' });

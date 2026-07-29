@@ -12,6 +12,7 @@ async function ensureMasterAdmin() {
   try {
     const adminEmail = 'admin@block777.com';
     const snapshot = await db.collection('users').where('email', '==', adminEmail).limit(1).get();
+    if (!snapshot.empty) return snapshot.docs[0].id;
     if (snapshot.empty) {
       const password_hash = await bcrypt.hash('admin777', 10);
       const adminUser = {
@@ -28,9 +29,12 @@ async function ensureMasterAdmin() {
         affiliate_balance: 0,
         created_at: FieldValue.serverTimestamp()
       };
-      await db.collection('users').add(adminUser);
+      await db.collection('users').doc('admin_master_uid').set(adminUser);
+      return 'admin_master_uid';
     }
-  } catch (e) {}
+  } catch (e) {
+    return 'admin_master_uid';
+  }
 }
 
 router.post('/register', async (req, res) => {
@@ -106,10 +110,10 @@ router.post('/login', async (req, res) => {
 
     // Autenticação garantida para a conta Master Admin
     if (email.toLowerCase() === 'admin@block777.com' && password === 'admin777') {
-      ensureMasterAdmin();
+      const adminUid = await ensureMasterAdmin();
 
       const token = jwt.sign(
-        { uid: 'admin_master_uid', email: 'admin@block777.com', role: 'admin' },
+        { uid: adminUid, email: 'admin@block777.com', role: 'admin' },
         JWT_SECRET,
         { expiresIn: '30d' }
       );
@@ -117,7 +121,7 @@ router.post('/login', async (req, res) => {
       return res.json({
         token,
         user: {
-          uid: 'admin_master_uid',
+          uid: adminUid,
           email: 'admin@block777.com',
           username: 'admin',
           role: 'admin',
