@@ -40,20 +40,19 @@ const STRICT_SHAPES = [
   [[1, 1, 1], [0, 0, 1], [0, 0, 1]],
 ];
 
-// Peças para modo IMPOSSÍVEL — encaixáveis mas criam buracos impossíveis de limpar
-// Foco em peças irregulares que deixam gaps e impedem linhas completas
+// Peças IMPOSSÍVEIS — todas irregulares, sem barras, impossível limpar linhas
 const IMPOSSIBLE_SHAPES = [
-  // S e Z — criam buracos sempre
+  // S e Z — SEMPRE criam buracos inevitáveis
   [[0, 1, 1], [1, 1, 0]],
   [[1, 1, 0], [0, 1, 1]],
   [[0, 1], [1, 1], [1, 0]],
   [[1, 0], [1, 1], [0, 1]],
-  // T em todas as direções — criam gaps laterais
+  // T em todas as rotações
   [[1, 1, 1], [0, 1, 0]],
   [[1, 0], [1, 1], [1, 0]],
   [[0, 1, 0], [1, 1, 1]],
   [[0, 1], [1, 1], [0, 1]],
-  // L e J — irregulares, criam cantos mortos
+  // L e J — cantos mortos
   [[1, 0, 0], [1, 1, 1]],
   [[1, 1], [1, 0], [1, 0]],
   [[1, 1, 1], [0, 0, 1]],
@@ -62,38 +61,52 @@ const IMPOSSIBLE_SHAPES = [
   [[1, 0], [1, 0], [1, 1]],
   [[1, 1, 1], [1, 0, 0]],
   [[1, 1], [0, 1], [0, 1]],
-  // Cruz — gap nas diagonais
+  // Cruz — gap diagonal impossível
   [[0, 1, 0], [1, 1, 1], [0, 1, 0]],
-  // Barras longas (cabem mas ocupam uma linha inteira, dificultam)
-  [[1, 1, 1, 1]],
-  [[1], [1], [1], [1]],
+  // Formas 3x3 irregulares — ocupam muito espaço com buracos
+  [[1, 1, 1], [1, 0, 0], [1, 0, 0]],   // L grande
+  [[1, 1, 1], [0, 0, 1], [0, 0, 1]],   // J grande
+  [[1, 0, 0], [1, 0, 0], [1, 1, 1]],   // L grande rotação
+  [[0, 0, 1], [0, 0, 1], [1, 1, 1]],   // J grande rotação
+  // Escadas — impossível preencher gaps
+  [[1, 0, 0], [1, 1, 0], [0, 1, 1]],
+  [[0, 0, 1], [0, 1, 1], [1, 1, 0]],
+  // U e C — buracos internos
+  [[1, 0, 1], [1, 1, 1]],
+  [[1, 1, 1], [1, 0, 1]],
 ];
 
-// Pesos: favorece S/Z/T/Cruz que criam mais buracos
+// Pesos: S/Z e formas 3x3 dominam — máxima dificuldade
 const IMPOSSIBLE_WEIGHTS = [
-  10,  // S
-  10,  // Z
-  10,  // S vertical
-  10,  // Z vertical
-  8,   // T cima
-  8,   // T direita
-  8,   // T baixo
-  8,   // T esquerda
-  5,   // L1
-  5,   // L2
-  5,   // L3
-  5,   // L4
-  5,   // J1
-  5,   // J2
-  5,   // J3
-  5,   // J4
-  6,   // Cruz
-  1,   // Barra H (rara — quase nunca aparece)
-  1,   // Barra V (rara)
+  14,  // S
+  14,  // Z
+  14,  // S vertical
+  14,  // Z vertical
+  6,   // T cima
+  6,   // T direita
+  6,   // T baixo
+  6,   // T esquerda
+  3,   // L1
+  3,   // L2
+  3,   // L3
+  3,   // L4
+  3,   // J1
+  3,   // J2
+  3,   // J3
+  3,   // J4
+  10,  // Cruz
+  8,   // L grande
+  8,   // J grande
+  8,   // L grande rot
+  8,   // J grande rot
+  7,   // Escada 1
+  7,   // Escada 2
+  5,   // U
+  5,   // C
 ];
 
-// Multiplicador máximo para jogadores normais (impossível lucrar)
-const IMPOSSIBLE_MAX_MULTIPLIER = 1.5;
+// Multiplicador máximo para jogadores normais
+const IMPOSSIBLE_MAX_MULTIPLIER = 1.3;
 
 const game = {
   canvas: null,
