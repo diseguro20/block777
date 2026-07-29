@@ -3,201 +3,174 @@ const app = {
   user: null,
 
   init() {
-    this.captureRefs();
-    this.setupListeners();
-
-    // Apenas gerencia navegação por telas de SPA se estiver na index.html
-    const isIndexPage = document.getElementById('landing-screen') || document.getElementById('menu-screen');
-    if (!isIndexPage) {
-      if (this.token) {
-        this.fetchUserDataOnly();
-      }
+    this.captureRef();
+    this.bindForms();
+    if (location.protocol === 'file:') {
+      fetch('http://localhost:3001/api/health')
+        .then(response => {
+          if (response.ok) location.replace('http://localhost:3001/');
+          else throw new Error();
+        })
+        .catch(() => this.showToast('Visual carregado. Inicie o servidor local para usar login, apostas e painéis.'));
+    }
+    if (!document.getElementById('landing-screen')) {
+      if (this.token) this.fetchUserDataOnly();
       return;
     }
+    document.getElementById('nav-actions').style.display = this.token ? '' : 'none';
+    if (this.token) this.loadUserData();
+    else this.showScreen('landing-screen');
+  },
 
-    if (this.token) {
-      this.loadUserData();
-    } else {
-      this.showScreen('landing-screen');
+  captureRef() {
+    const params = new URLSearchParams(location.search);
+    if (params.get('ref')) localStorage.setItem('ref', params.get('ref'));
+  },
+
+  bindForms() {
+    const login = document.getElementById('login-form');
+    const register = document.getElementById('register-form');
+    if (login) login.onsubmit = async (event) => {
+      event.preventDefault();
+      const form = new FormData(login);
+      try {
+        const data = await this.fetchAPI('/api/auth/login', { method: 'POST', body: JSON.stringify(Object.fromEntries(form)) });
+        this.setSession(data);
+      } catch (_) {}
+    };
+    if (register) register.onsubmit = async (event) => {
+      event.preventDefault();
+      const payload = Object.fromEntries(new FormData(register));
+      payload.referred_by = localStorage.getItem('ref') || null;
+      try {
+        const data = await this.fetchAPI('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
+        this.setSession(data);
+        this.showToast('Conta criada. Bem-vindo ao Blockerino!');
+      } catch (_) {}
+    };
+  },
+
+  setSession(data) {
+    this.token = data.token;
+    this.user = data.user;
+    localStorage.setItem('token', data.token);
+    this.closeModal('auth-modal');
+    this.loadUserData();
+  },
+
+  async fetchAPI(url, options = {}) {
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    if (this.token) headers.Authorization = `Bearer ${this.token}`;
+    try {
+      const response = await fetch(url, { ...options, headers });
+      const text = await response.text();
+      let data = {};
+      try { data = text ? JSON.parse(text) : {}; } catch (_) { throw new Error('Resposta inválida do servidor.'); }
+      if (!response.ok) throw new Error(data.error || 'Não foi possível concluir esta ação.');
+      return data;
+    } catch (error) {
+      this.showToast(error.message || 'Falha de conexão.');
+      throw error;
     }
   },
 
   async fetchUserDataOnly() {
+    try { this.user = await this.fetchAPI('/api/auth/me'); this.updateBalanceDisplays(); } catch (_) {}
+  },
+
+  async loadUserData(navigate = true) {
     try {
       this.user = await this.fetchAPI('/api/auth/me');
       this.updateBalanceDisplays();
-    } catch (e) {}
+      const adminLink = document.getElementById('btn-admin-link');
+      if (adminLink) adminLink.style.display = this.user.role === 'admin' ? '' : 'none';
+      document.getElementById('nav-actions').style.display = '';
+      if (navigate) this.showScreen('menu-screen');
+      await this.loadDashboard();
+    } catch (_) { this.logout(false); }
   },
 
-  captureRefs() {
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.has('ref')) localStorage.setItem('ref', urlParams.get('ref'));
-    if (urlParams.has('subref')) localStorage.setItem('subref', urlParams.get('subref'));
+  async loadDashboard() {
+    if (!this.user || !document.getElementById('dashboard-name')) return;
+    document.getElementById('dashboard-name').textContent = this.user.username || 'jogador';
+    try {
+      const data = await this.fetchAPI('/api/dashboard');
+      document.getElementById('dashboard-return').textContent = this.formatBRL(data.totalPayouts || 0);
+      document.getElementById('dashboard-games').textContent = data.totalGames || 0;
+      document.getElementById('dashboard-best').textContent = `${Number(data.bestMultiplier || 1).toFixed(2)}x`;
+      this.renderRecent(data.recent || []);
+    } catch (_) {
+      this.renderRecent([]);
+    }
   },
+
+  renderRecent(items) {
+    const root = document.getElementById('recent-activity');
+    if (!root) return;
+    if (!items.length) {
+      root.innerHTML = '<div class="empty-state">Sua primeira partida está a um clique de distância.</div>';
+      return;
+    }
+    root.innerHTML = items.slice(0, 6).map(tx => {
+      const positive = Number(tx.amount) > 0;
+      const label = ({ bet: 'Aposta', win: 'Resgate', deposit: 'Depósito', withdraw: 'Saque', affiliate_redeem: 'Comissão' })[tx.type] || 'Movimentação';
+      return `<div class="activity-item"><span class="activity-icon">${positive ? '↗' : '↙'}</span><div><b>${label}</b><span>${this.formatDate(tx.created_at)}</span></div><strong class="activity-amount" style="color:${positive ? 'var(--success)' : 'var(--text)'}">${positive ? '+' : ''}${this.formatBRL(tx.amount)}</strong></div>`;
+    }).join('');
+  },
+
+  showScreen(id) {
+    document.querySelectorAll('.screen').forEach(screen => screen.classList.remove('active'));
+    const target = document.getElementById(id);
+    if (target) target.classList.add('active');
+    if (id === 'landing-screen' && window.game) setTimeout(() => game.initLandingDemo(), 50);
+    if (id === 'game-screen' && window.game) setTimeout(() => game.init(), 20);
+    if (id === 'wallet-screen' && window.wallet) wallet.loadWallet();
+    scrollTo({ top: 0, behavior: 'smooth' });
+  },
+
+  goHome() { this.showScreen(this.token ? 'menu-screen' : 'landing-screen'); },
+  toggleMobileMenu() { document.getElementById('nav-actions')?.classList.toggle('open'); },
+  openAuth(tab = 'login') { this.toggleAuthTab(tab); document.getElementById('auth-modal')?.classList.add('active'); },
+  closeModal(id) { document.getElementById(id)?.classList.remove('active'); },
 
   toggleAuthTab(tab) {
-    const loginForm = document.getElementById('login-form');
-    const regForm = document.getElementById('register-form');
-    const loginBtn = document.getElementById('tab-login-btn');
-    const regBtn = document.getElementById('tab-reg-btn');
-
-    if (tab === 'login') {
-      if (loginForm) loginForm.style.display = 'block';
-      if (regForm) regForm.style.display = 'none';
-      if (loginBtn) loginBtn.className = 'btn btn-primary';
-      if (regBtn) regBtn.className = 'btn btn-wood';
-    } else {
-      if (loginForm) loginForm.style.display = 'none';
-      if (regForm) regForm.style.display = 'block';
-      if (loginBtn) loginBtn.className = 'btn btn-wood';
-      if (regBtn) regBtn.className = 'btn btn-primary';
-    }
-  },
-
-  showScreen(screenId) {
-    const screens = document.querySelectorAll('.screen');
-    if (screens.length > 1) {
-      screens.forEach(s => s.classList.remove('active'));
-      const screen = document.getElementById(screenId);
-      if (screen) screen.classList.add('active');
-    }
-
-    const navActions = document.getElementById('nav-actions');
-    if (navActions) {
-      navActions.style.display = this.token ? 'flex' : 'none';
-    }
-
-    if (screenId === 'landing-screen' && window.game) {
-      setTimeout(() => window.game.initLandingDemo(), 100);
-    }
-
-    if (screenId === 'game-screen' && window.game) {
-      window.game.init();
-    }
-
-    if (screenId === 'wallet-screen' && window.wallet) {
-      window.wallet.loadWallet();
-    }
-  },
-
-  async fetchAPI(url, options = {}) {
-    options.headers = options.headers || {};
-    options.headers['Content-Type'] = 'application/json';
-    if (this.token) {
-      options.headers['Authorization'] = `Bearer ${this.token}`;
-    }
-
-    try {
-      const res = await fetch(url, options);
-      const text = await res.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        throw new Error('Erro de comunicação com o servidor. Verifique as credenciais no Vercel.');
-      }
-
-      if (!res.ok) throw new Error(data.error || 'Erro na requisição');
-      return data;
-    } catch (err) {
-      this.showToast(err.message);
-      throw err;
-    }
-  },
-
-  async loadUserData() {
-    try {
-      this.user = await this.fetchAPI('/api/auth/me');
-      this.updateBalanceDisplays();
-
-      const adminBtn = document.getElementById('btn-admin-link');
-      if (adminBtn) {
-        adminBtn.style.display = this.user.role === 'admin' ? 'block' : 'none';
-      }
-
-      this.showScreen('menu-screen');
-    } catch (e) {
-      this.logout();
-    }
+    const isLogin = tab === 'login';
+    const login = document.getElementById('login-form');
+    const register = document.getElementById('register-form');
+    if (login) login.hidden = !isLogin;
+    if (register) register.hidden = isLogin;
+    document.getElementById('tab-login-btn')?.classList.toggle('active', isLogin);
+    document.getElementById('tab-reg-btn')?.classList.toggle('active', !isLogin);
   },
 
   updateBalanceDisplays() {
     if (!this.user) return;
-    const str = this.formatBRL(this.user.balance);
-    const navBal = document.getElementById('nav-balance');
-    const wallBal = document.getElementById('wallet-balance-val');
-
-    if (navBal) navBal.textContent = str;
-    if (wallBal) wallBal.textContent = str;
+    ['nav-balance', 'wallet-balance-val', 'dashboard-balance'].forEach(id => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = this.formatBRL(this.user.balance || 0);
+    });
   },
 
-  formatBRL(centavos) {
-    if (isNaN(centavos)) centavos = 0;
-    return 'R$ ' + (centavos / 100).toFixed(2).replace('.', ',');
+  logout(showMessage = true) {
+    this.token = null; this.user = null; localStorage.removeItem('token');
+    const nav = document.getElementById('nav-actions');
+    if (nav) nav.style.display = 'none';
+    if (document.getElementById('landing-screen')) this.showScreen('landing-screen');
+    if (showMessage) this.showToast('Sessão encerrada.');
   },
 
-  setupListeners() {
-    const loginForm = document.getElementById('login-form');
-    if (loginForm) {
-      loginForm.onsubmit = async (e) => {
-        e.preventDefault();
-        try {
-          const data = await this.fetchAPI('/api/auth/login', {
-            method: 'POST',
-            body: JSON.stringify({
-              email: loginForm['login-email'].value,
-              password: loginForm['login-password'].value
-            })
-          });
-          this.token = data.token;
-          localStorage.setItem('token', data.token);
-          this.showToast('🎉 Login realizado com sucesso! Bem-vindo.');
-          await this.loadUserData();
-        } catch (e) {}
-      };
-    }
-
-    const regForm = document.getElementById('register-form');
-    if (regForm) {
-      regForm.onsubmit = async (e) => {
-        e.preventDefault();
-        try {
-          const data = await this.fetchAPI('/api/auth/register', {
-            method: 'POST',
-            body: JSON.stringify({
-              username: regForm['reg-username'].value,
-              email: regForm['reg-email'].value,
-              password: regForm['reg-password'].value,
-              referred_by: localStorage.getItem('ref') || null,
-              sub_referred_by: localStorage.getItem('subref') || null
-            })
-          });
-          this.token = data.token;
-          localStorage.setItem('token', data.token);
-          this.showToast('🎁 Conta criada! Bônus de 300% pronto para ativação.');
-          await this.loadUserData();
-        } catch (e) {}
-      };
-    }
+  formatBRL(cents = 0) {
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(cents) / 100);
   },
-
-  logout() {
-    this.token = null;
-    this.user = null;
-    localStorage.removeItem('token');
-    this.showScreen('landing-screen');
-    this.showToast('Sessão encerrada com sucesso.');
+  formatDate(value) {
+    const date = value?.seconds ? new Date(value.seconds * 1000) : new Date(value || Date.now());
+    return date.toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
   },
-
-  showToast(msg) {
+  showToast(message) {
     const container = document.getElementById('toast-container');
     if (!container) return;
-    const toast = document.createElement('div');
-    toast.className = 'toast';
-    toast.textContent = msg;
-    container.appendChild(toast);
-    setTimeout(() => toast.remove(), 4000);
+    const toast = document.createElement('div'); toast.className = 'toast'; toast.textContent = message;
+    container.appendChild(toast); setTimeout(() => toast.remove(), 4200);
   }
 };
-
 document.addEventListener('DOMContentLoaded', () => app.init());

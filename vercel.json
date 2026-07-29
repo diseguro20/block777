@@ -6,11 +6,11 @@
     },
     {
       "source": "/admin",
-      "destination": "/admin.html"
+      "destination": "/admin/index.html"
     },
     {
       "source": "/affiliate",
-      "destination": "/affiliate.html"
+      "destination": "/affiliate/index.html"
     }
   ]
 }

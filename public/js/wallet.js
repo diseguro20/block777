@@ -1,157 +1,64 @@
 const wallet = {
-  activeTab: 'deposit',
-  pixCode: null,
-
+  pixCode: '',
   toggleTab(tab) {
-    this.activeTab = tab;
-    const depContent = document.getElementById('dep-content');
-    const withContent = document.getElementById('with-content');
-    const depBtn = document.getElementById('tab-dep-btn');
-    const withBtn = document.getElementById('tab-with-btn');
-
-    if (tab === 'deposit') {
-      depContent.style.display = 'block';
-      withContent.style.display = 'none';
-      depBtn.className = 'btn btn-primary';
-      withBtn.className = 'btn btn-wood';
-    } else {
-      depContent.style.display = 'none';
-      withContent.style.display = 'block';
-      depBtn.className = 'btn btn-wood';
-      withBtn.className = 'btn btn-danger';
-    }
+    const deposit = tab === 'deposit';
+    document.getElementById('dep-content').hidden = !deposit;
+    document.getElementById('with-content').hidden = deposit;
+    document.getElementById('tab-dep-btn').classList.toggle('active', deposit);
+    document.getElementById('tab-with-btn').classList.toggle('active', !deposit);
   },
-
-  selectPreset(val) {
-    document.getElementById('dep-amount-input').value = val;
-    document.querySelectorAll('.preset-card').forEach(card => {
-      card.classList.toggle('active', card.textContent.trim() === `R$ ${val}`);
-    });
+  selectPreset(value) {
+    document.getElementById('dep-amount-input').value = value;
+    document.querySelectorAll('.quick-values button').forEach(button => button.classList.toggle('active', button.textContent.includes(` ${value}`)));
   },
-
   async loadWallet() {
     try {
       const data = await app.fetchAPI('/api/wallet/history');
-      this.renderHistory(data.transactions || []);
+      if (data.balance != null && app.user) app.user.balance = data.balance;
       app.updateBalanceDisplays();
-    } catch (e) {
-      console.error(e);
-    }
+      this.renderHistory(data.transactions || data || []);
+    } catch (_) {}
   },
-
   async requestDeposit() {
-    const input = document.getElementById('dep-amount-input');
-    const amountVal = parseFloat(input.value);
-
-    if (isNaN(amountVal) || amountVal < 5) {
-      app.showToast('Informe um valor mínimo de depósito de R$ 5,00.');
-      return;
-    }
-
-    const amountCentavos = Math.round(amountVal * 100);
-
+    const amount = Number(document.getElementById('dep-amount-input').value);
+    if (amount < 5 || amount > 1000) return app.showToast('Deposite entre R$ 5 e R$ 1.000.');
     try {
-      const data = await app.fetchAPI('/api/wallet/deposit', {
-        method: 'POST',
-        body: JSON.stringify({ amount: amountCentavos })
-      });
-
-      this.pixCode = data.pixCode || `00020126580014BR.GOV.BCB.PIX0136PIX_IN_${Date.now()}520400005303986540${amountVal.toFixed(2)}5802BR5920BLOCKERINO BET GAMING6009SAO PAULO62070503***6304`;
-      
+      const data = await app.fetchAPI('/api/wallet/deposit', { method: 'POST', body: JSON.stringify({ amount: Math.round(amount * 100) }) });
+      this.pixCode = data.pixCode;
+      document.getElementById('pix-code-display').value = data.pixCode;
       document.getElementById('pix-result-container').style.display = 'block';
-      document.getElementById('pix-code-display').value = this.pixCode;
-      
-      app.showToast('⚡ Código PIX Copia e Cola gerado com sucesso!');
+      app.showToast('PIX gerado. Aguardando confirmação do pagamento.');
       await this.loadWallet();
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (_) {}
   },
-
-  copyPixCode() {
+  async copyPixCode() {
     if (!this.pixCode) return;
-    navigator.clipboard.writeText(this.pixCode);
-    app.showToast('📋 Código PIX copiado para a área de transferência!');
+    await navigator.clipboard.writeText(this.pixCode);
+    app.showToast('Código PIX copiado.');
   },
-
   async requestWithdraw() {
-    const amountInput = document.getElementById('with-amount-input');
-    const keyInput = document.getElementById('with-key-input');
-    const amountVal = parseFloat(amountInput.value);
-    const pixKey = keyInput.value.trim();
-
-    if (!pixKey) {
-      app.showToast('Informe a sua chave PIX.');
-      return;
-    }
-
-    if (isNaN(amountVal) || amountVal < 10) {
-      app.showToast('O valor mínimo para saque PIX é de R$ 10,00.');
-      return;
-    }
-
-    const amountCentavos = Math.round(amountVal * 100);
-
-    if (app.user.balance < amountCentavos) {
-      app.showToast('Saldo insuficiente para realizar este saque.');
-      return;
-    }
-
+    const amount = Number(document.getElementById('with-amount-input').value);
+    const pixKey = document.getElementById('with-key-input').value.trim();
+    if (amount < 10) return app.showToast('O saque mínimo é de R$ 10.');
+    if (!pixKey) return app.showToast('Informe uma chave PIX.');
     try {
-      await app.fetchAPI('/api/wallet/withdraw', {
-        method: 'POST',
-        body: JSON.stringify({ amount: amountCentavos, pixKey })
-      });
-
-      app.showToast('🔥 Solicitação de saque PIX realizada com sucesso!');
-      amountInput.value = '';
-      keyInput.value = '';
+      const data = await app.fetchAPI('/api/wallet/withdraw', { method: 'POST', body: JSON.stringify({ amount: Math.round(amount * 100), pixKey }) });
+      if (app.user && data.balance_after != null) app.user.balance = data.balance_after;
+      app.updateBalanceDisplays();
+      app.showToast('Saque solicitado e enviado para análise.');
+      document.getElementById('with-amount-input').value = '';
+      document.getElementById('with-key-input').value = '';
       await this.loadWallet();
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (_) {}
   },
-
-  renderHistory(txs) {
-    const tbody = document.querySelector('#tx-history-table tbody');
-    if (!tbody) return;
-    tbody.innerHTML = '';
-
-    if (txs.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:var(--color-text-muted);">Nenhuma transação registrada.</td></tr>';
+  renderHistory(items) {
+    const body = document.querySelector('#tx-history-table tbody');
+    if (!body) return;
+    if (!items.length) {
+      body.innerHTML = '<tr><td colspan="4" class="empty-state">Nenhuma movimentação registrada.</td></tr>';
       return;
     }
-
-    txs.forEach(tx => {
-      const tr = document.createElement('tr');
-      const dateStr = new Date(tx.created_at || Date.now()).toLocaleDateString('pt-BR', {
-        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-      });
-
-      let typeLabel = tx.type;
-      if (tx.type === 'deposit') typeLabel = '🌽 Depósito';
-      else if (tx.type === 'withdraw') typeLabel = '🔥 Saque';
-      else if (tx.type === 'bet') typeLabel = '🎮 Aposta';
-      else if (tx.type === 'win') typeLabel = '🏆 Prêmio';
-      else if (tx.type === 'affiliate_commission') typeLabel = '🤝 Comissão';
-
-      let statusBadge = 'badge-pending';
-      let statusLabel = 'Pendente';
-      if (tx.status === 'completed' || tx.status === 'approved') {
-        statusBadge = 'badge-success';
-        statusLabel = 'Aprovado';
-      } else if (tx.status === 'rejected') {
-        statusBadge = 'badge-danger';
-        statusLabel = 'Recusado';
-      }
-
-      tr.innerHTML = `
-        <td>${dateStr}</td>
-        <td>${typeLabel}</td>
-        <td style="font-weight:bold;">${app.formatBRL(tx.amount)}</td>
-        <td><span class="badge ${statusBadge}">${statusLabel}</span></td>
-      `;
-      tbody.appendChild(tr);
-    });
+    const names = { deposit: 'Depósito', withdraw: 'Saque', withdraw_request: 'Saque', bet: 'Aposta', win: 'Prêmio', affiliate_redeem: 'Comissão' };
+    body.innerHTML = items.map(tx => `<tr><td>${app.formatDate(tx.created_at)}</td><td>${names[tx.type] || tx.type}</td><td style="color:${Number(tx.amount) > 0 ? 'var(--success)' : 'var(--text)'}">${Number(tx.amount) > 0 ? '+' : ''}${app.formatBRL(tx.amount)}</td><td><span class="badge badge-${tx.status === 'rejected' ? 'danger' : tx.status === 'pending' ? 'pending' : 'success'}">${tx.status === 'pending' ? 'Pendente' : tx.status === 'rejected' ? 'Recusado' : 'Concluído'}</span></td></tr>`).join('');
   }
 };

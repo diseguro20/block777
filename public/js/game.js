@@ -1,10 +1,10 @@
 const BLOCK_COLORS = [
-  '#E8432F', // Vermelho Bandeirinha
-  '#F7B731', // Amarelo Palha
-  '#2D8B4E', // Verde Floresta
-  '#E87F24', // Laranja Quente
-  '#E84393', // Rosa Pink
-  '#8B5E3C'  // Marrom Madeira
+  '#C9FF43',
+  '#83E8BA',
+  '#78A8FF',
+  '#F2D56B',
+  '#D5A4FF',
+  '#ECF3F0'
 ];
 
 const ALL_SHAPES = [
@@ -271,10 +271,10 @@ const game = {
     const cellSize = gridW / 8;
 
     ctx.clearRect(0, 0, w, this.landingCanvas.height);
-    ctx.fillStyle = '#1a0a2e';
+    ctx.fillStyle = '#070b0b';
     ctx.fillRect(0, 0, gridW, gridW);
 
-    ctx.strokeStyle = 'rgba(139, 94, 60, 0.35)';
+    ctx.strokeStyle = 'rgba(122, 145, 139, 0.22)';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 8; i++) {
       ctx.beginPath(); ctx.moveTo(0, i * cellSize); ctx.lineTo(gridW, i * cellSize); ctx.stroke();
@@ -310,9 +310,9 @@ const game = {
     }
 
     // Área da mão de peças (Rodapé)
-    ctx.fillStyle = '#0d0618';
+    ctx.fillStyle = '#0a100f';
     ctx.fillRect(0, gridW, w, 120);
-    ctx.strokeStyle = '#8B5E3C';
+    ctx.strokeStyle = '#21302d';
     ctx.lineWidth = 2;
     ctx.beginPath(); ctx.moveTo(0, gridW); ctx.lineTo(w, gridW); ctx.stroke();
 
@@ -342,7 +342,7 @@ const game = {
     });
 
     ctx.font = 'bold 11px Silkscreen';
-    ctx.fillStyle = 'rgba(247, 183, 49, 0.5)';
+    ctx.fillStyle = 'rgba(201, 255, 67, 0.5)';
     ctx.fillText('JOGO REAL — PRÉVIA GRATUITA', 10, gridW - 10);
   },
 
@@ -686,10 +686,10 @@ const game = {
     const cellSize = gridW / this.gridSize;
 
     this.ctx.clearRect(0, 0, w, this.canvas.height);
-    this.ctx.fillStyle = '#1a0a2e';
+    this.ctx.fillStyle = '#070b0b';
     this.ctx.fillRect(0, 0, gridW, gridW);
 
-    this.ctx.strokeStyle = 'rgba(139, 94, 60, 0.3)';
+    this.ctx.strokeStyle = 'rgba(122, 145, 139, 0.22)';
     this.ctx.lineWidth = 1;
 
     for (let r = 0; r <= this.gridSize; r++) {
@@ -733,10 +733,10 @@ const game = {
     }
 
     const handAreaY = gridW;
-    this.ctx.fillStyle = '#0d0618';
+    this.ctx.fillStyle = '#0a100f';
     this.ctx.fillRect(0, handAreaY, w, 130);
 
-    this.ctx.strokeStyle = '#8B5E3C';
+    this.ctx.strokeStyle = '#21302d';
     this.ctx.lineWidth = 2;
     this.ctx.beginPath();
     this.ctx.moveTo(0, handAreaY);
@@ -782,7 +782,7 @@ const game = {
 
     if (this.mode === 'demo') {
       this.ctx.font = 'bold 12px Silkscreen';
-      this.ctx.fillStyle = 'rgba(247, 183, 49, 0.4)';
+      this.ctx.fillStyle = 'rgba(201, 255, 67, 0.4)';
       this.ctx.fillText('MODO TREINO DEMO', 10, gridW - 10);
     }
   },

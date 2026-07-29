@@ -9,21 +9,28 @@ const router = express.Router();
 router.post('/start', authenticateToken, async (req, res) => {
   try {
     const { amount } = req.body;
-    if (!amount || amount < 100 || amount > 10000) {
-      return res.status(400).json({ error: 'Valor de aposta inválido. Mínimo R$ 1,00, máximo R$ 100,00' });
-    }
-
     const uid = req.user.uid;
     const userRef = db.collection('users').doc(uid);
 
     // Consulta de configurações e apostas pendentes antes da transação para evitar conflitos no Firestore
     let difficulty = 'balanced';
+    let minBet = 100;
+    let maxBet = 10000;
+    let maintenance = false;
     try {
       const settingsDoc = await db.collection('settings').doc('global').get();
       if (settingsDoc.exists) {
-        difficulty = settingsDoc.data().difficulty || 'balanced';
+        const settings = settingsDoc.data();
+        difficulty = settings.difficulty || 'balanced';
+        minBet = settings.minBet ?? minBet;
+        maxBet = settings.maxBet ?? maxBet;
+        maintenance = Boolean(settings.maintenance);
       }
     } catch (e) {}
+    if (maintenance) return res.status(503).json({ error: 'As apostas estão temporariamente pausadas.' });
+    if (!amount || amount < minBet || amount > maxBet) {
+      return res.status(400).json({ error: `A aposta deve ficar entre R$ ${(minBet / 100).toFixed(2)} e R$ ${(maxBet / 100).toFixed(2)}.` });
+    }
 
     const pendingBets = await db.collection('bets')
       .where('uid', '==', uid)

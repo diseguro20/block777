@@ -55,6 +55,14 @@ router.post('/register', async (req, res) => {
 
     const role = (email.toLowerCase().includes('admin') || username.toLowerCase() === 'admin') ? 'admin' : 'user';
 
+    let referrer = null;
+    if (referred_by) {
+      try {
+        const referralSnapshot = await db.collection('users').where('ref_code', '==', String(referred_by).toLowerCase()).limit(1).get();
+        if (!referralSnapshot.empty) referrer = referralSnapshot.docs[0];
+      } catch (e) {}
+    }
+
     const newUser = {
       username,
       email,
@@ -63,8 +71,8 @@ router.post('/register', async (req, res) => {
       role,
       status: 'active',
       ref_code,
-      referred_by: null,
-      sub_referred_by: null,
+      referred_by: referrer?.id || null,
+      sub_referred_by: referrer?.data()?.referred_by || null,
       is_influencer: role === 'admin' ? 1 : 0,
       affiliate_balance: 0,
       affiliate_rate: null,

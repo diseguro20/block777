@@ -31,6 +31,15 @@ router.get('/stats', authenticateToken, async (req, res) => {
     const protocol = req.protocol || 'https';
     const referralLink = `${protocol}://${host}?ref=${ref_code}`;
 
+    const commissions = commsQuery.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .sort((a, b) => {
+        const aTime = a.created_at?.toMillis?.() || 0;
+        const bTime = b.created_at?.toMillis?.() || 0;
+        return bTime - aTime;
+      })
+      .slice(0, 20);
+
     res.json({
       ref_code,
       referralLink,
@@ -38,7 +47,12 @@ router.get('/stats', authenticateToken, async (req, res) => {
       level1Count,
       level2Count,
       totalCommissions,
-      affiliateBalance: userData.affiliate_balance || 0
+      affiliateBalance: userData.affiliate_balance || 0,
+      rates: {
+        level1: userData.affiliate_rate ?? 10,
+        level2: userData.sub_affiliate_rate ?? 2
+      },
+      commissions
     });
   } catch (error) {
     console.error('Affiliate stats error:', error);

@@ -99,11 +99,13 @@ router.get('/users', async (req, res) => {
 
 router.put('/users/:id', async (req, res) => {
   try {
-    const { role, status, is_influencer } = req.body;
+    const { role, status, is_influencer, affiliate_rate, sub_affiliate_rate } = req.body;
     const updateData = {};
     if (role !== undefined) updateData.role = role;
     if (status !== undefined) updateData.status = status;
     if (is_influencer !== undefined) updateData.is_influencer = is_influencer;
+    if (affiliate_rate !== undefined) updateData.affiliate_rate = affiliate_rate;
+    if (sub_affiliate_rate !== undefined) updateData.sub_affiliate_rate = sub_affiliate_rate;
 
     try {
       await db.collection('users').doc(req.params.id).update(updateData);
@@ -156,16 +158,40 @@ router.delete('/users/:id', async (req, res) => {
 
 router.get('/settings', async (req, res) => {
   try {
-    let difficulty = 'balanced';
+    let settings = {
+      difficulty: 'balanced',
+      minBet: 100,
+      maxBet: 10000,
+      minDeposit: 500,
+      minWithdrawal: 1000,
+      level1Rate: 10,
+      level2Rate: 2,
+      maintenance: false
+    };
     try {
       const doc = await db.collection('settings').doc('global').get();
       if (doc.exists) {
-        difficulty = doc.data().difficulty || 'balanced';
+        settings = { ...settings, ...doc.data() };
       }
     } catch (e) {}
-    res.json({ difficulty });
+    res.json(settings);
   } catch (error) {
-    res.json({ difficulty: 'balanced' });
+    res.json({ difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false });
+  }
+});
+
+router.put('/settings', async (req, res) => {
+  try {
+    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance'];
+    const update = {};
+    allowed.forEach(key => {
+      if (req.body[key] !== undefined) update[key] = req.body[key];
+    });
+    await db.collection('settings').doc('global').set(update, { merge: true });
+    const saved = await db.collection('settings').doc('global').get();
+    res.json(saved.data());
+  } catch (error) {
+    res.status(500).json({ error: 'Não foi possível salvar as configurações.' });
   }
 });
 
@@ -196,12 +222,48 @@ router.get('/deposits', async (req, res) => {
 
 router.put('/deposits/:id/approve', async (req, res) => {
   try {
-    try {
-      await db.collection('deposit_requests').doc(req.params.id).update({ status: 'approved' });
-    } catch (e) {}
+    const depositRef = db.collection('deposit_requests').doc(req.params.id);
+    await db.runTransaction(async transaction => {
+      const depositDoc = await transaction.get(depositRef);
+      if (!depositDoc.exists || depositDoc.data().status !== 'pending') throw new Error('Depósito pendente não encontrado');
+      const deposit = depositDoc.data();
+      const userRef = db.collection('users').doc(deposit.uid);
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists) throw new Error('Usuário não encontrado');
+      const user = userDoc.data();
+      let affiliateRef = null;
+      let affiliateDoc = null;
+      let upperRef = null;
+      let upperDoc = null;
+      if (user.referred_by) {
+        affiliateRef = db.collection('users').doc(user.referred_by);
+        affiliateDoc = await transaction.get(affiliateRef);
+        if (affiliateDoc.exists && affiliateDoc.data().referred_by) {
+          upperRef = db.collection('users').doc(affiliateDoc.data().referred_by);
+          upperDoc = await transaction.get(upperRef);
+        }
+      }
+
+      transaction.update(depositRef, { status: 'approved', approved_at: FieldValue.serverTimestamp() });
+      transaction.update(userRef, { balance: FieldValue.increment(deposit.amount) });
+      if (affiliateDoc?.exists) {
+          const affiliate = affiliateDoc.data();
+          const level1Rate = affiliate.affiliate_rate ?? 10;
+          const commission = Math.floor(deposit.amount * level1Rate / 100);
+          transaction.update(affiliateRef, { affiliate_balance: FieldValue.increment(commission) });
+          transaction.set(db.collection('affiliate_commissions').doc(), { affiliate_id: affiliateDoc.id, source_user_id: deposit.uid, level: 1, amount: commission, created_at: FieldValue.serverTimestamp() });
+
+          if (upperDoc?.exists) {
+              const level2Rate = upperDoc.data().sub_affiliate_rate ?? 2;
+              const subCommission = Math.floor(deposit.amount * level2Rate / 100);
+              transaction.update(upperRef, { affiliate_balance: FieldValue.increment(subCommission) });
+              transaction.set(db.collection('affiliate_commissions').doc(), { affiliate_id: upperDoc.id, source_user_id: deposit.uid, level: 2, amount: subCommission, created_at: FieldValue.serverTimestamp() });
+          }
+      }
+    });
     res.json({ success: true });
   } catch (error) {
-    res.json({ success: true });
+    res.status(400).json({ error: error.message });
   }
 });
 
@@ -221,7 +283,10 @@ router.get('/withdrawals', async (req, res) => {
     let withdrawals = [];
     try {
       const snapshot = await db.collection('withdrawal_requests').where('status', '==', 'pending').get();
-      withdrawals = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      withdrawals = snapshot.docs.map(doc => {
+        const data = doc.data();
+        return { id: doc.id, ...data, pix_key: data.pixKey || data.pix_key || '' };
+      });
     } catch (e) {}
     res.json({ withdrawals });
   } catch (error) {
@@ -242,12 +307,17 @@ router.put('/withdrawals/:id/approve', async (req, res) => {
 
 router.put('/withdrawals/:id/reject', async (req, res) => {
   try {
-    try {
-      await db.collection('withdrawal_requests').doc(req.params.id).update({ status: 'rejected' });
-    } catch (e) {}
+    const withdrawalRef = db.collection('withdrawal_requests').doc(req.params.id);
+    await db.runTransaction(async transaction => {
+      const withdrawalDoc = await transaction.get(withdrawalRef);
+      if (!withdrawalDoc.exists || withdrawalDoc.data().status !== 'pending') throw new Error('Saque pendente não encontrado');
+      const withdrawal = withdrawalDoc.data();
+      transaction.update(withdrawalRef, { status: 'rejected', rejected_at: FieldValue.serverTimestamp() });
+      transaction.update(db.collection('users').doc(withdrawal.uid), { balance: FieldValue.increment(withdrawal.amount) });
+    });
     res.json({ success: true });
   } catch (error) {
-    res.json({ success: true });
+    res.status(400).json({ error: error.message });
   }
 });
 

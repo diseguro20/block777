@@ -1,61 +1,7 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel de Afiliados — BLOCKERINO BET 🤝</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
-</head>
-<body>
-    <nav>
-        <div class="logo">
-            <span>🤝</span> ARRAIÁ DE AFILIADOS
-        </div>
-        <button class="btn btn-wood" onclick="window.location.href='/'">VOLTAR AO JOGO 🎪</button>
-    </nav>
-
-    <div class="screen active" style="max-width:600px; padding:20px 16px;">
-        <!-- Link de Indicação -->
-        <div class="glass-card" style="margin-bottom:20px;">
-            <h2 style="font-size:16px; color:var(--color-primary); margin-bottom:6px;">🔗 SEU LINK EXCLUSIVO DE INDICAÇÃO</h2>
-            <p style="font-size:11px; color:var(--color-text-muted); margin-bottom:12px;">Ganhe 10% sobre depósitos diretos (Nível 1) e 2% sobre depósitos da sua rede (Nível 2):</p>
-            
-            <div style="display:flex; gap:8px;">
-                <input type="text" id="ref-link" readonly style="margin-bottom:0; font-size:12px; font-weight:bold;">
-                <button class="btn btn-primary" style="white-space:nowrap; min-height:44px;" onclick="affiliate.copyReferralLink()">📋 COPIAR</button>
-            </div>
-        </div>
-
-        <!-- Cards de Estatísticas -->
-        <div class="grid grid-2" style="margin-bottom:20px;">
-            <div class="card" style="text-align:center;">
-                <div style="font-size:10px; color:var(--color-text-muted);">INDICADOS DIRETO (NÍVEL 1)</div>
-                <div style="font-size:22px; color:var(--color-primary); font-weight:bold;" id="stat-level1">0</div>
-            </div>
-            <div class="card" style="text-align:center;">
-                <div style="font-size:10px; color:var(--color-text-muted);">REDE SUBAFILIADOS (NÍVEL 2)</div>
-                <div style="font-size:22px; color:var(--color-text); font-weight:bold;" id="stat-level2">0</div>
-            </div>
-            <div class="card" style="text-align:center;">
-                <div style="font-size:10px; color:var(--color-text-muted);">COMISSÕES TOTAIS</div>
-                <div style="font-size:20px; color:var(--color-text); font-weight:bold;" id="stat-commissions">R$ 0,00</div>
-            </div>
-            <div class="card" style="text-align:center;">
-                <div style="font-size:10px; color:var(--color-text-muted);">SALDO DISPONÍVEL</div>
-                <div style="font-size:20px; color:var(--color-success); font-weight:bold;" id="stat-balance">R$ 0,00</div>
-            </div>
-        </div>
-
-        <!-- Botão de Resgate de Comissões -->
-        <button class="btn btn-success" style="width:100%; min-height:50px; font-size:14px;" onclick="affiliate.redeemCommissions()">
-            💰 RESGATAR COMISSÕES PARA A CARTEIRA DE APOSTAS
-        </button>
-    </div>
-
-    <div class="toast-container" id="toast-container"></div>
-
-    <script src="/js/app.js"></script>
-    <script src="/js/affiliate.js"></script>
-</body>
-</html>
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070b0b"><title>Afiliados — Blockerino</title><link rel="stylesheet" href="../css/style.css"><link rel="stylesheet" href="../css/affiliate.css"></head>
+<body><nav class="topbar"><a class="brand" href="../"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO<small>PARTNERS</small></span></a><div class="nav-links" style="display:flex"><a href="../">Voltar ao jogo</a><button class="balance-pill"><span>Comissões</span><b id="nav-balance">R$ 0,00</b></button></div></nav>
+<main class="affiliate-page"><section id="affiliate-content"><div class="affiliate-hero"><article class="affiliate-lead"><div class="eyebrow"><span></span> BLOCKERINO PARTNERS</div><h1>Sua influência.<br><em>Seu resultado.</em></h1><p>Compartilhe seu link exclusivo e receba comissões em dois níveis. Acompanhe conversões, rede e saldo em um painel transparente.</p><div class="ref-box"><input id="ref-link" readonly><button class="btn btn-primary" onclick="affiliate.copyReferralLink()">Copiar link</button></div></article><article class="affiliate-balance-card"><small>SALDO DE COMISSÕES</small><strong id="stat-balance">R$ 0,00</strong><p>Disponível para resgate imediato</p><button class="btn btn-wide" onclick="affiliate.redeemCommissions()">Transferir para carteira →</button></article></div>
+<div class="affiliate-grid"><article class="metric"><small>INDICADOS DIRETOS</small><strong id="stat-level1">0</strong><span id="rate-level1">10% por depósito</span></article><article class="metric"><small>REDE DE 2º NÍVEL</small><strong id="stat-level2">0</strong><span id="rate-level2">2% por depósito</span></article><article class="metric"><small>TOTAL DE COMISSÕES</small><strong id="stat-commissions">R$ 0,00</strong><span>histórico acumulado</span></article><article class="metric metric-main"><small>ALCANCE TOTAL</small><strong id="stat-total">0</strong><span>pessoas na sua rede</span></article></div>
+<article class="panel commission-table"><div class="panel-title"><div><small>HISTÓRICO</small><h3>Comissões recebidas</h3></div></div><div class="table-wrap"><table><thead><tr><th>Data</th><th>Nível</th><th>Origem</th><th>Comissão</th></tr></thead><tbody id="commission-history"></tbody></table></div></article></section>
+<section id="affiliate-auth" hidden><div class="modal-card" style="margin:50px auto"><div class="brand auth-brand"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO</span></div><h3>Acesse sua rede.</h3><p>Entre para ver indicações e comissões.</p><form id="affiliate-login-form"><label>E-mail</label><input id="aff-email" type="email" required><label>Senha</label><input id="aff-password" type="password" required><button class="btn btn-primary btn-wide">Entrar</button></form></div></section></main><div class="toast-container" id="toast-container"></div><script src="../js/app.js"></script><script src="../js/affiliate.js"></script></body></html>

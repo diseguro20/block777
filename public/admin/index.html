@@ -1,145 +1,24 @@
-<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel Administrativo — BLOCKERINO BET 👑</title>
-    <link rel="stylesheet" href="/css/style.css">
-    <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
-</head>
-<body>
-    <nav>
-        <div class="logo">
-            <span>👑</span> PAINEL ADMIN
-        </div>
-        <button class="btn btn-wood" onclick="window.location.href='/'">VOLTAR AO JOGO 🎪</button>
-    </nav>
-
-    <div class="screen active" style="max-width:1100px; padding:20px 16px;">
-        <!-- Banner Estatísticas Globais -->
-        <h2 style="font-size:16px; color:var(--color-primary); margin-bottom:12px;">📊 ESTATÍSTICAS EM TEMPO REAL</h2>
-        <div class="grid grid-4" style="margin-bottom:24px;">
-            <div class="card" style="text-align:center;">
-                <div style="font-size:10px; color:var(--color-text-muted);">TOTAL USUÁRIOS</div>
-                <div style="font-size:22px; color:var(--color-primary); font-weight:bold;" id="stat-users">0</div>
-            </div>
-            <div class="card" style="text-align:center;">
-                <div style="font-size:10px; color:var(--color-text-muted);">TOTAL APOSTADO</div>
-                <div style="font-size:20px; color:var(--color-text); font-weight:bold;" id="stat-bets">R$ 0,00</div>
-            </div>
-            <div class="card" style="text-align:center;">
-                <div style="font-size:10px; color:var(--color-text-muted);">TOTAL PAYOUTS</div>
-                <div style="font-size:20px; color:var(--color-text); font-weight:bold;" id="stat-payouts">R$ 0,00</div>
-            </div>
-            <div class="card" style="text-align:center;">
-                <div style="font-size:10px; color:var(--color-text-muted);">LUCRO DA CASA</div>
-                <div style="font-size:20px; font-weight:bold;" id="stat-profit">R$ 0,00</div>
-            </div>
-        </div>
-
-        <!-- Controle de Retenção Dinâmica -->
-        <div class="glass-card" style="margin-bottom:24px;">
-            <h3 style="font-size:14px; color:var(--color-primary); margin-bottom:8px;">⚙️ SISTEMA GLOBAL DE RETENÇÃO E DIFICULDADE</h3>
-            <p style="font-size:11px; color:var(--color-text-muted); margin-bottom:12px;">Altere a dificuldade global das partidas em tempo real:</p>
-            <div class="grid grid-4" style="gap:10px;">
-                <button class="btn btn-wood" id="diff-easy-btn" onclick="admin.changeDifficulty('easy')">
-                    🟢 FÁCIL (0 Morte / Leads)
-                </button>
-                <button class="btn btn-wood" id="diff-balanced-btn" onclick="admin.changeDifficulty('balanced')">
-                    🟣 EQUILIBRADO (Padrão)
-                </button>
-                <button class="btn btn-wood" id="diff-strict-btn" onclick="admin.changeDifficulty('strict')">
-                    🔴 RETENÇÃO ALTA (Casa)
-                </button>
-            </div>
-        </div>
-
-        <!-- Gerenciamento de Jogadores -->
-        <div class="glass-card" style="margin-bottom:24px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px;">
-                <h3 style="font-size:14px; color:var(--color-primary);">👥 JOGADORES CADASTRADOS</h3>
-                <input type="text" id="search-users" placeholder="Buscar por usuário ou email..." oninput="admin.loadUsers(this.value)" style="max-width:300px; margin-bottom:0;">
-            </div>
-            <div style="overflow-x:auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Usuário</th>
-                            <th>E-mail</th>
-                            <th>Saldo</th>
-                            <th>Status</th>
-                            <th>Modo Influencer</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="users-table"></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Aprovação de Depósitos PIX -->
-        <div class="glass-card" style="margin-bottom:24px;">
-            <h3 style="font-size:14px; color:var(--color-primary); margin-bottom:12px;">🌽 DEPÓSITOS PIX PENDENTES</h3>
-            <div style="overflow-x:auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Usuário</th>
-                            <th>Valor</th>
-                            <th>Data</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="deposits-table"></tbody>
-                </table>
-            </div>
-        </div>
-
-        <!-- Aprovação de Saques PIX -->
-        <div class="glass-card">
-            <h3 style="font-size:14px; color:var(--color-accent); margin-bottom:12px;">🔥 SAQUES PIX PENDENTES</h3>
-            <div style="overflow-x:auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Usuário</th>
-                            <th>Valor</th>
-                            <th>Chave PIX</th>
-                            <th>Ações</th>
-                        </tr>
-                    </thead>
-                    <tbody id="withdrawals-table"></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal Ajuste de Saldo -->
-    <div class="modal" id="balance-modal">
-        <div class="glass-card modal-content" style="text-align:center;">
-            <h3 style="font-size:16px; color:var(--color-primary); margin-bottom:10px;">💰 AJUSTAR SALDO MANUAL</h3>
-            <p style="font-size:11px; color:var(--color-text-muted); margin-bottom:12px;" id="balance-modal-user">Usuário: -</p>
-            
-            <select id="balance-type-select">
-                <option value="credit">🟢 Creditar (Adicionar Saldo)</option>
-                <option value="debit">🔴 Debitar (Remover Saldo)</option>
-            </select>
-
-            <input type="number" id="balance-amount-input" placeholder="Valor em R$" step="1">
-            <input type="text" id="balance-desc-input" placeholder="Motivo / Descrição do ajuste">
-
-            <div class="grid grid-2">
-                <button class="btn btn-success" onclick="admin.confirmBalanceAdjustment()">CONFIRMAR</button>
-                <button class="btn btn-wood" onclick="document.getElementById('balance-modal').classList.remove('active')">CANCELAR</button>
-            </div>
-        </div>
-    </div>
-
-    <div class="toast-container" id="toast-container"></div>
-
-    <script src="/js/app.js"></script>
-    <script src="/js/admin.js"></script>
-</body>
-</html>
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070b0b"><title>Blockerino Control</title><link rel="stylesheet" href="../css/style.css"><link rel="stylesheet" href="../css/admin.css"></head>
+<body class="admin-body">
+<div class="admin-layout">
+  <aside class="admin-sidebar">
+    <a class="brand" href="../"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO<small>CONTROL</small></span></a>
+    <nav class="side-nav"><button class="active" data-view="overview" onclick="admin.showView('overview',this)">⌁ <span>Visão geral</span></button><button data-view="players" onclick="admin.showView('players',this)">◎ <span>Jogadores</span></button><button data-view="finance" onclick="admin.showView('finance',this)">◇ <span>Financeiro</span></button><button data-view="settings" onclick="admin.showView('settings',this)">⚙ <span>Configurações</span></button></nav>
+    <div class="side-bottom"><span class="system-online"><i></i> SISTEMA ONLINE</span><a href="../">← Voltar ao jogo</a></div>
+  </aside>
+  <main class="admin-main">
+    <header class="admin-top"><div><small>PAINEL ADMINISTRATIVO</small><h1 id="admin-page-title">Visão geral</h1></div><div class="admin-profile"><span>Administrador<small>Controle total</small></span><b>AD</b></div></header>
+    <div id="admin-auth" class="admin-auth" hidden><div class="modal-card"><div class="brand auth-brand"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO</span></div><h3>Acesso restrito.</h3><p>Entre com uma conta administrativa.</p><form id="admin-login-form"><label>E-mail</label><input id="admin-email" type="email" required><label>Senha</label><input id="admin-password" type="password" required><button class="btn btn-primary btn-wide">Entrar no painel</button></form></div></div>
+    <section class="admin-view active" id="view-overview">
+      <div class="stats-grid admin-stats"><article class="metric metric-main"><small>RECEITA DA CASA</small><strong id="stat-profit">R$ 0,00</strong><span>apostas menos prêmios</span></article><article class="metric"><small>VOLUME APOSTADO</small><strong id="stat-bets">R$ 0,00</strong><span>volume acumulado</span></article><article class="metric"><small>PRÊMIOS PAGOS</small><strong id="stat-payouts">R$ 0,00</strong><span>retorno aos jogadores</span></article><article class="metric"><small>JOGADORES</small><strong id="stat-users">0</strong><span>contas cadastradas</span></article></div>
+      <div class="admin-grid"><article class="panel"><div class="panel-title"><div><small>OPERAÇÃO</small><h3>Fila financeira</h3></div><span class="live-dot">TEMPO REAL</span></div><div class="queue-grid"><button onclick="admin.showView('finance')"><small>DEPÓSITOS PENDENTES</small><strong id="stat-pending-deposits">0</strong><span>Revisar agora →</span></button><button onclick="admin.showView('finance')"><small>SAQUES PENDENTES</small><strong id="stat-pending-withdrawals">0</strong><span>Revisar agora →</span></button></div></article>
+      <article class="panel"><div class="panel-title"><div><small>RISCO E JOGO</small><h3>Dificuldade global</h3></div></div><div class="difficulty-control"><button id="diff-easy-btn" onclick="admin.changeDifficulty('easy')"><b>Suave</b><span>Peças mais simples</span></button><button id="diff-balanced-btn" onclick="admin.changeDifficulty('balanced')"><b>Equilibrado</b><span>Experiência padrão</span></button><button id="diff-strict-btn" onclick="admin.changeDifficulty('strict')"><b>Avançado</b><span>Peças desafiadoras</span></button></div></article></div>
+    </section>
+    <section class="admin-view" id="view-players"><article class="panel"><div class="admin-section-head"><div><small>GESTÃO DE CONTAS</small><h3>Jogadores cadastrados</h3></div><input id="search-users" placeholder="Buscar nome ou e-mail…" oninput="admin.loadUsers(this.value)"></div><div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Saldo</th><th>Função</th><th>Status</th><th>Afiliado</th><th>Ações</th></tr></thead><tbody id="users-table"></tbody></table></div></article></section>
+    <section class="admin-view" id="view-finance"><div class="finance-grid"><article class="panel"><div class="panel-title"><div><small>ENTRADAS</small><h3>Depósitos PIX pendentes</h3></div></div><div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Valor</th><th>Data</th><th>Ações</th></tr></thead><tbody id="deposits-table"></tbody></table></div></article><article class="panel"><div class="panel-title"><div><small>SAÍDAS</small><h3>Saques PIX pendentes</h3></div></div><div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Valor</th><th>Chave PIX</th><th>Ações</th></tr></thead><tbody id="withdrawals-table"></tbody></table></div></article></div></section>
+    <section class="admin-view" id="view-settings"><article class="panel settings-panel"><div class="panel-title"><div><small>REGRAS DA PLATAFORMA</small><h3>Limites e comissões</h3></div></div><form id="settings-form" class="settings-grid"><div><label>Aposta mínima (R$)</label><input id="set-min-bet" type="number" min="1"></div><div><label>Aposta máxima (R$)</label><input id="set-max-bet" type="number" min="1"></div><div><label>Depósito mínimo (R$)</label><input id="set-min-deposit" type="number" min="1"></div><div><label>Saque mínimo (R$)</label><input id="set-min-withdrawal" type="number" min="1"></div><div><label>Comissão nível 1 (%)</label><input id="set-level1" type="number" min="0" max="100"></div><div><label>Comissão nível 2 (%)</label><input id="set-level2" type="number" min="0" max="100"></div><label class="switch-row"><span><b>Modo manutenção</b><small>Pausa novas apostas sem derrubar o painel</small></span><input id="set-maintenance" type="checkbox"></label><button class="btn btn-primary" type="submit">Salvar configurações</button></form></article></section>
+  </main>
+</div>
+<div class="modal" id="balance-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('balance-modal')">×</button><small>AJUSTE DE CARTEIRA</small><h3 id="balance-modal-user">Jogador</h3><label>Operação</label><select id="balance-type-select"><option value="credit">Adicionar saldo</option><option value="debit">Remover saldo</option></select><label>Valor (R$)</label><input id="balance-amount-input" type="number" min="1"><label>Motivo</label><input id="balance-desc-input" placeholder="Ex.: correção financeira"><button class="btn btn-primary btn-wide" onclick="admin.confirmBalanceAdjustment()">Confirmar ajuste</button></div></div>
+<div class="toast-container" id="toast-container"></div><script src="../js/app.js"></script><script src="../js/admin.js"></script></body></html>

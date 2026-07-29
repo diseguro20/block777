@@ -1,477 +1,127 @@
-<!DOCTYPE html><html  lang="en"><head><title data-rh="true"></title><meta charSet="utf-8"/><meta http-equiv="X-UA-Compatible" content="IE=edge"/><meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no"/><style id="expo-reset">#root,body,html{height:100%}body{overflow:hidden}#root{display:flex}</style><style id="react-native-stylesheet">[stylesheet-group="0"]{}
-body{margin:0;}
-button::-moz-focus-inner,input::-moz-focus-inner{border:0;padding:0;}
-html{-ms-text-size-adjust:100%;-webkit-text-size-adjust:100%;-webkit-tap-highlight-color:rgba(0,0,0,0);}
-input::-webkit-search-cancel-button,input::-webkit-search-decoration,input::-webkit-search-results-button,input::-webkit-search-results-decoration{display:none;}
-[stylesheet-group="1"]{}
-.css-11aywtz{-moz-appearance:textfield;-webkit-appearance:none;background-color:rgba(0,0,0,0.00);border-bottom-left-radius:0px;border-bottom-right-radius:0px;border-top-left-radius:0px;border-top-right-radius:0px;border:0 solid black;box-sizing:border-box;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;margin:0px;padding:0px;resize:none;}
-.css-146c3p1{background-color:rgba(0,0,0,0.00);border:0 solid black;box-sizing:border-box;color:rgba(0,0,0,1.00);display:inline;font:14px -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;list-style:none;margin:0px;padding:0px;position:relative;text-align:start;text-decoration:none;white-space:pre-wrap;word-wrap:break-word;}
-.css-175oi2r{align-items:stretch;background-color:rgba(0,0,0,0.00);border:0 solid black;box-sizing:border-box;display:flex;flex-basis:auto;flex-direction:column;flex-shrink:0;list-style:none;margin:0px;min-height:0px;min-width:0px;padding:0px;position:relative;text-decoration:none;z-index:0;}
-.css-1jxf684{background-color:rgba(0,0,0,0.00);border:0 solid black;box-sizing:border-box;color:inherit;display:inline;font:inherit;list-style:none;margin:0px;padding:0px;position:relative;text-align:inherit;text-decoration:none;white-space:inherit;word-wrap:break-word;}
-.css-9pa8cd{bottom:0px;height:100%;left:0px;opacity:0;position:absolute;right:0px;top:0px;width:100%;z-index:-1;}
-[stylesheet-group="2"]{}
-.r-1064s9p{margin:4px;}
-.r-11mg6pl{border-bottom-color:rgba(255,255,255,1.00);border-left-color:rgba(255,255,255,1.00);border-right-color:rgba(255,255,255,1.00);border-top-color:rgba(255,255,255,1.00);}
-.r-13awgt0{flex:1;}
-.r-16bdvvh{border-bottom-color:rgba(247,183,49,1.00);border-left-color:rgba(247,183,49,1.00);border-right-color:rgba(247,183,49,1.00);border-top-color:rgba(247,183,49,1.00);}
-.r-17gur6a{border-bottom-left-radius:0px;border-bottom-right-radius:0px;border-top-left-radius:0px;border-top-right-radius:0px;}
-.r-1867qdf{border-bottom-left-radius:16px;border-bottom-right-radius:16px;border-top-left-radius:16px;border-top-right-radius:16px;}
-.r-1awa8pu{border-bottom-color:rgba(101,119,134,1.00);border-left-color:rgba(101,119,134,1.00);border-right-color:rgba(101,119,134,1.00);border-top-color:rgba(101,119,134,1.00);}
-.r-1bq2mok{margin:3px;}
-.r-1d4xg89{border-bottom-color:rgba(170,184,194,1.00);border-left-color:rgba(170,184,194,1.00);border-right-color:rgba(170,184,194,1.00);border-top-color:rgba(170,184,194,1.00);}
-.r-1d6rzhh{border-bottom-width:3px;border-left-width:3px;border-right-width:3px;border-top-width:3px;}
-.r-1dzdj1l{border-bottom-left-radius:10px;border-bottom-right-radius:10px;border-top-left-radius:10px;border-top-right-radius:10px;}
-.r-1f0042m{border-bottom-left-radius:5px;border-bottom-right-radius:5px;border-top-left-radius:5px;border-top-right-radius:5px;}
-.r-1g76l1l{border-bottom-color:rgba(139,94,60,0.30);border-left-color:rgba(139,94,60,0.30);border-right-color:rgba(139,94,60,0.30);border-top-color:rgba(139,94,60,0.30);}
-.r-1j16mh1{border-bottom-left-radius:100%;border-bottom-right-radius:100%;border-top-left-radius:100%;border-top-right-radius:100%;}
-.r-1jkafct{border-bottom-left-radius:2px;border-bottom-right-radius:2px;border-top-left-radius:2px;border-top-right-radius:2px;}
-.r-1jyn79y{border-bottom-color:rgba(0,150,136,1.00);border-left-color:rgba(0,150,136,1.00);border-right-color:rgba(0,150,136,1.00);border-top-color:rgba(0,150,136,1.00);}
-.r-1mthbqf{border-bottom-color:rgba(247,183,49,0.30);border-left-color:rgba(247,183,49,0.30);border-right-color:rgba(247,183,49,0.30);border-top-color:rgba(247,183,49,0.30);}
-.r-1pcd2l5{padding:20px;}
-.r-1phboty{border-bottom-style:solid;border-left-style:solid;border-right-style:solid;border-top-style:solid;}
-.r-1q9bdsx{border-bottom-left-radius:12px;border-bottom-right-radius:12px;border-top-left-radius:12px;border-top-right-radius:12px;}
-.r-1rf8fdq{border-bottom-width:1.5px;border-left-width:1.5px;border-right-width:1.5px;border-top-width:1.5px;}
-.r-1rvyss1{border-bottom-color:rgba(255,255,255,0.20);border-left-color:rgba(255,255,255,0.20);border-right-color:rgba(255,255,255,0.20);border-top-color:rgba(255,255,255,0.20);}
-.r-1slz7xr{padding:14px;}
-.r-1sp51qo{padding:10px;}
-.r-1udh08x{overflow-x:hidden;overflow-y:hidden;}
-.r-1uh2sn4{border-bottom-color:rgba(232,67,47,1.00);border-left-color:rgba(232,67,47,1.00);border-right-color:rgba(232,67,47,1.00);border-top-color:rgba(232,67,47,1.00);}
-.r-1uu6nss{padding:5px;}
-.r-1xfd6ze{border-bottom-left-radius:8px;border-bottom-right-radius:8px;border-top-left-radius:8px;border-top-right-radius:8px;}
-.r-4a18lf{border-bottom-color:rgba(255,0,0,1.00);border-left-color:rgba(255,0,0,1.00);border-right-color:rgba(255,0,0,1.00);border-top-color:rgba(255,0,0,1.00);}
-.r-60ke3l{border-bottom-color:rgba(0,128,0,1.00);border-left-color:rgba(0,128,0,1.00);border-right-color:rgba(0,128,0,1.00);border-top-color:rgba(0,128,0,1.00);}
-.r-6ncur5{border-bottom-left-radius:18px;border-bottom-right-radius:18px;border-top-left-radius:18px;border-top-right-radius:18px;}
-.r-6t2glc{border-bottom-left-radius:40px;border-bottom-right-radius:40px;border-top-left-radius:40px;border-top-right-radius:40px;}
-.r-9v36ve{border-bottom-color:rgba(139,94,60,1.00);border-left-color:rgba(139,94,60,1.00);border-right-color:rgba(139,94,60,1.00);border-top-color:rgba(139,94,60,1.00);}
-.r-9x6qib{border-bottom-color:rgba(204,214,221,1.00);border-left-color:rgba(204,214,221,1.00);border-right-color:rgba(204,214,221,1.00);border-top-color:rgba(204,214,221,1.00);}
-.r-crgep1{margin:0px;}
-.r-d045u9{border-bottom-width:2px;border-left-width:2px;border-right-width:2px;border-top-width:2px;}
-.r-d23pfw{padding:24px;}
-.r-dta0w2{flex:2;}
-.r-edyy15{padding:8px;}
-.r-fx7oqy{border-bottom-color:rgba(0,0,255,1.00);border-left-color:rgba(0,0,255,1.00);border-right-color:rgba(0,0,255,1.00);border-top-color:rgba(0,0,255,1.00);}
-.r-k59g9i{border-bottom-color:rgba(247,183,49,0.40);border-left-color:rgba(247,183,49,0.40);border-right-color:rgba(247,183,49,0.40);border-top-color:rgba(247,183,49,0.40);}
-.r-kdyh1x{border-bottom-left-radius:6px;border-bottom-right-radius:6px;border-top-left-radius:6px;border-top-right-radius:6px;}
-.r-krxsd3{display:-webkit-box;}
-.r-nsbfu8{padding:16px;}
-.r-p3e7jy{border-bottom-color:rgba(45,139,78,1.00);border-left-color:rgba(45,139,78,1.00);border-right-color:rgba(45,139,78,1.00);border-top-color:rgba(45,139,78,1.00);}
-.r-p3gyjf{border-bottom-color:rgba(139,94,60,0.40);border-left-color:rgba(139,94,60,0.40);border-right-color:rgba(139,94,60,0.40);border-top-color:rgba(139,94,60,0.40);}
-.r-qpntkw{padding:6px;}
-.r-qwd59z{border-bottom-left-radius:1px;border-bottom-right-radius:1px;border-top-left-radius:1px;border-top-right-radius:1px;}
-.r-qy71yu{border-bottom-color:rgba(247,183,49,0.20);border-left-color:rgba(247,183,49,0.20);border-right-color:rgba(247,183,49,0.20);border-top-color:rgba(247,183,49,0.20);}
-.r-rs99b7{border-bottom-width:1px;border-left-width:1px;border-right-width:1px;border-top-width:1px;}
-.r-t60dpp{padding:0px;}
-.r-tuq35u{padding:4px;}
-.r-wg31gx{border-bottom-color:rgba(49,53,56,1.00);border-left-color:rgba(49,53,56,1.00);border-right-color:rgba(49,53,56,1.00);border-top-color:rgba(49,53,56,1.00);}
-.r-whuqzp{padding:18px;}
-.r-xoduu5{display:inline-flex;}
-.r-xyw6el{padding:12px;}
-.r-y47klf{border-bottom-left-radius:20px;border-bottom-right-radius:20px;border-top-left-radius:20px;border-top-right-radius:20px;}
-.r-ywje51{margin:auto;}
-.r-z2wwpe{border-bottom-left-radius:4px;border-bottom-right-radius:4px;border-top-left-radius:4px;border-top-right-radius:4px;}
-[stylesheet-group="2.1"]{}
-.r-11f147o{padding-bottom:8px;padding-top:8px;}
-.r-11gswi8{padding-left:3px;padding-right:3px;}
-.r-1537yvj{margin-left:4px;margin-right:4px;}
-.r-17q4wm6{margin-left:5px;margin-right:5px;}
-.r-184id4b{margin-bottom:12px;margin-top:12px;}
-.r-18c5d7m{padding-left:6px;padding-right:6px;}
-.r-1d7mnkm{padding-bottom:15px;padding-top:15px;}
-.r-1e084wi{padding-left:0px;padding-right:0px;}
-.r-1ml3abn{padding-bottom:14px;padding-top:14px;}
-.r-1mmae3n{padding-bottom:12px;padding-top:12px;}
-.r-1ntr0p{padding-left:5px;padding-right:5px;}
-.r-1rsorjc{padding-left:36px;padding-right:36px;}
-.r-1ubuhtd{padding-left:10px;padding-right:10px;}
-.r-1yd117h{padding-bottom:7px;padding-top:7px;}
-.r-3o4zer{padding-left:12px;padding-right:12px;}
-.r-bplmwz{margin-bottom:10px;margin-top:10px;}
-.r-bx70bn{margin-bottom:8px;margin-top:8px;}
-.r-c6ipad{padding-left:7px;padding-right:7px;}
-.r-cnw61z{padding-bottom:4px;padding-top:4px;}
-.r-cxgwc0{padding-left:24px;padding-right:24px;}
-.r-f8sm7e{margin-left:auto;margin-right:auto;}
-.r-gu64tb{padding-left:14px;padding-right:14px;}
-.r-is05cd{padding-left:8px;padding-right:8px;}
-.r-jdiy1a{margin-left:11px;margin-right:11px;}
-.r-jusfrs{margin-left:12px;margin-right:12px;}
-.r-kritb0{padding-bottom:11px;padding-top:11px;}
-.r-lcslpx{margin-left:10px;margin-right:10px;}
-.r-n5f61p{margin-bottom:3px;margin-top:3px;}
-.r-n7gxbd{padding-left:4px;padding-right:4px;}
-.r-rehuqn{padding-bottom:5px;padding-top:5px;}
-.r-u9wvl5{padding-left:20px;padding-right:20px;}
-.r-ugi1tw{padding-left:5%;padding-right:5%;}
-.r-vuvdlw{padding-bottom:6px;padding-top:6px;}
-.r-w7s2jr{padding-bottom:16px;padding-top:16px;}
-.r-wnp491{margin-left:2px;margin-right:2px;}
-.r-ws14{margin-bottom:6px;margin-top:6px;}
-.r-x53rwf{padding-bottom:36px;padding-top:36px;}
-.r-xjggfu{padding-bottom:3px;padding-top:3px;}
-.r-ytbthy{padding-bottom:10px;padding-top:10px;}
-[stylesheet-group="2.2"]{}
-.r-10s2tm5{left:0%;}
-.r-16o8guy{right:100%;}
-.r-1a11zyx{margin-right:12px;}
-.r-1cwvpvk{margin-left:12px;}
-.r-1e97lx8{margin-right:3px;}
-.r-1euzeng{padding-left:24px;}
-.r-1g4tz6n{margin-right:-14.5px;}
-.r-1h31txp{padding-right:16px;}
-.r-1lhn9r{margin-left:-14.5px;}
-.r-1sqnqi2{margin-left:3px;}
-.r-1vl2501{padding-right:24px;}
-.r-9mo606{margin-right:10px;}
-.r-c59us2{left:-3px;}
-.r-dqe1q{right:0%;}
-.r-qb41rp{margin-right:5px;}
-.r-rci37q{left:100%;}
-.r-uhung1{margin-left:10px;}
-.r-vpmibe{right:-3px;}
-.r-w67my2{padding-left:16px;}
-.r-wizibn{margin-left:5px;}
-[stylesheet-group="3"]{}
-.r-101sy47{border-bottom-left-radius:2px;}
-.r-105ug2t{pointer-events:auto!important;}
-.r-10ptun7{height:16px;}
-.r-10v3vxq{transform:scaleX(-1);}
-.r-10x49cs{font-size:10px;}
-.r-10xqauy{padding-top:env(safe-area-inset-top);}
-.r-117bsoe{margin-bottom:20px;}
-.r-11j9u27{visibility:hidden;}
-.r-11mpjr4{background-color:rgba(223,223,223,1.00);}
-.r-11rk87y{padding-bottom:32px;}
-.r-11udlyb{background-color:rgba(0,150,136,1.00);}
-.r-11v9fek{min-width:180px;}
-.r-11yh6sk{overflow-x:hidden;}
-.r-12f6czt{top:17px;}
-.r-12upozd{max-width:280px;}
-.r-12vffkv>*{pointer-events:auto;}
-.r-12vffkv{pointer-events:none!important;}
-.r-135wba7{line-height:24px;}
-.r-13aq9py{animation-name:r-1iq689l;}
-.r-13hce6t{margin-left:4px;}
-.r-13qz1uu{width:100%;}
-.r-13tjlyg{transition-duration:0.1s;}
-.r-1472mwg{height:24px;}
-.r-14gqq1x{margin-top:4px;}
-.r-14lw9ot{background-color:rgba(255,255,255,1.00);}
-.r-14sbq61{background-color:rgba(33,150,243,1.00);}
-.r-150rngu{-webkit-overflow-scrolling:touch;}
-.r-156q2ks{margin-top:10px;}
-.r-15d164r{margin-bottom:10px;}
-.r-15doi1v{font-size:7px;}
-.r-15p8hna{-webkit-clip-path:polygon(0 0, 100% 0, 50% 100%);clip-path:polygon(0 0, 100% 0, 50% 100%);}
-.r-15zivkp{margin-bottom:4px;}
-.r-16eto9q{width:12px;}
-.r-16l9doz{height:auto;}
-.r-16y2uox{flex-grow:1;}
-.r-173mn98{align-self:flex-end;}
-.r-173mzie{transform:scaleY(-1);}
-.r-1777fci{justify-content:center;}
-.r-17bb2tj{animation-duration:0.75s;}
-.r-17leim2{background-repeat:repeat;}
-.r-17s6mgv{justify-content:flex-end;}
-.r-17tb59b{opacity:0.7;}
-.r-17tloay{opacity:0.6;}
-.r-17u3ijr{background-color:rgba(155,161,166,0.27);}
-.r-17w48nw{max-width:380px;}
-.r-184en5c{z-index:1;}
-.r-18nhz7w{top:-3px;}
-.r-18u1ve8{color:rgba(255,255,255,0.40);}
-.r-18u37iz{flex-direction:row;}
-.r-195d4m8{height:46px;}
-.r-19oahor{font-size:64px;}
-.r-19wmn03{width:20px;}
-.r-19z077z{touch-action:none;}
-.r-19zwi2b{background-color:rgba(26,10,46,0.90);}
-.r-1a2p6p6{-webkit-text-decoration-style:solid;text-decoration-style:solid;}
-.r-1abnn5w{animation-play-state:paused;}
-.r-1acpoxo{width:36px;}
-.r-1aiqnjv{font-family:monospace,monospace;}
-.r-1aockid{width:40px;}
-.r-1aoiedr{font-family:Silkscreen;}
-.r-1armvtb{font-size:8px;}
-.r-1awozwy{align-items:center;}
-.r-1ay1djp{animation-duration:1s;}
-.r-1b43r93{font-size:14px;}
-.r-1bymd8e{margin-top:2px;}
-.r-1c6unfx{forced-color-adjust:none;}
-.r-1c6wqh2{background-color:rgba(45,139,78,0.15);}
-.r-1c85bru{width:270px;}
-.r-1cad53l{margin-bottom:14px;}
-.r-1ces89m{max-width:420px;}
-.r-1cmwbt1{gap:8px;}
-.r-1d2f490{left:0px;}
-.r-1d4mawv{margin-right:4px;}
-.r-1d5kdc7{flex-direction:column-reverse;}
-.r-1dciyrv{height:170px;}
-.r-1ddef8g{-webkit-text-decoration-line:underline;text-decoration-line:underline;}
-.r-1dernwh{height:70%;}
-.r-1ei5mc7{cursor:inherit;}
-.r-1enofrn{font-size:12px;}
-.r-1euycsn{flex-direction:row-reverse;}
-.r-1ewcgjf{box-shadow:0px 1px 3px rgba(0,0,0,0.5);}
-.r-1exf2r{font-size:9.5px;}
-.r-1ff274t{text-align:right;}
-.r-1ffj0ar{background-color:rgba(0,0,0,0.40);}
-.r-1g7fiml{height:30px;}
-.r-1g80hic{opacity:0.8;}
-.r-1ge9hsw{max-width:960px;}
-.r-1gkfh8e{font-size:11px;}
-.r-1h0z5md{justify-content:flex-start;}
-.r-1habvwh{align-items:flex-start;}
-.r-1hjwoze{height:18px;}
-.r-1i10wst{font-size:18px;}
-.r-1i6wzkk{-moz-transition-property:opacity;-webkit-transition-property:opacity;transition-property:opacity;}
-.r-1i71y14{gap:14px;}
-.r-1ielgck{animation-duration:300ms;}
-.r-1ifxtd0{margin-bottom:16px;}
-.r-1iiwoj7{text-shadow:2px 2px 6px rgba(232,67,47,1.00);}
-.r-1iln25a{word-wrap:normal;}
-.r-1inkyih{font-size:17px;}
-.r-1iud8zs{height:50px;}
-.r-1iusvr4{flex-basis:0px;}
-.r-1janqcz{width:16px;}
-.r-1jkjb{margin-left:8px;}
-.r-1jyhbpr{color:rgba(247,183,49,1.00);}
-.r-1kb76zh{margin-right:8px;}
-.r-1kfrs79{font-weight:600;}
-.r-1kihuf0{align-self:center;}
-.r-1ld3bg{top:-4px;}
-.r-1ldzwu0{animation-timing-function:linear;}
-.r-1ljj7th{height:132px;}
-.r-1loqt21{cursor:pointer;}
-.r-1lymcrl{background-color:rgba(232,67,47,0.15);}
-.r-1m1acwu{background-color:rgba(247,183,49,0.15);}
-.r-1mcorv5{width:14px;}
-.r-1mfnvrz{background-color:rgba(139,94,60,0.20);}
-.r-1mlwlqe{flex-basis:auto;}
-.r-1mpo4th{background-color:rgba(26,10,46,0.92);}
-.r-1mrlafo{background-position:0;}
-.r-1muvv40{animation-iteration-count:infinite;}
-.r-1n2eiyi{box-shadow:0px 0px 10px rgba(247,183,49,1.00);}
-.r-1niwhzg{background-color:rgba(0,0,0,0.00);}
-.r-1nlw0im{bottom:8px;}
-.r-1no09lo{margin-top:28px;}
-.r-1nxhmzv{margin-bottom:28px;}
-.r-1ny4l3l{outline-style:none;}
-.r-1ocf4r9{scroll-snap-type:y mandatory;}
-.r-1oszu61{align-items:stretch;}
-.r-1otgn73{touch-action:manipulation;}
-.r-1ozpbmi{font-size:10.5px;}
-.r-1p0dtai{bottom:0px;}
-.r-1pexk7n{height:14px;}
-.r-1pgswnq{right:12px;}
-.r-1pi2tsx{height:100%;}
-.r-1pm8pkb{font-family:Courier;}
-.r-1qd0xha{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
-.r-1qd7xl{top:12px;}
-.r-1qulhi1{animation-name:r-1pzkwqh;}
-.r-1r00izp{background-color:rgba(26,10,46,0.80);}
-.r-1r4fvd0{color:rgba(82,169,255,1.00);}
-.r-1r74h94{left:8px;}
-.r-1r8g8re{height:36px;}
-.r-1ra0lkn{font-size:30px;}
-.r-1rnoaur{overflow-y:auto;}
-.r-1s06vhe{color:rgba(160,160,160,1.00);}
-.r-1s3egr7{z-index:100;}
-.r-1sg8ghl{z-index:1000;}
-.r-1sgj6b9{border-bottom-color:rgba(139,94,60,1.00);}
-.r-1sn7ly2{height:54px;}
-.r-1ssbvtb{gap:12px;}
-.r-1sxrcry{background-size:auto;}
-.r-1tsx3h3{left:50px;}
-.r-1uacjwt{top:50px;}
-.r-1udbk01{text-overflow:ellipsis;}
-.r-1ui5ee8{font-size:32px;}
-.r-1umgglz{font-size:8.5px;}
-.r-1upy0dh{letter-spacing:2px;}
-.r-1uypc71{animation-timing-function:ease-in;}
-.r-1ve1ph{color:rgba(139,94,60,1.00);}
-.r-1vr29t4{font-weight:800;}
-.r-1w6e6rj{flex-wrap:wrap;}
-.r-1wbh5a2{flex-shrink:1;}
-.r-1wfhzrg{height:120px;}
-.r-1wtj0ep{justify-content:space-between;}
-.r-1wyyakw{z-index:-1;}
-.r-1wzrnnt{margin-top:16px;}
-.r-1x35g6{font-size:24px;}
-.r-1x93onp{width:110px;}
-.r-1xcajam{position:fixed;}
-.r-1xdsdg8{background-color:rgba(45,139,78,1.00);}
-.r-1xno5lw{font-size:35px;}
-.r-1xnzce8{-moz-user-select:text;-webkit-user-select:text;user-select:text;}
-.r-1xz82i2{color:rgba(150,150,150,1.00);}
-.r-1xzupcd{width:13px;}
-.r-1yef0xd{animation-name:r-11cv4x;}
-.r-2eszeu::-webkit-scrollbar{display:none}
-.r-2eszeu{scrollbar-width:none;}
-.r-2o02ov{margin-top:40px;}
-.r-30o5oe{-moz-appearance:none;-ms-appearance:none;-webkit-appearance:none;appearance:none;}
-.r-356f0p{letter-spacing:0.35px;}
-.r-3ew84i{width:160px;}
-.r-3lpwum{max-width:440px;}
-.r-3mc0re{right:8px;}
-.r-3s2u2q{white-space:nowrap;}
-.r-3vmxv2{background-color:rgba(139,94,60,0.15);}
-.r-417010{z-index:0;}
-.r-47nzh2{width:92%;}
-.r-4gszlv{background-size:cover;}
-.r-4ljkmv{color:rgba(245,230,200,1.00);}
-.r-4v7adb{height:5px;}
-.r-56yt86{box-shadow:0px 3px 3px rgba(0,0,0,0.33);}
-.r-57dg7b{background-color:rgba(0,0,255,1.00);}
-.r-5gpxoc{background-color:rgba(139,94,60,0.25);}
-.r-5kkj8d{border-top-width:1px;}
-.r-5oul0u{margin-bottom:8px;}
-.r-60vfwk{min-width:1px;}
-.r-62p4ah{width:170px;}
-.r-633pao{pointer-events:none!important;}
-.r-6dt33c{opacity:1;}
-.r-6e0ovw{width:80%;}
-.r-6gpygo{margin-bottom:12px;}
-.r-6taxm2:-ms-input-placeholder{color:var(--placeholderTextColor);opacity:1;}
-.r-6taxm2::-moz-placeholder{color:var(--placeholderTextColor);opacity:1;}
-.r-6taxm2::-webkit-input-placeholder{color:var(--placeholderTextColor);opacity:1;}
-.r-6taxm2::placeholder{color:var(--placeholderTextColor);opacity:1;}
-.r-726pan{width:31px;}
-.r-76blku{height:21px;}
-.r-7cikom{font-size:inherit;}
-.r-7p1nkk{background-color:rgba(232,67,47,0.25);}
-.r-7q8q6z{cursor:default;}
-.r-84ji2h{max-width:330px;}
-.r-8akbws{-webkit-box-orient:vertical;}
-.r-8ay8q1{letter-spacing:0.1px;}
-.r-8skv7x{background-color:rgba(26,10,46,1.00);}
-.r-97e31f{padding-bottom:env(safe-area-inset-bottom);}
-.r-9aw3ui{gap:4px;}
-.r-9cviqr{margin-left:2px;}
-.r-a023e6{font-size:15px;}
-.r-adyw6z{font-size:20px;}
-.r-agouwx{transform:translateZ(0);}
-.r-ah5dr5>*{pointer-events:none;}
-.r-ah5dr5{pointer-events:auto!important;}
-.r-aruset{font-weight:200;}
-.r-aw0pr8{background-color:rgba(26,10,46,0.94);}
-.r-bi4vy9{transform:translateY(100%);}
-.r-bnwqim{position:relative;}
-.r-br3tdj{background-color:rgba(139,94,60,0.30);}
-.r-bt1l66{min-height:20px;}
-.r-buy8e9{overflow-y:hidden;}
-.r-bv2aro{padding-left:env(safe-area-inset-left);}
-.r-c68hjy{color:rgba(161,161,161,1.00);}
-.r-cpa5s6{scroll-snap-align:start;}
-.r-cqee49{color:rgba(0,0,0,1.00);}
-.r-dkge59{background-color:rgba(170,184,194,1.00);}
-.r-dnmrzs{max-width:100%;}
-.r-drfeu3{background-color:rgba(0,0,0,0.50);}
-.r-dvx3qi{z-index:99;}
-.r-e7q0ms{width:90%;}
-.r-eafdt9{transition-duration:0.15s;}
-.r-ebwn4k{animation-name:r-q67da2;}
-.r-ehq7j7{background-size:contain;}
-.r-emr09l{background-color:rgba(232,67,47,1.00);}
-.r-eqz5dr{flex-direction:column;}
-.r-eu3ka{height:40px;}
-.r-exd5t{font-weight:100;}
-.r-f1odvy{margin-bottom:6px;}
-.r-f9v2oj{max-height:80%;}
-.r-fdjqy7{text-align:left;}
-.r-ff8gi{height:110px;}
-.r-g3mlsw{animation-name:r-t2lo5v;}
-.r-ghxds0{transform:translateY(0%);}
-.r-gtdqiz{position:-webkit-sticky;position:sticky;}
-.r-h0d30l{height:28px;}
-.r-hxflta{padding-right:env(safe-area-inset-right);}
-.r-hxu0ph{right:50px;}
-.r-i84h61{width:94%;}
-.r-icoktb{opacity:0.5;}
-.r-icxjq6{opacity:0.85;}
-.r-ipm5af{top:0px;}
-.r-iyfy8q{width:auto;}
-.r-jwli3a{color:rgba(255,255,255,1.00);}
-.r-k200y{align-self:flex-start;}
-.r-kc8jnq{margin-top:6px;}
-.r-kemksi{background-color:rgba(0,0,0,1.00);}
-.r-kizejy{color:rgba(155,161,166,1.00);}
-.r-knv0ih{margin-top:8px;}
-.r-l5bh9y{border-bottom-right-radius:2px;}
-.r-l71dzp{margin-top:14px;}
-.r-lltvgl{overflow-x:auto;}
-.r-lpb231{height:168px;}
-.r-lrsllp{width:24px;}
-.r-lrvibr{-moz-user-select:none;-webkit-user-select:none;user-select:none;}
-.r-lsa89y{opacity:0.75;}
-.r-mabqd8{height:32px;}
-.r-majxgm{font-weight:500;}
-.r-mfh4gg{scroll-snap-type:x mandatory;}
-.r-mhe3cw{z-index:10;}
-.r-mro3nb{background-color:rgba(21,23,24,1.00);}
-.r-n6v787{font-size:13px;}
-.r-nvplwv{animation-timing-function:ease-out;}
-.r-o4n3w5{width:23px;}
-.r-obd0qt{align-items:flex-end;}
-.r-ojf8lh{gap:6px;}
-.r-oo8re6{color:rgba(45,139,78,1.00);}
-.r-orgf3d{opacity:0;}
-.r-ovu0ai{font-weight:900;}
-.r-p0pgbx{background-color:rgba(45,139,78,0.35);}
-.r-peo1c{min-height:44px;}
-.r-q4m81j{text-align:center;}
-.r-qfi6ny{top:30000px;}
-.r-qfkxco{background-color:rgba(139,94,60,1.00);}
-.r-qigg2u{color:rgba(26,10,46,1.00);}
-.r-qklmqi{border-bottom-width:1px;}
-.r-qn3fzs{padding-bottom:24px;}
-.r-qqjak8{font-size:9px;}
-.r-qrt1cm{background-color:rgba(247,183,49,1.00);}
-.r-r5vmyo{z-index:1002;}
-.r-r6l3g7{width:46px;}
-.r-rjixqe{line-height:20px;}
-.r-rs94m5{background-image:url("data:image/svg+xml;base64,PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9Im5vIj8+CjxzdmcKICAgeG1sbnM6ZGM9Imh0dHA6Ly9wdXJsLm9yZy9kYy9lbGVtZW50cy8xLjEvIgogICB4bWxuczpjYz0iaHR0cDovL2NyZWF0aXZlY29tbW9ucy5vcmcvbnMjIgogICB4bWxuczpyZGY9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkvMDIvMjItcmRmLXN5bnRheC1ucyMiCiAgIHhtbG5zOnN2Zz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciCiAgIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIKICAgdmVyc2lvbj0iMS4xIgogICB2aWV3Qm94PSIwIDAgMSAxIgogICBwcmVzZXJ2ZUFzcGVjdFJhdGlvPSJ4TWluWU1pbiBtZWV0Ij4KICA8cGF0aAogICAgIGQ9Ik0gMC4wNDAzODA1OSwwLjYyNjc3NjcgMC4xNDY0NDY2MSwwLjUyMDcxMDY4IDAuNDI5Mjg5MzIsMC44MDM1NTMzOSAwLjMyMzIyMzMsMC45MDk2MTk0MSB6IE0gMC4yMTcxNTcyOSwwLjgwMzU1MzM5IDAuODUzNTUzMzksMC4xNjcxNTcyOSAwLjk1OTYxOTQxLDAuMjczMjIzMyAwLjMyMzIyMzMsMC45MDk2MTk0MSB6IgogICAgIGlkPSJyZWN0Mzc4MCIKICAgICBzdHlsZT0iZmlsbDojZmZmZmZmO2ZpbGwtb3BhY2l0eToxO3N0cm9rZTpub25lIiAvPgo8L3N2Zz4K");}
-.r-s21k3p{background-color:rgba(0,0,0,0.82);}
-.r-sfbmgh{z-index:9999;}
-.r-so7y2g{line-height:64px;}
-.r-tbmifm{height:12px;}
-.r-tskmnb{padding-top:8px;}
-.r-tsynxw{text-transform:uppercase;}
-.r-ttb5dx{width:50px;}
-.r-tujng3{color:rgba(232,67,47,1.00);}
-.r-ty2z48{color:rgba(100,100,100,1.00);}
-.r-u6sd8q{background-repeat:no-repeat;}
-.r-u8s1d{position:absolute;}
-.r-u92y06{background-color:rgba(255,165,0,1.00);}
-.r-uaa2di{gap:10px;}
-.r-ubezar{font-size:16px;}
-.r-uho16t{font-size:34px;}
-.r-vacyoi{padding-bottom:64px;}
-.r-van48c{caret-color:transparent;}
-.r-vboj7i{top:-7px;}
-.r-vvn4in{background-position:center;}
-.r-vw2c0b{font-weight:bold;}
-.r-wfqgy4{transition-duration:100ms;}
-.r-wgabs5{border-bottom-width:2px;}
-.r-wqojh1{text-shadow:1px 1px 4px rgba(232,67,47,1.00);}
-.r-ws9h79{left:4px;}
-.r-x3cy2q{background-size:100% 100%;}
-.r-xx3c9p{animation-name:r-imtty0;}
-.r-y7v2we{background-color:rgba(32,36,37,1.00);}
-.r-y9zqvw{max-height:220px;}
-.r-yie26v{z-index:1001;}
-.r-z80fyv{height:20px;}
-.r-zchlnj{right:0px;}
-.r-zz5t5d{font-size:28px;}
-@-webkit-keyframes r-11cv4x{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
-@-webkit-keyframes r-1iq689l{0%{transform:translateY(0%);}100%{transform:translateY(100%);}}
-@-webkit-keyframes r-1pzkwqh{0%{transform:translateY(100%);}100%{transform:translateY(0%);}}
-@-webkit-keyframes r-imtty0{0%{opacity:0;}100%{opacity:1;}}
-@-webkit-keyframes r-q67da2{0%{transform:translateX(-100%);}100%{transform:translateX(400%);}}
-@-webkit-keyframes r-t2lo5v{0%{opacity:1;}100%{opacity:0;}}
-@keyframes r-11cv4x{0%{transform:rotate(0deg);}100%{transform:rotate(360deg);}}
-@keyframes r-1iq689l{0%{transform:translateY(0%);}100%{transform:translateY(100%);}}
-@keyframes r-1pzkwqh{0%{transform:translateY(100%);}100%{transform:translateY(0%);}}
-@keyframes r-imtty0{0%{opacity:0;}100%{opacity:1;}}
-@keyframes r-q67da2{0%{transform:translateX(-100%);}100%{transform:translateX(400%);}}
-@keyframes r-t2lo5v{0%{opacity:1;}100%{opacity:0;}}</style><script type="module">globalThis.__EXPO_ROUTER_HYDRATE__=true;</script></head><body><div id="root"><div class="css-175oi2r r-13awgt0"><!--$--><div class="css-175oi2r r-13awgt0"><div class="css-175oi2r r-13awgt0 r-1p0dtai r-1d2f490 r-u8s1d r-zchlnj r-ipm5af" style="background-color:rgba(242,242,242,1.00);display:flex"><div class="css-175oi2r r-13awgt0"><div class="css-175oi2r r-13awgt0"><!--$--><div class="css-175oi2r" style="flex:1;background-color:rgba(26,10,46,1.00);align-items:center;justify-content:center;width:100%;height:100%;overflow-x:hidden;overflow-y:hidden;visibility:hidden"><div class="css-175oi2r r-1p0dtai r-1d2f490 r-u8s1d r-zchlnj r-ipm5af" style="background-image:linear-gradient(135deg, rgba(26,10,46,1.00), rgba(45,24,84,1.00), rgba(26,10,46,1.00))"></div><div class="css-175oi2r r-18u37iz r-1777fci r-1d2f490 r-icxjq6 r-1udh08x r-u8s1d r-zchlnj r-ipm5af r-417010 r-633pao"><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(232,67,47,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(247,183,49,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(45,139,78,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(232,127,36,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(232,67,147,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(245,230,200,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(232,67,47,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(247,183,49,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(45,139,78,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(232,127,36,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(232,67,147,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(245,230,200,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(232,67,47,1.00);transform:rotate(180deg)"></div><div class="css-175oi2r r-101sy47 r-l5bh9y r-1hjwoze r-wnp491 r-1janqcz" style="background-color:rgba(247,183,49,1.00);transform:rotate(180deg)"></div></div><div class="css-175oi2r r-633pao" style="position:absolute;left:0px;right:0px;top:0px;bottom:0px"><div class="css-175oi2r r-633pao" style="position:absolute;left:0px;top:0px;opacity:0;transform:translateY(0px) scale(1)"><div dir="auto" class="css-146c3p1" style="font-size:11.893616871104514px">💫</div></div><div class="css-175oi2r r-633pao" style="position:absolute;left:0px;top:0px;opacity:0;transform:translateY(0px) scale(1)"><div dir="auto" class="css-146c3p1" style="font-size:9.435573421410977px">🌙</div></div><div class="css-175oi2r r-633pao" style="position:absolute;left:0px;top:0px;opacity:0;transform:translateY(0px) scale(1)"><div dir="auto" class="css-146c3p1" style="font-size:21.65419574097413px">⭐</div></div><div class="css-175oi2r r-633pao" style="position:absolute;left:0px;top:0px;opacity:0;transform:translateY(0px) scale(1)"><div dir="auto" class="css-146c3p1" style="font-size:19.66329197901149px">🪗</div></div><div class="css-175oi2r r-633pao" style="position:absolute;left:0px;top:0px;opacity:0;transform:translateY(0px) scale(1)"><div dir="auto" class="css-146c3p1" style="font-size:19.460529203587004px">🌙</div></div><div class="css-175oi2r r-633pao" style="position:absolute;left:0px;top:0px;opacity:0;transform:translateY(0px) scale(1)"><div dir="auto" class="css-146c3p1" style="font-size:19.709964545655815px">🌙</div></div><div class="css-175oi2r r-633pao" style="position:absolute;left:0px;top:0px;opacity:0;transform:translateY(0px) scale(1)"><div dir="auto" class="css-146c3p1" style="font-size:17.557927557683207px">🔥</div></div><div class="css-175oi2r r-633pao" style="position:absolute;left:0px;top:0px;opacity:0;transform:translateY(0px) scale(1)"><div dir="auto" class="css-146c3p1" style="font-size:22.10894433652099px">🎆</div></div></div><div class="css-175oi2r r-1awozwy r-13awgt0 r-1pi2tsx r-1777fci r-13qz1uu"><div class="css-175oi2r r-150rngu r-eqz5dr r-16y2uox r-1wbh5a2 r-11yh6sk r-1rnoaur r-agouwx r-2eszeu" style="width:100%"><div class="css-175oi2r r-1awozwy r-16y2uox r-1777fci r-1ml3abn r-is05cd r-13qz1uu"><div class="css-175oi2r" style="align-items:center;margin-bottom:8px;visibility:hidden"><div dir="auto" class="css-146c3p1 r-1jyhbpr r-1aoiedr r-zz5t5d r-1upy0dh r-q4m81j r-1iiwoj7">BLOCKERINO</div><div class="css-175oi2r r-emr09l r-16bdvvh r-1q9bdsx r-1rf8fdq r-14gqq1x r-cnw61z r-3o4zer"><div dir="auto" class="css-146c3p1 r-4ljkmv r-1aoiedr r-qqjak8 r-vw2c0b">🎪 BÔNUS DE 300% ATIVO 🌽</div></div></div><div class="css-175oi2r" style="width:94%;max-width:440px;background-color:rgba(26,10,46,0.94);border-top-width:2px;border-right-width:2px;border-bottom-width:2px;border-left-width:2px;border-top-color:rgba(247,183,49,1.00);border-right-color:rgba(247,183,49,1.00);border-bottom-color:rgba(247,183,49,1.00);border-left-color:rgba(247,183,49,1.00);border-top-left-radius:16px;border-top-right-radius:16px;border-bottom-right-radius:16px;border-bottom-left-radius:16px;padding-left:16px;padding-right:16px;padding-top:16px;padding-bottom:16px;align-items:center;margin-top:6px;margin-bottom:6px;visibility:hidden"><div class="css-175oi2r r-emr09l r-1dzdj1l r-5oul0u r-cnw61z r-1ubuhtd"><div dir="auto" class="css-146c3p1 r-jwli3a r-1aoiedr r-qqjak8 r-vw2c0b">🔥 OFERTA EXCLUSIVA DE BOAS-VINDAS 🚀</div></div><div dir="auto" class="css-146c3p1 r-1jyhbpr r-1aoiedr r-ubezar r-vw2c0b r-f1odvy r-q4m81j r-wqojh1">BÔNUS DE 300% NO 1º DEPÓSITO!</div><div class="css-175oi2r r-p0pgbx r-p3e7jy r-1dzdj1l r-1rf8fdq r-ws14 r-1sp51qo r-13qz1uu"><div dir="auto" class="css-146c3p1 r-jwli3a r-1aoiedr r-1ozpbmi r-vw2c0b r-q4m81j">🌽 DEPOSITOU R$ 20,00 ➔ JOGUE COM R$ 60,00! 💰</div></div><div dir="auto" class="css-146c3p1 r-4ljkmv r-1aoiedr r-1umgglz r-ws14 r-icxjq6 r-q4m81j">Aproveite multiplicadores de até 10X e saques PIX instantâneos no Arraiá!</div><div class="css-175oi2r r-5gpxoc r-k59g9i r-1xfd6ze r-rs99b7 r-bx70bn r-edyy15 r-13qz1uu"><div dir="auto" class="css-146c3p1 r-4ljkmv r-1aoiedr r-1umgglz r-q4m81j">🎉 <span class="css-1jxf684" style="color:rgba(247,183,49,1.00);font-weight:bold">joao_99</span> sacou <span class="css-1jxf684" style="color:rgba(45,139,78,1.00);font-weight:bold">R$ 340,00</span> via PIX!</div></div><div class="css-175oi2r r-uaa2di r-156q2ks r-13qz1uu"><div tabindex="0" class="css-175oi2r r-1i6wzkk r-lrvibr r-1loqt21 r-1otgn73 r-1awozwy r-qrt1cm r-1uh2sn4 r-1q9bdsx r-d045u9 r-1ml3abn r-is05cd r-13qz1uu" style="transition-duration:0s"><div dir="auto" class="css-146c3p1 r-qigg2u r-1aoiedr r-1gkfh8e r-vw2c0b r-q4m81j">🔥 RESGATAR R$ 60,00 AGORA (BÔNUS 300%) 🚀</div></div><div tabindex="0" class="css-175oi2r r-1i6wzkk r-lrvibr r-1loqt21 r-1otgn73 r-1awozwy r-1xdsdg8 r-16bdvvh r-1q9bdsx r-1rf8fdq r-1mmae3n r-is05cd r-13qz1uu" style="transition-duration:0s"><div dir="auto" class="css-146c3p1 r-jwli3a r-1aoiedr r-1exf2r r-vw2c0b r-q4m81j">🎮 JOGAR PRÉVIA GRATUITA (MODO TREINO 8x8)</div></div></div></div><div dir="auto" class="css-146c3p1" style="font-family:Silkscreen;font-size:8.5px;color:rgba(139,94,60,1.00);margin-top:10px;margin-bottom:10px;text-align:center;visibility:hidden">🎪 BLOCKERINO BET — PLATAFORMA OFICIAL DA FESTA JUNINA 🌽</div></div></div></div></div><!--/$--></div></div></div></div><!--/$--></div></div><script src="/_expo/static/js/web/entry-27303306da8f33f7caecbb7ab51f505c.js" defer></script>
-</body></html>
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#070b0b">
+  <meta name="description" content="Blockerino — jogo de estratégia em blocos com apostas, carteira e programa de afiliados.">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="Blockerino — Encaixe. Quebre. Multiplique.">
+  <meta property="og:description" content="Estratégia em blocos, multiplicadores e resgate no seu tempo.">
+  <meta property="og:image" content="/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Blockerino — Encaixe. Quebre. Multiplique.">
+  <meta name="twitter:image" content="/og.png">
+  <title>Blockerino — jogue, quebre linhas, multiplique</title>
+  <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+  <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
+  <nav class="topbar">
+    <button class="brand" onclick="app.goHome()" aria-label="Início">
+      <span class="brand-mark"><i></i><i></i><i></i><i></i></span>
+      <span>BLOCKERINO<small>PLAY SMART</small></span>
+    </button>
+    <div class="nav-links" id="nav-actions">
+      <button onclick="app.showScreen('menu-screen')">Visão geral</button>
+      <button onclick="app.showScreen('wallet-screen')">Carteira</button>
+      <a href="./affiliate/">Afiliados</a>
+      <a href="./admin/" id="btn-admin-link">Admin</a>
+      <button class="balance-pill" onclick="app.showScreen('wallet-screen')"><span>Saldo</span><b id="nav-balance">R$ 0,00</b></button>
+      <button class="avatar" onclick="app.logout()" title="Sair">SA</button>
+    </div>
+    <button class="mobile-menu" onclick="app.toggleMobileMenu()" aria-label="Abrir menu">☰</button>
+  </nav>
+
+  <main>
+    <section class="screen active landing" id="landing-screen">
+      <div class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow"><span></span> ESTRATÉGIA QUE PAGA</div>
+          <h1>Encaixe.<br>Quebre.<br><em>Multiplique.</em></h1>
+          <p>Um jogo de blocos rápido, competitivo e transparente. Cada linha aumenta seu multiplicador — você decide a hora de resgatar.</p>
+          <div class="hero-actions">
+            <button class="btn btn-primary btn-xl" onclick="app.openAuth('register')">Criar conta grátis <span>→</span></button>
+            <button class="btn btn-ghost btn-xl" onclick="game.startDemoGame()">Jogar demonstração</button>
+          </div>
+          <div class="trust-row">
+            <span><b>PIX</b> instantâneo</span><span><b>18+</b> jogue com responsabilidade</span><span><b>SHA-256</b> partidas verificáveis</span>
+          </div>
+        </div>
+        <div class="game-preview">
+          <div class="preview-top"><div><small>MULTIPLICADOR</small><strong id="mini-demo-mult">1.00x</strong></div><div><small>RETORNO</small><strong id="mini-demo-value">R$ 20,00</strong></div><div><small>LINHAS</small><strong id="mini-demo-lines">0</strong></div></div>
+          <canvas id="mini-demo-canvas" aria-label="Demonstração interativa do jogo"></canvas>
+          <p>Arraste uma peça para experimentar</p>
+        </div>
+      </div>
+      <div class="proof-strip"><span>COMO FUNCIONA</span><b>01</b><p>Escolha sua entrada</p><b>02</b><p>Complete linhas</p><b>03</b><p>Resgate no melhor momento</p></div>
+    </section>
+
+    <section class="screen dashboard" id="menu-screen">
+      <header class="page-head">
+        <div><div class="eyebrow"><span></span> PAINEL DO JOGADOR</div><h2>Boa jogada, <em id="dashboard-name">jogador</em>.</h2><p>Acompanhe sua banca e entre em uma nova partida.</p></div>
+        <button class="btn btn-primary" onclick="game.showPrep('real','classic')">Nova partida <span>→</span></button>
+      </header>
+      <div class="stats-grid">
+        <article class="metric metric-main"><small>SALDO DISPONÍVEL</small><strong id="dashboard-balance">R$ 0,00</strong><button onclick="app.showScreen('wallet-screen')">Adicionar saldo</button></article>
+        <article class="metric"><small>RETORNO TOTAL</small><strong id="dashboard-return">R$ 0,00</strong><span class="positive">↑ desempenho acumulado</span></article>
+        <article class="metric"><small>PARTIDAS</small><strong id="dashboard-games">0</strong><span>histórico completo</span></article>
+        <article class="metric"><small>MELHOR MULT.</small><strong id="dashboard-best">1.00x</strong><span>recorde pessoal</span></article>
+      </div>
+      <div class="dashboard-grid">
+        <article class="panel bet-card">
+          <div class="panel-title"><div><small>JOGO PRINCIPAL</small><h3>Block grid</h3></div><span class="live-dot">AO VIVO</span></div>
+          <div class="mode-visual"><div class="block-stack"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><b>Até 10.00x</b><span>Multiplicador máximo</span></div></div>
+          <div class="mode-row"><button class="mode active" onclick="game.showPrep('real','classic')"><b>Clássico</b><span>8×8 · 3 peças</span></button><button class="mode" onclick="game.showPrep('real','chaos')"><b>Caos</b><span>10×10 · 5 peças</span></button></div>
+          <button class="btn btn-primary btn-wide" onclick="game.showPrep('real','classic')">Preparar aposta <span>→</span></button>
+        </article>
+        <article class="panel activity-card">
+          <div class="panel-title"><div><small>ATIVIDADE</small><h3>Últimas movimentações</h3></div><button onclick="app.showScreen('wallet-screen')">Ver todas</button></div>
+          <div id="recent-activity" class="activity-list"><div class="empty-state">Suas movimentações aparecerão aqui.</div></div>
+        </article>
+        <article class="panel affiliate-callout">
+          <div class="affiliate-icon">↗</div><div><small>PROGRAMA DE AFILIADOS</small><h3>Sua rede também multiplica.</h3><p>Ganhe comissão em dois níveis e acompanhe tudo em tempo real.</p></div><a class="btn btn-ghost" href="./affiliate/">Ver painel</a>
+        </article>
+      </div>
+    </section>
+
+    <section class="screen play-screen" id="game-screen">
+      <div class="game-shell">
+        <div class="game-head"><button class="back-link" onclick="app.showScreen('menu-screen')">← Sair da mesa</button><div><small>PARTIDA EM ANDAMENTO</small><b id="game-session-label">BLOCK GRID</b></div><button id="btn-cashout" class="btn btn-success" onclick="game.cashout()">Resgatar agora</button></div>
+        <div class="game-hud-bar"><div class="game-hud-stat"><span>Multiplicador</span><b id="hud-multiplier">1.00x</b></div><div class="game-hud-stat"><span>Linhas</span><b id="hud-lines">0</b></div><div class="game-hud-stat"><span>Retorno potencial</span><b id="hud-payout">R$ 0,00</b></div></div>
+        <canvas id="blockerino-canvas" aria-label="Tabuleiro Blockerino"></canvas>
+        <p class="game-help">Arraste as peças para o tabuleiro. Complete linhas para aumentar seu multiplicador.</p>
+      </div>
+    </section>
+
+    <section class="screen dashboard" id="wallet-screen">
+      <header class="page-head"><div><div class="eyebrow"><span></span> FINANCEIRO</div><h2>Sua <em>carteira</em>.</h2><p>Depósitos, saques e histórico em um só lugar.</p></div><button class="btn btn-ghost" onclick="app.showScreen('menu-screen')">Voltar ao painel</button></header>
+      <div class="wallet-layout">
+        <article class="wallet-summary"><small>SALDO DISPONÍVEL</small><strong id="wallet-balance-val">R$ 0,00</strong><p>Atualizado agora</p></article>
+        <article class="panel wallet-actions">
+          <div class="tabs"><button id="tab-dep-btn" class="active" onclick="wallet.toggleTab('deposit')">Depositar</button><button id="tab-with-btn" onclick="wallet.toggleTab('withdraw')">Sacar</button></div>
+          <div id="dep-content">
+            <label>Valor do depósito</label><div class="money-input"><span>R$</span><input id="dep-amount-input" type="number" min="5" value="50"></div>
+            <div class="quick-values"><button onclick="wallet.selectPreset(20)">R$ 20</button><button onclick="wallet.selectPreset(50)" class="active">R$ 50</button><button onclick="wallet.selectPreset(100)">R$ 100</button><button onclick="wallet.selectPreset(200)">R$ 200</button></div>
+            <button class="btn btn-primary btn-wide" onclick="wallet.requestDeposit()">Gerar PIX copia e cola</button>
+            <div id="pix-result-container" class="pix-result"><label>Código PIX</label><textarea id="pix-code-display" readonly></textarea><button class="btn btn-ghost btn-wide" onclick="wallet.copyPixCode()">Copiar código</button></div>
+          </div>
+          <div id="with-content" hidden>
+            <label>Valor do saque</label><div class="money-input"><span>R$</span><input id="with-amount-input" type="number" min="10" placeholder="0,00"></div>
+            <label>Chave PIX</label><input id="with-key-input" placeholder="CPF, e-mail, telefone ou chave aleatória">
+            <button class="btn btn-primary btn-wide" onclick="wallet.requestWithdraw()">Solicitar saque</button>
+          </div>
+        </article>
+        <article class="panel wallet-history"><div class="panel-title"><div><small>EXTRATO</small><h3>Movimentações</h3></div></div><div class="table-wrap"><table id="tx-history-table"><thead><tr><th>Data</th><th>Tipo</th><th>Valor</th><th>Status</th></tr></thead><tbody></tbody></table></div></article>
+      </div>
+    </section>
+  </main>
+
+  <div class="modal" id="auth-modal"><div class="modal-card auth-card"><button class="modal-close" onclick="app.closeModal('auth-modal')">×</button><div class="brand auth-brand"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO</span></div><h3>Entre no jogo.</h3><p>Uma conta para jogar, sacar e acompanhar seus resultados.</p><div class="tabs"><button id="tab-login-btn" class="active" onclick="app.toggleAuthTab('login')">Entrar</button><button id="tab-reg-btn" onclick="app.toggleAuthTab('register')">Criar conta</button></div><form id="login-form"><label>E-mail</label><input name="email" type="email" required placeholder="voce@email.com"><label>Senha</label><input name="password" type="password" required placeholder="••••••••"><button class="btn btn-primary btn-wide" type="submit">Entrar</button></form><form id="register-form" hidden><label>Nome de usuário</label><input name="username" required minlength="3" placeholder="Seu nome no jogo"><label>E-mail</label><input name="email" type="email" required placeholder="voce@email.com"><label>Senha</label><input name="password" type="password" required minlength="6" placeholder="Mínimo de 6 caracteres"><button class="btn btn-primary btn-wide" type="submit">Criar minha conta</button></form><small class="legal">Ao continuar, você confirma ter 18 anos ou mais.</small></div></div>
+  <div class="modal" id="prep-modal"><div class="modal-card prep-card"><button class="modal-close" onclick="app.closeModal('prep-modal')">×</button><small>PREPARAR PARTIDA</small><h3>Defina sua entrada</h3><p>Complete linhas e resgate antes de ficar sem movimentos.</p><label>Valor da aposta</label><div class="money-input"><span>R$</span><input id="bet-input-val" type="number" min="1" max="100" value="5"></div><div class="quick-values"><button onclick="game.betAmount=200;document.getElementById('bet-input-val').value=2">R$ 2</button><button onclick="game.betAmount=500;document.getElementById('bet-input-val').value=5" class="active">R$ 5</button><button onclick="game.betAmount=1000;document.getElementById('bet-input-val').value=10">R$ 10</button><button onclick="game.betAmount=2500;document.getElementById('bet-input-val').value=25">R$ 25</button></div><div class="risk-note"><span>i</span><p>O valor é debitado ao iniciar. Você pode resgatar o retorno a qualquer momento durante a partida.</p></div><button class="btn btn-primary btn-wide" onclick="game.startRealGame()">Começar partida <span>→</span></button></div></div>
+  <div class="modal" id="win-modal"><div class="modal-card result-card"><div class="result-icon">✓</div><small>RESGATE CONCLUÍDO</small><h3 id="win-modal-payout">R$ 0,00</h3><p>Multiplicador final: <b id="win-modal-mult">1.00x</b></p><button class="btn btn-primary btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
+  <div class="modal" id="gameover-modal"><div class="modal-card result-card"><div class="result-icon danger">×</div><small>FIM DE PARTIDA</small><h3>Sem movimentos</h3><p>A rodada foi encerrada. Revise sua estratégia e tente novamente.</p><button class="btn btn-primary btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
+  <div class="toast-container" id="toast-container"></div>
+  <script src="./js/app.js"></script><script src="./js/wallet.js"></script><script src="./js/game.js"></script>
+</body>
+</html>

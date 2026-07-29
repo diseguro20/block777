@@ -8,8 +8,13 @@ const router = express.Router();
 router.post('/deposit', authenticateToken, async (req, res) => {
   try {
     const { amount } = req.body;
-    if (!amount || amount < 500 || amount > 100000) {
-      return res.status(400).json({ error: 'Invalid deposit amount. Min 500 (R$5), max 100000 (R$1000)' });
+    let minDeposit = 500;
+    try {
+      const settingsDoc = await db.collection('settings').doc('global').get();
+      if (settingsDoc.exists) minDeposit = settingsDoc.data().minDeposit ?? minDeposit;
+    } catch (e) {}
+    if (!amount || amount < minDeposit || amount > 100000) {
+      return res.status(400).json({ error: `O depósito deve ficar entre R$ ${(minDeposit / 100).toFixed(2)} e R$ 1.000,00.` });
     }
 
     const depositId = uuidv4();
@@ -37,8 +42,13 @@ router.post('/deposit', authenticateToken, async (req, res) => {
 router.post('/withdraw', authenticateToken, async (req, res) => {
   try {
     const { amount, pixKey } = req.body;
-    if (!amount || amount < 1000 || !pixKey) {
-      return res.status(400).json({ error: 'Invalid amount or missing PIX key. Min 1000 (R$10)' });
+    let minWithdrawal = 1000;
+    try {
+      const settingsDoc = await db.collection('settings').doc('global').get();
+      if (settingsDoc.exists) minWithdrawal = settingsDoc.data().minWithdrawal ?? minWithdrawal;
+    } catch (e) {}
+    if (!amount || amount < minWithdrawal || !pixKey) {
+      return res.status(400).json({ error: `Informe uma chave PIX e saque no mínimo R$ ${(minWithdrawal / 100).toFixed(2)}.` });
     }
 
     const uid = req.user.uid;
