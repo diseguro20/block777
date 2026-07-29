@@ -58,6 +58,7 @@ const admin = {
       this.loadWithdrawals();
       this.loadGatewayStatus();
     }
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   },
 
   async loadAll() {
@@ -156,17 +157,17 @@ const admin = {
     if (!body) return;
     body.innerHTML = data.users.length ? data.users.map(user => `
       <tr>
-        <td><div class="user-cell"><b>${this.escape(user.username)}</b><span>${this.escape(user.email)}</span></div></td>
-        <td class="mono">${app.formatBRL(user.balance)}</td>
-        <td class="mono positive">${app.formatBRL(user.bonus_balance || 0)}</td>
-        <td class="mono">${app.formatBRL(user.rollover_remaining || 0)}</td>
-        <td class="mono">${Number(user.gamesPlayed || 0).toLocaleString('pt-BR')}</td>
-        <td><span class="badge badge-success">${Number(user.wins || 0)}V</span> <span class="badge badge-danger">${Number(user.losses || 0)}D</span></td>
-        <td class="mono">${Number(user.blocksPlaced || 0).toLocaleString('pt-BR')}</td>
-        <td class="mono">${Number(user.linesCleared || 0).toLocaleString('pt-BR')}</td>
-        <td><button class="badge badge-${user.status === 'active' ? 'success' : 'danger'}" onclick="admin.toggleStatus('${user.id}','${user.status}')">${user.status === 'active' ? 'Ativo' : 'Suspenso'}</button></td>
-        <td><button class="badge ${user.is_influencer ? 'badge-success' : ''}" onclick="admin.toggleInfluencer('${user.id}',${Boolean(user.is_influencer)})">${user.is_influencer ? 'Ativo' : 'Padrão'}</button></td>
-        <td><button class="table-action" onclick="admin.openBalanceModal('${user.id}','${this.escape(user.username)}')">Saldo</button></td>
+        <td data-label="Jogador"><div class="user-cell"><b>${this.escape(user.username)}</b><span>${this.escape(user.email)}</span></div></td>
+        <td data-label="Saldo" class="mono">${app.formatBRL(user.balance)}</td>
+        <td data-label="Bônus" class="mono positive">${app.formatBRL(user.bonus_balance || 0)}</td>
+        <td data-label="Rollover" class="mono">${app.formatBRL(user.rollover_remaining || 0)}</td>
+        <td data-label="Partidas" class="mono">${Number(user.gamesPlayed || 0).toLocaleString('pt-BR')}</td>
+        <td data-label="Vitórias / derrotas"><span class="badge badge-success">${Number(user.wins || 0)}V</span> <span class="badge badge-danger">${Number(user.losses || 0)}D</span></td>
+        <td data-label="Blocos" class="mono">${Number(user.blocksPlaced || 0).toLocaleString('pt-BR')}</td>
+        <td data-label="Linhas" class="mono">${Number(user.linesCleared || 0).toLocaleString('pt-BR')}</td>
+        <td data-label="Status"><button class="badge badge-${user.status === 'active' ? 'success' : 'danger'}" onclick="admin.toggleStatus('${user.id}','${user.status}')">${user.status === 'active' ? 'Ativo' : 'Suspenso'}</button></td>
+        <td data-label="Influencer"><button class="badge ${user.is_influencer ? 'badge-success' : ''}" onclick="admin.toggleInfluencer('${user.id}',${Boolean(user.is_influencer)})">${user.is_influencer ? 'Ativo' : 'Padrão'}</button></td>
+        <td data-label="Ação"><button class="table-action" onclick="admin.openBalanceModal('${user.id}','${this.escape(user.username)}')">Ajustar saldo</button></td>
       </tr>`).join('') : '<tr><td colspan="11" class="empty-state">Nenhum jogador encontrado.</td></tr>';
   },
 
@@ -177,16 +178,16 @@ const admin = {
     body.innerHTML = games.length ? games.map(game => {
       const won = game.result === 'win' || Number(game.payout) > 0;
       return `<tr>
-        <td>${app.formatDate(game.completed_at || game.created_at)}</td>
-        <td><div class="user-cell"><b>${this.escape(game.username || game.uid)}</b><span>${this.escape(game.email || '')}</span></div></td>
-        <td><span class="badge badge-${won ? 'success' : 'danger'}">${won ? 'Vitória' : 'Derrota'}</span></td>
-        <td class="mono">${app.formatBRL(game.amount || 0)}</td>
-        <td class="mono ${won ? 'positive' : ''}">${app.formatBRL(game.payout || 0)}</td>
-        <td class="mono">${Number(game.multiplier || 0).toFixed(2)}x</td>
-        <td class="mono">${Number(game.blocksPlaced || 0).toLocaleString('pt-BR')}</td>
-        <td class="mono">${Number(game.linesCleared || game.floorsReached || 0).toLocaleString('pt-BR')}</td>
-        <td class="mono">${Number(game.score || 0).toLocaleString('pt-BR')}</td>
-        <td><span class="session-id" title="${this.escape(game.sessionId || '')}">${this.escape(String(game.sessionId || '-').slice(0, 8))}</span></td>
+        <td data-label="Data">${app.formatDate(game.completed_at || game.created_at)}</td>
+        <td data-label="Jogador"><div class="user-cell"><b>${this.escape(game.username || game.uid)}</b><span>${this.escape(game.email || '')}</span></div></td>
+        <td data-label="Resultado"><span class="badge badge-${won ? 'success' : 'danger'}">${won ? 'Vitória' : 'Derrota'}</span></td>
+        <td data-label="Aposta" class="mono">${app.formatBRL(game.amount || 0)}</td>
+        <td data-label="Prêmio" class="mono ${won ? 'positive' : ''}">${app.formatBRL(game.payout || 0)}</td>
+        <td data-label="Multiplicador" class="mono">${Number(game.multiplier || 0).toFixed(2)}x</td>
+        <td data-label="Blocos" class="mono">${Number(game.blocksPlaced || 0).toLocaleString('pt-BR')}</td>
+        <td data-label="Linhas" class="mono">${Number(game.linesCleared || game.floorsReached || 0).toLocaleString('pt-BR')}</td>
+        <td data-label="Pontos" class="mono">${Number(game.score || 0).toLocaleString('pt-BR')}</td>
+        <td data-label="Sessão"><span class="session-id" title="${this.escape(game.sessionId || '')}">${this.escape(String(game.sessionId || '-').slice(0, 8))}</span></td>
       </tr>`;
     }).join('') : '<tr><td colspan="10" class="empty-state">Nenhuma partida registrada.</td></tr>';
   },
@@ -254,13 +255,13 @@ const admin = {
     const body = document.getElementById('deposits-table');
     if (!body) return;
     body.innerHTML = deposits.length ? deposits.map(item => `<tr>
-      <td>${this.escape(item.username || item.uid)}</td>
-      <td class="mono positive">${app.formatBRL(item.amount)}</td>
-      <td class="mono positive">${app.formatBRL(item.bonusAmount || 0)}</td>
-      <td class="mono">${app.formatBRL(Number(item.amount || 0) + Number(item.bonusAmount || 0))}</td>
-      <td><span class="badge">${this.escape(item.gateway || 'manual')}</span></td>
-      <td>${app.formatDate(item.created_at)}</td>
-      <td class="actions"><button class="approve" onclick="admin.resolveDeposit('${item.id}','approve')">Aprovar</button><button onclick="admin.resolveDeposit('${item.id}','reject')">Recusar</button></td>
+      <td data-label="Jogador">${this.escape(item.username || item.uid)}</td>
+      <td data-label="Depósito" class="mono positive">${app.formatBRL(item.amount)}</td>
+      <td data-label="Bônus" class="mono positive">${app.formatBRL(item.bonusAmount || 0)}</td>
+      <td data-label="Total" class="mono">${app.formatBRL(Number(item.amount || 0) + Number(item.bonusAmount || 0))}</td>
+      <td data-label="Gateway"><span class="badge">${this.escape(item.gateway || 'manual')}</span></td>
+      <td data-label="Data">${app.formatDate(item.created_at)}</td>
+      <td data-label="Ações" class="actions"><button class="approve" onclick="admin.resolveDeposit('${item.id}','approve')">Aprovar</button><button onclick="admin.resolveDeposit('${item.id}','reject')">Recusar</button></td>
     </tr>`).join('') : '<tr><td colspan="7" class="empty-state">Nenhum depósito pendente.</td></tr>';
   },
 
@@ -276,10 +277,10 @@ const admin = {
     const body = document.getElementById('withdrawals-table');
     if (!body) return;
     body.innerHTML = withdrawals.length ? withdrawals.map(item => `<tr>
-      <td>${this.escape(item.username || item.uid)}</td>
-      <td class="mono">${app.formatBRL(item.amount)}</td>
-      <td>${this.escape(item.pix_key || '-')}</td>
-      <td class="actions"><button class="approve" onclick="admin.resolveWithdrawal('${item.id}','approve')">Pago</button><button onclick="admin.resolveWithdrawal('${item.id}','reject')">Recusar</button></td>
+      <td data-label="Jogador">${this.escape(item.username || item.uid)}</td>
+      <td data-label="Valor" class="mono">${app.formatBRL(item.amount)}</td>
+      <td data-label="Chave PIX" class="pix-key-cell">${this.escape(item.pix_key || '-')}</td>
+      <td data-label="Ações" class="actions"><button class="approve" onclick="admin.resolveWithdrawal('${item.id}','approve')">Pago</button><button onclick="admin.resolveWithdrawal('${item.id}','reject')">Recusar</button></td>
     </tr>`).join('') : '<tr><td colspan="4" class="empty-state">Nenhum saque pendente.</td></tr>';
   },
 

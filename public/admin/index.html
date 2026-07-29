@@ -5,8 +5,8 @@
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#070b0b">
   <title>Blockerino Control — Admin</title>
-  <link rel="stylesheet" href="/css/style.css?v=20260729-7">
-  <link rel="stylesheet" href="/css/admin.css?v=20260729-7">
+  <link rel="stylesheet" href="/css/style.css?v=20260729-9">
+  <link rel="stylesheet" href="/css/admin.css?v=20260729-10">
 </head>
 <body class="admin-body">
   <div class="admin-layout">
@@ -68,14 +68,14 @@
       <section class="admin-view" id="view-players">
         <div class="admin-section-head"><div><small>BASE DE USUÁRIOS</small><h3>Jogadores e desempenho</h3></div><input id="search-users" placeholder="Buscar nome ou e-mail" oninput="admin.loadUsers(this.value)"></div>
         <article class="panel table-wrap">
-          <table><thead><tr><th>Jogador</th><th>Saldo</th><th>Bônus</th><th>Rollover</th><th>Partidas</th><th>V / D</th><th>Blocos</th><th>Linhas</th><th>Status</th><th>Influencer</th><th>Ação</th></tr></thead><tbody id="users-table"></tbody></table>
+          <table class="responsive-table"><thead><tr><th>Jogador</th><th>Saldo</th><th>Bônus</th><th>Rollover</th><th>Partidas</th><th>V / D</th><th>Blocos</th><th>Linhas</th><th>Status</th><th>Influencer</th><th>Ação</th></tr></thead><tbody id="users-table"></tbody></table>
         </article>
       </section>
 
       <section class="admin-view" id="view-games">
         <div class="admin-section-head"><div><small>AUDITORIA DO JOGO</small><h3>Logs completos das partidas</h3></div><input id="search-games" placeholder="Jogador, e-mail ou sessão" oninput="admin.loadGameLogs(this.value)"></div>
         <article class="panel table-wrap">
-          <table><thead><tr><th>Data</th><th>Jogador</th><th>Resultado</th><th>Aposta</th><th>Prêmio</th><th>Multiplicador</th><th>Blocos</th><th>Linhas</th><th>Pontos</th><th>Sessão</th></tr></thead><tbody id="games-table"></tbody></table>
+          <table class="responsive-table"><thead><tr><th>Data</th><th>Jogador</th><th>Resultado</th><th>Aposta</th><th>Prêmio</th><th>Multiplicador</th><th>Blocos</th><th>Linhas</th><th>Pontos</th><th>Sessão</th></tr></thead><tbody id="games-table"></tbody></table>
         </article>
       </section>
 
@@ -88,11 +88,11 @@
           </article>
           <article class="panel">
             <div class="panel-title"><div><small>PIX ENTRADA</small><h3>Depósitos pendentes</h3></div></div>
-            <div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Depósito</th><th>Bônus</th><th>Total</th><th>Gateway</th><th>Data</th><th>Ações</th></tr></thead><tbody id="deposits-table"></tbody></table></div>
+            <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Depósito</th><th>Bônus</th><th>Total</th><th>Gateway</th><th>Data</th><th>Ações</th></tr></thead><tbody id="deposits-table"></tbody></table></div>
           </article>
           <article class="panel">
             <div class="panel-title"><div><small>PIX SAÍDA</small><h3>Saques pendentes</h3></div></div>
-            <div class="table-wrap"><table><thead><tr><th>Jogador</th><th>Valor</th><th>Chave PIX</th><th>Ações</th></tr></thead><tbody id="withdrawals-table"></tbody></table></div>
+            <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Valor</th><th>Chave PIX</th><th>Ações</th></tr></thead><tbody id="withdrawals-table"></tbody></table></div>
           </article>
         </div>
       </section>
@@ -125,7 +125,7 @@
 
   <div class="modal" id="balance-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('balance-modal')">×</button><small>AJUSTE MANUAL</small><h3 id="balance-modal-user">Jogador</h3><label>Operação</label><select id="balance-type-select"><option value="credit">Adicionar saldo</option><option value="debit">Remover saldo</option></select><label>Valor em R$</label><input id="balance-amount-input" type="number" min="1"><label>Motivo</label><input id="balance-desc-input"><button class="btn btn-primary btn-wide" onclick="admin.confirmBalanceAdjustment()">Confirmar ajuste</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="/js/app.js?v=20260729-7"></script>
-  <script src="/js/admin.js?v=20260729-7"></script>
+  <script src="/js/app.js?v=20260729-9"></script>
+  <script src="/js/admin.js?v=20260729-10"></script>
 </body>
 </html>
