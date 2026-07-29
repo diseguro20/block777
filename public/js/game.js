@@ -1,28 +1,27 @@
 const BLOCK_COLORS = [
-  '#C9FF43',
-  '#83E8BA',
-  '#78A8FF',
-  '#F2D56B',
-  '#D5A4FF',
-  '#ECF3F0'
+  '#E8432F',
+  '#F7B731',
+  '#2D8B4E',
+  '#E87F24',
+  '#E84393',
+  '#8B5E3C'
 ];
 
 const ALL_SHAPES = [
-  [[1]],
-  [[1, 1]],
-  [[1], [1]],
-  [[1, 1, 1]],
-  [[1], [1], [1]],
-  [[1, 1], [1, 1]],
-  [[1, 0], [1, 1]],
-  [[0, 1], [1, 1]],
-  [[1, 1], [1, 0]],
-  [[1, 1], [0, 1]],
+  [[1,0,0],[1,1,1]], [[1,1],[1,0],[1,0]], [[1,1,1],[0,0,1]], [[0,1],[0,1],[1,1]],
+  [[0,0,1],[1,1,1]], [[1,0],[1,0],[1,1]], [[1,1,1],[1,0,0]], [[1,1],[0,1],[0,1]],
   [[1, 1, 1], [0, 1, 0]],
-  [[0, 1], [1, 1], [0, 1]],
-  [[1, 1, 1, 1]],
-  [[1], [1], [1], [1]],
-  [[1, 1, 1], [1, 1, 1], [1, 1, 1]],
+  [[1,0],[1,1],[1,0]], [[0,1,0],[1,1,1]], [[0,1],[1,1],[0,1]],
+  [[0,1,1],[1,1,0]], [[1,0],[1,1],[0,1]], [[1,1,0],[0,1,1]], [[0,1],[1,1],[1,0]],
+  [[1,1,1],[1,1,1],[1,1,1]], [[1,1],[1,1]], [[1],[1],[1],[1]], [[1,1,1,1]],
+  [[1],[1],[1]], [[1,1,1]], [[1],[1]], [[1,1]]
+];
+
+const ORIGINAL_WEIGHTS = [
+  2, 2, 2, 2, 2, 2, 2, 2,
+  1.5, 1.5, 1.5, 1.5,
+  1, 1, 1, 1,
+  3, 6, 2, 2, 4, 4, 2, 2
 ];
 
 const EASY_SHAPES = [
@@ -59,6 +58,9 @@ const game = {
   multiplier: 1.0,
   linesCleared: 0,
   score: 0,
+  combo: 0,
+  misses: 0,
+  eventsBound: false,
 
   draggedPieceIndex: null,
   dragX: 0,
@@ -83,8 +85,14 @@ const game = {
     this.canvas = document.getElementById('blockerino-canvas');
     if (!this.canvas) return;
     this.ctx = this.canvas.getContext('2d');
-    
-    this.setupEvents();
+    if (!this.ctx) {
+      app.showToast('Seu navegador não conseguiu iniciar o tabuleiro.');
+      return;
+    }
+    if (!this.eventsBound) {
+      this.setupEvents();
+      this.eventsBound = true;
+    }
     this.resizeCanvas();
   },
 
@@ -468,13 +476,17 @@ const game = {
       this.multiplier = 1.0;
       this.linesCleared = 0;
       this.score = 0;
+      this.combo = 0;
+      this.misses = 0;
 
       document.getElementById('prep-modal').classList.remove('active');
       app.showScreen('game-screen');
+      this.init();
       this.initBoard();
       this.isPlaying = true;
       
       document.getElementById('btn-cashout').style.display = 'flex';
+      document.getElementById('btn-cashout').disabled = false;
       this.updateHud();
       this.draw();
       app.showToast('🎉 Partida iniciada no Arraiá! Boa sorte!');
@@ -489,6 +501,8 @@ const game = {
     this.multiplier = 1.0;
     this.linesCleared = 0;
     this.score = 0;
+    this.combo = 0;
+    this.misses = 0;
     this.mode = 'demo';
 
     try {
@@ -496,6 +510,7 @@ const game = {
     } catch (e) {}
 
     app.showScreen('game-screen');
+    this.init();
     this.initBoard();
     this.isPlaying = true;
     
@@ -522,10 +537,22 @@ const game = {
     }
 
     for (let i = 0; i < handSize; i++) {
-      const shape = pool[Math.floor(Math.random() * pool.length)];
+      const shape = pool === ALL_SHAPES
+        ? this.pickWeightedShape(ALL_SHAPES, ORIGINAL_WEIGHTS)
+        : pool[Math.floor(Math.random() * pool.length)];
       const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
       this.hand.push({ shape, color, used: false });
     }
+  },
+
+  pickWeightedShape(shapes, weights) {
+    const total = weights.reduce((sum, weight) => sum + weight, 0);
+    let cursor = Math.random() * total;
+    for (let i = 0; i < shapes.length; i++) {
+      cursor -= weights[i];
+      if (cursor <= 0) return shapes[i];
+    }
+    return shapes[shapes.length - 1];
   },
 
   getBoardFillRatio() {
@@ -550,21 +577,36 @@ const game = {
     const row = Math.floor((this.dragY - 30 - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
 
     if (this.canPlaceOnGrid(this.board, piece.shape, row, col, this.gridSize)) {
+      let placedBlocks = 0;
       for (let r = 0; r < piece.shape.length; r++) {
         for (let c = 0; c < piece.shape[r].length; c++) {
           if (piece.shape[r][c]) {
             this.board[row + r][col + c] = piece.color;
+            placedBlocks++;
           }
         }
       }
 
       piece.used = true;
-      this.checkLines();
+      this.score += placedBlocks;
+      const clearedLines = this.checkLines(placedBlocks);
+
+      if (clearedLines === 0) {
+        this.misses++;
+        if (this.misses >= this.hand.length) {
+          this.combo = 0;
+          this.misses = 0;
+        }
+      } else {
+        this.combo += clearedLines;
+        this.misses = 0;
+      }
 
       if (this.hand.every(p => p.used)) {
         this.generateHand();
       }
 
+      this.updateHud();
       if (!this.canAnyPieceBePlaced()) {
         this.handleGameOver();
       }
@@ -585,7 +627,7 @@ const game = {
     return false;
   },
 
-  checkLines() {
+  checkLines(placedBlocks = 0) {
     const rowsToClear = [];
     const colsToClear = [];
 
@@ -618,26 +660,38 @@ const game = {
 
       this.linesCleared += totalLines;
       const baseIncrease = totalLines * 0.15;
-      const comboBonus = totalLines > 1 ? totalLines * 0.10 : 0;
+      const comboBonus = (this.combo + totalLines) * 0.10;
       this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
-      this.score += totalLines * 100;
+      this.score += Math.round(totalLines * this.gridSize * Math.max(1, (this.combo + totalLines) / 2) * Math.max(1, placedBlocks));
 
-      this.updateHud();
       app.showToast(`🔥 ${totalLines} LINHA(S) QUEBRADA(S)! Multiplicador: ${this.multiplier.toFixed(2)}x`);
     }
+    return totalLines;
   },
 
   updateHud() {
-    document.getElementById('hud-multiplier').textContent = `${this.multiplier.toFixed(2)}x`;
-    document.getElementById('hud-lines').textContent = this.linesCleared;
+    const multiplier = document.getElementById('hud-multiplier');
+    const score = document.getElementById('hud-score');
+    const lines = document.getElementById('hud-lines');
+    const payoutElement = document.getElementById('hud-payout');
+    const comboBar = document.getElementById('hud-combo-bar');
+    const comboLabel = document.getElementById('hud-combo-label');
+
+    if (multiplier) multiplier.textContent = `${this.multiplier.toFixed(2)}x`;
+    if (score) score.textContent = this.score.toLocaleString('pt-BR');
+    if (lines) lines.textContent = this.linesCleared;
     
     const payout = Math.floor(this.betAmount * this.multiplier);
-    document.getElementById('hud-payout').textContent = app.formatBRL(payout);
+    if (payoutElement) payoutElement.textContent = app.formatBRL(payout);
+    if (comboBar) comboBar.style.width = `${Math.max(0, 100 - (this.misses / Math.max(1, this.hand.length)) * 100)}%`;
+    if (comboLabel) comboLabel.textContent = this.combo > 0 ? `COMBO ${this.combo}x` : 'MONTE SEU COMBO';
   },
 
   async cashout() {
     if (!this.isPlaying || this.mode !== 'real') return;
     this.isPlaying = false;
+    const cashoutButton = document.getElementById('btn-cashout');
+    if (cashoutButton) cashoutButton.disabled = true;
 
     try {
       const data = await app.fetchAPI('/api/game/end', {
@@ -656,7 +710,44 @@ const game = {
       document.getElementById('win-modal-mult').textContent = `${data.multiplier.toFixed(2)}x`;
       document.getElementById('win-modal').classList.add('active');
     } catch (err) {
+      this.isPlaying = true;
+      if (cashoutButton) cashoutButton.disabled = false;
       app.showToast(err.message || 'Erro ao realizar resgate de vitória.');
+    }
+  },
+
+  async leaveGame() {
+    if (!this.isPlaying) {
+      app.showScreen('menu-screen');
+      return;
+    }
+
+    if (this.mode === 'demo') {
+      this.isPlaying = false;
+      app.showScreen('menu-screen');
+      return;
+    }
+
+    this.isPlaying = false;
+    try {
+      const data = await app.fetchAPI('/api/game/end', {
+        method: 'POST',
+        body: JSON.stringify({
+          sessionId: this.sessionId,
+          floorsReached: this.linesCleared,
+          multiplier: 0
+        })
+      });
+      if (app.user && data.balance_after != null) {
+        app.user.balance = data.balance_after;
+        app.updateBalanceDisplays();
+      }
+      app.showToast('Partida encerrada. O valor apostado não foi resgatado.');
+      app.showScreen('menu-screen');
+      app.loadDashboard();
+    } catch (err) {
+      this.isPlaying = true;
+      app.showToast(err.message || 'Não foi possível encerrar a partida.');
     }
   },
 
@@ -665,7 +756,7 @@ const game = {
 
     if (this.mode === 'real') {
       try {
-        await app.fetchAPI('/api/game/end', {
+        const data = await app.fetchAPI('/api/game/end', {
           method: 'POST',
           body: JSON.stringify({
             sessionId: this.sessionId,
@@ -673,6 +764,10 @@ const game = {
             multiplier: 0
           })
         });
+        if (app.user && data.balance_after != null) {
+          app.user.balance = data.balance_after;
+          app.updateBalanceDisplays();
+        }
       } catch (e) {}
     }
 
@@ -807,3 +902,5 @@ document.addEventListener('DOMContentLoaded', () => {
 window.addEventListener('load', () => {
   setTimeout(() => game.initLandingDemo(), 200);
 });
+
+window.game = game;

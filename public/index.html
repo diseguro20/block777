@@ -87,8 +87,9 @@
 
     <section class="screen play-screen" id="game-screen">
       <div class="game-shell">
-        <div class="game-head"><button class="back-link" onclick="app.showScreen('menu-screen')">← Sair da mesa</button><div><small>PARTIDA EM ANDAMENTO</small><b id="game-session-label">BLOCK GRID</b></div><button id="btn-cashout" class="btn btn-success" onclick="game.cashout()">Resgatar agora</button></div>
-        <div class="game-hud-bar"><div class="game-hud-stat"><span>Multiplicador</span><b id="hud-multiplier">1.00x</b></div><div class="game-hud-stat"><span>Linhas</span><b id="hud-lines">0</b></div><div class="game-hud-stat"><span>Retorno potencial</span><b id="hud-payout">R$ 0,00</b></div></div>
+        <div class="game-head"><button class="back-link" onclick="game.leaveGame()">← Sair da mesa</button><div><small>PARTIDA EM ANDAMENTO</small><b id="game-session-label">BLOCKERINO ORIGINAL</b></div><button id="btn-cashout" class="btn btn-success" onclick="game.cashout()">Resgatar agora</button></div>
+        <div class="game-hud-bar"><div class="game-hud-stat"><span>Multiplicador</span><b id="hud-multiplier">1.00x</b></div><div class="game-hud-stat"><span>Pontuação</span><b id="hud-score">0</b></div><div class="game-hud-stat"><span>Linhas</span><b id="hud-lines">0</b></div><div class="game-hud-stat"><span>Retorno potencial</span><b id="hud-payout">R$ 0,00</b></div></div>
+        <div class="combo-track" aria-label="Progresso do combo"><i id="hud-combo-bar"></i><span id="hud-combo-label">COMBO PRONTO</span></div>
         <canvas id="blockerino-canvas" aria-label="Tabuleiro Blockerino"></canvas>
         <p class="game-help">Arraste as peças para o tabuleiro. Complete linhas para aumentar seu multiplicador.</p>
       </div>

@@ -62,3 +62,5 @@ const wallet = {
     body.innerHTML = items.map(tx => `<tr><td>${app.formatDate(tx.created_at)}</td><td>${names[tx.type] || tx.type}</td><td style="color:${Number(tx.amount) > 0 ? 'var(--success)' : 'var(--text)'}">${Number(tx.amount) > 0 ? '+' : ''}${app.formatBRL(tx.amount)}</td><td><span class="badge badge-${tx.status === 'rejected' ? 'danger' : tx.status === 'pending' ? 'pending' : 'success'}">${tx.status === 'pending' ? 'Pendente' : tx.status === 'rejected' ? 'Recusado' : 'Concluído'}</span></td></tr>`).join('');
   }
 };
+
+window.wallet = wallet;
