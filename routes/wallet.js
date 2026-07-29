@@ -11,8 +11,7 @@ const tokenHash = value => crypto.createHash('sha256').update(String(value)).dig
 
 router.post('/deposit', authenticateToken, async (req, res) => {
   try {
-    const { amount, phone, document } = req.body;
-    const cleanPhone = onlyDigits(phone);
+    const { amount, document } = req.body;
     const cleanDocument = onlyDigits(document);
     let minDeposit = 500;
     try {
@@ -21,9 +20,6 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     } catch (e) {}
     if (!amount || amount < minDeposit || amount > 100000) {
       return res.status(400).json({ error: `O depósito deve ficar entre R$ ${(minDeposit / 100).toFixed(2)} e R$ 1.000,00.` });
-    }
-    if (![10, 11].includes(cleanPhone.length)) {
-      return res.status(400).json({ error: 'Informe um telefone brasileiro válido com DDD.' });
     }
     if (![11, 14].includes(cleanDocument.length)) {
       return res.status(400).json({ error: 'Informe um CPF ou CNPJ válido.' });
@@ -41,7 +37,6 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       customer: {
         name: user.username || req.user.email?.split('@')[0] || 'Jogador Blockerino',
         email: user.email || req.user.email,
-        phone: cleanPhone,
         document: cleanDocument
       }
     });
