@@ -111,6 +111,8 @@ const game = {
   dragLift: 30,
   lineCelebration: null,
   celebrationFrame: null,
+  audioContext: null,
+  soundEnabled: localStorage.getItem('blockerino-sound') !== 'off',
 
   // Jogo Real em Prévia Gratuita na Landing Page (8x8 Completo)
   landingDemo: {
@@ -139,7 +141,70 @@ const game = {
       this.setupEvents();
       this.eventsBound = true;
     }
+    this.updateSoundButton();
     this.resizeCanvas();
+  },
+
+  unlockAudio() {
+    if (!this.soundEnabled) return null;
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) return null;
+    if (!this.audioContext) this.audioContext = new AudioContextClass();
+    if (this.audioContext.state === 'suspended') this.audioContext.resume().catch(() => {});
+    return this.audioContext;
+  },
+
+  playTone(frequency, delay = 0, duration = 0.16, type = 'sine', volume = 0.04) {
+    const context = this.unlockAudio();
+    if (!context) return;
+    const start = context.currentTime + delay;
+    const oscillator = context.createOscillator();
+    const gain = context.createGain();
+    oscillator.type = type;
+    oscillator.frequency.setValueAtTime(frequency, start);
+    gain.gain.setValueAtTime(0.0001, start);
+    gain.gain.exponentialRampToValueAtTime(volume, start + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + duration);
+    oscillator.connect(gain);
+    gain.connect(context.destination);
+    oscillator.start(start);
+    oscillator.stop(start + duration + 0.02);
+  },
+
+  playLineCompleteSound(lines = 1) {
+    if (!this.soundEnabled) return;
+    const lift = Math.min(1.2, 1 + (lines - 1) * 0.04);
+    [523.25, 659.25, 783.99, 1046.5].forEach((note, index) => {
+      this.playTone(note * lift, index * 0.065, 0.2, index < 3 ? 'triangle' : 'sine', 0.045);
+    });
+  },
+
+  playCashoutSound(multiplier = 1) {
+    if (!this.soundEnabled) return;
+    const lift = Math.min(1.25, 1 + Math.max(0, multiplier - 1) * 0.04);
+    [659.25, 783.99, 987.77, 1318.51].forEach((note, index) => {
+      this.playTone(note * lift, index * 0.09, 0.28, 'sine', 0.05);
+      this.playTone(note * 2 * lift, index * 0.09 + 0.025, 0.1, 'square', 0.012);
+    });
+  },
+
+  toggleSound() {
+    this.soundEnabled = !this.soundEnabled;
+    localStorage.setItem('blockerino-sound', this.soundEnabled ? 'on' : 'off');
+    this.updateSoundButton();
+    if (this.soundEnabled) {
+      this.unlockAudio();
+      this.playTone(659.25, 0, 0.1, 'sine', 0.035);
+      this.playTone(987.77, 0.07, 0.14, 'sine', 0.04);
+    }
+  },
+
+  updateSoundButton() {
+    const button = document.getElementById('btn-game-sound');
+    if (!button) return;
+    button.textContent = this.soundEnabled ? '🔊 Som' : '🔇 Som';
+    button.setAttribute('aria-pressed', String(this.soundEnabled));
+    button.setAttribute('aria-label', this.soundEnabled ? 'Silenciar efeitos sonoros' : 'Ativar efeitos sonoros');
   },
 
   initLandingDemo() {
@@ -211,6 +276,7 @@ const game = {
 
     const handleStart = (e) => {
       if (!e.isPrimary) return;
+      this.unlockAudio();
       const pos = getPos(e);
       const handAreaY = this.landingCanvas.width;
       if (pos.y >= handAreaY) {
@@ -317,6 +383,7 @@ const game = {
 
       this.landingDemo.linesCleared += lines;
       this.landingDemo.multiplier = parseFloat((this.landingDemo.multiplier + lines * 0.20).toFixed(2));
+      this.playLineCompleteSound(lines);
       this.updateLandingHud();
       app.showToast(`🔥 ${lines} LINHA(S) QUEBRADA(S)! Multiplicador: ${this.landingDemo.multiplier.toFixed(2)}x`);
     }
@@ -450,6 +517,7 @@ const game = {
 
     const handleStart = (e) => {
       if (!this.isPlaying || !e.isPrimary) return;
+      this.unlockAudio();
       const pos = getPos(e);
       const handAreaY = this.canvas.width;
       
@@ -762,6 +830,7 @@ const game = {
       const baseIncrease = totalLines * 0.05;
       const comboBonus = Math.min(this.combo + totalLines, 5) * 0.01;
       this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
+      this.playLineCompleteSound(totalLines);
       
       this.score += Math.round(totalLines * this.gridSize * Math.max(1, (this.combo + totalLines) / 2) * Math.max(1, placedBlocks));
       this.triggerLineCelebration(rowsToClear, colsToClear, previousMultiplier);
@@ -869,6 +938,7 @@ const game = {
 
   async cashout() {
     if (!this.isPlaying || this.mode !== 'real') return;
+    this.unlockAudio();
     this.isPlaying = false;
     const cashoutButton = document.getElementById('btn-cashout');
     if (cashoutButton) cashoutButton.disabled = true;
@@ -887,6 +957,7 @@ const game = {
 
       app.user.balance = data.balance_after;
       app.updateBalanceDisplays();
+      this.playCashoutSound(data.multiplier);
 
       document.getElementById('win-modal-payout').textContent = app.formatBRL(data.payout);
       document.getElementById('win-modal-mult').textContent = `${data.multiplier.toFixed(2)}x`;
