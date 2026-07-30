@@ -13,7 +13,6 @@ Vídeo vertical de 21 segundos criado em Remotion para orientar o influencer na 
 
 Edite `defaultProps` no final de `src/Composition.tsx`:
 
-- `profile`: perfil oficial que o influencer deve marcar.
 - `campaignLink`: nome exibido no adesivo de link.
 
 ## Comandos

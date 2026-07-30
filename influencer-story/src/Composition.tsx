@@ -9,7 +9,6 @@ import {
 } from "remotion";
 
 type GuideProps = {
-  profile: string;
   campaignLink: string;
 };
 
@@ -526,15 +525,13 @@ const StoryThree = ({ campaignLink }: Pick<GuideProps, "campaignLink">) => (
   </StepLayout>
 );
 
-const Checklist = ({ profile }: Pick<GuideProps, "profile">) => {
+const Checklist = () => {
   const frame = useCurrentFrame();
   const items = [
-    `Marcar ${profile}`,
     "Usar seu link individual",
     "Informar: Publicidade",
     "Informar: 18+ | Jogue com responsabilidade",
     "Não prometer ganhos ou dinheiro fácil",
-    "Enviar para aprovação antes de publicar",
   ];
   return (
     <AbsoluteFill
@@ -641,7 +638,7 @@ export const InfluencerGuide: React.FC<GuideProps> = (props) => (
       <StoryThree campaignLink={props.campaignLink} />
     </Sequence>
     <Sequence name="Checklist obrigatório" from={495} durationInFrames={135}>
-      <Checklist profile={props.profile} />
+      <Checklist />
     </Sequence>
   </AbsoluteFill>
 );
@@ -655,7 +652,6 @@ export const MyComposition = () => (
     width={1080}
     height={1920}
     defaultProps={{
-      profile: "@PERFIL_BLOCKERINO",
       campaignLink: "LINK DO INFLUENCER",
     }}
   />
