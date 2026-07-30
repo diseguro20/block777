@@ -80,9 +80,6 @@ const IMPOSSIBLE_WEIGHTS = [
   3,   // C
 ];
 
-// Multiplicador máximo — praticamente zero lucro
-const IMPOSSIBLE_MAX_MULTIPLIER = 1.1;
-
 const game = {
   canvas: null,
   ctx: null,
@@ -760,21 +757,11 @@ const game = {
 
       this.linesCleared += totalLines;
 
-      let baseIncrease, comboBonus;
-      if (this.difficulty === 'easy') {
-        baseIncrease = totalLines * 0.25;
-        comboBonus = (this.combo + totalLines) * 0.15;
-      } else {
-        // Praticamente zero — impossível lucrar
-        baseIncrease = totalLines * 0.01;
-        comboBonus = (this.combo + totalLines) * 0.005;
-      }
+      // A dificuldade afeta somente as peças e o tabuleiro.
+      // O multiplicador progride igualmente para todos os jogadores.
+      const baseIncrease = totalLines * 0.25;
+      const comboBonus = (this.combo + totalLines) * 0.15;
       this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
-      
-      // CAP do multiplicador para jogadores normais
-      if (this.difficulty !== 'easy' && this.multiplier > IMPOSSIBLE_MAX_MULTIPLIER) {
-        this.multiplier = IMPOSSIBLE_MAX_MULTIPLIER;
-      }
       
       this.score += Math.round(totalLines * this.gridSize * Math.max(1, (this.combo + totalLines) / 2) * Math.max(1, placedBlocks));
       this.triggerLineCelebration(rowsToClear, colsToClear, previousMultiplier);
