@@ -6,6 +6,8 @@ const app = {
     this.captureRef();
     this.bindForms();
     this.loadPublicPromotion();
+    const registerButton = document.getElementById('landing-register-btn');
+    if (registerButton) registerButton.hidden = Boolean(this.token);
     if (location.protocol === 'file:') {
       fetch('http://localhost:3001/api/health')
         .then(response => {
@@ -127,6 +129,8 @@ const app = {
       this.updateBalanceDisplays();
       const adminLink = document.getElementById('btn-admin-link');
       if (adminLink) adminLink.style.display = this.user.role === 'admin' ? '' : 'none';
+      const registerButton = document.getElementById('landing-register-btn');
+      if (registerButton) registerButton.hidden = true;
       document.getElementById('nav-actions').style.display = '';
       if (navigate) this.showScreen('menu-screen');
       await this.loadDashboard();
@@ -199,6 +203,8 @@ const app = {
     this.token = null; this.user = null; localStorage.removeItem('token');
     const nav = document.getElementById('nav-actions');
     if (nav) nav.style.display = 'none';
+    const registerButton = document.getElementById('landing-register-btn');
+    if (registerButton) registerButton.hidden = false;
     if (document.getElementById('landing-screen')) this.showScreen('landing-screen');
     if (showMessage) this.showToast('Sessão encerrada.');
   },

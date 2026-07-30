@@ -13,7 +13,7 @@
   <meta name="twitter:title" content="Blockerino — Encaixe. Quebre. Multiplique.">
   <meta name="twitter:image" content="/og.png">
   <title>Blockerino — Deposite R$ 20 e jogue com R$ 80</title>
-  <link rel="stylesheet" href="./css/style.css?v=20260730-2">
+  <link rel="stylesheet" href="./css/style.css?v=20260730-3">
 </head>
 <body>
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
@@ -30,6 +30,7 @@
       <button class="balance-pill" onclick="app.showScreen('wallet-screen')"><span>Saldo</span><b id="nav-balance">R$ 0,00</b></button>
       <button class="avatar" onclick="app.logout()" title="Sair">SA</button>
     </div>
+    <button class="btn btn-primary landing-register-cta" id="landing-register-btn" type="button" onclick="app.openAuth('register')">Criar conta grátis <span>→</span></button>
     <button class="mobile-menu" onclick="app.toggleMobileMenu()" aria-label="Abrir menu">☰</button>
   </nav>
 
@@ -170,6 +171,6 @@
   <div class="modal" id="win-modal"><div class="modal-card result-card"><div class="result-icon">✓</div><small>RESGATE CONCLUÍDO</small><h3 id="win-modal-payout">R$ 0,00</h3><p>Multiplicador final: <b id="win-modal-mult">1.00x</b></p><button class="btn btn-primary btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="modal" id="gameover-modal"><div class="modal-card result-card"><div class="result-icon danger">×</div><small>FIM DE PARTIDA</small><h3>Sem movimentos</h3><p>A rodada foi encerrada. Revise sua estratégia e tente novamente.</p><button class="btn btn-primary btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/app.js?v=20260729-9"></script><script src="./js/wallet.js?v=20260729-7"></script><script src="./js/game.js?v=20260730-4"></script>
+  <script src="./js/app.js?v=20260730-10"></script><script src="./js/wallet.js?v=20260729-7"></script><script src="./js/game.js?v=20260730-4"></script>
 </body>
 </html>
