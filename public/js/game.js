@@ -112,6 +112,8 @@ const game = {
   dragY: 0,
   isDragging: false,
   dragLift: 30,
+  lineCelebration: null,
+  celebrationFrame: null,
 
   // Jogo Real em Prévia Gratuita na Landing Page (8x8 Completo)
   landingDemo: {
@@ -747,6 +749,7 @@ const game = {
 
     const totalLines = rowsToClear.length + colsToClear.length;
     if (totalLines > 0) {
+      const previousMultiplier = this.multiplier;
       rowsToClear.forEach(r => {
         for (let c = 0; c < this.gridSize; c++) this.board[r][c] = null;
       });
@@ -774,10 +777,89 @@ const game = {
       }
       
       this.score += Math.round(totalLines * this.gridSize * Math.max(1, (this.combo + totalLines) / 2) * Math.max(1, placedBlocks));
+      this.triggerLineCelebration(rowsToClear, colsToClear, previousMultiplier);
 
       app.showToast(`🔥 ${totalLines} LINHA(S) QUEBRADA(S)! Multiplicador: ${this.multiplier.toFixed(2)}x`);
     }
     return totalLines;
+  },
+
+  triggerLineCelebration(rows, cols, previousMultiplier) {
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const totalPayout = Math.floor(this.betAmount * this.multiplier);
+    const effect = document.getElementById('cash-in-effect');
+    const value = document.getElementById('cash-in-value');
+    const multiplier = document.getElementById('cash-in-multiplier');
+
+    if (value) value.textContent = app.formatBRL(totalPayout);
+    if (multiplier) multiplier.textContent = `${previousMultiplier.toFixed(2)}x → ${this.multiplier.toFixed(2)}x`;
+    if (effect) {
+      effect.classList.remove('active');
+      void effect.offsetWidth;
+      effect.classList.add('active');
+      window.setTimeout(() => effect.classList.remove('active'), reducedMotion ? 300 : 1450);
+    }
+
+    if (navigator.vibrate && !reducedMotion) navigator.vibrate([35, 25, 55]);
+    if (reducedMotion) return;
+
+    this.lineCelebration = {
+      rows: [...rows],
+      cols: [...cols],
+      startedAt: performance.now(),
+      duration: 1050
+    };
+    if (this.celebrationFrame) cancelAnimationFrame(this.celebrationFrame);
+
+    const animate = now => {
+      if (!this.lineCelebration) return;
+      this.draw(now);
+      if (now - this.lineCelebration.startedAt < this.lineCelebration.duration) {
+        this.celebrationFrame = requestAnimationFrame(animate);
+      } else {
+        this.lineCelebration = null;
+        this.celebrationFrame = null;
+        this.draw();
+      }
+    };
+    this.celebrationFrame = requestAnimationFrame(animate);
+  },
+
+  drawLineCelebration(now = performance.now()) {
+    const effect = this.lineCelebration;
+    if (!effect || !this.ctx || !this.canvas) return;
+    const progress = Math.min(1, Math.max(0, (now - effect.startedAt) / effect.duration));
+    const pulse = Math.sin(progress * Math.PI);
+    const cellSize = this.canvas.width / this.gridSize;
+    const ctx = this.ctx;
+
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.shadowColor = '#c9ff43';
+    ctx.shadowBlur = 20 + pulse * 26;
+    ctx.fillStyle = `rgba(201,255,67,${0.2 + pulse * 0.65})`;
+
+    effect.rows.forEach(row => ctx.fillRect(0, row * cellSize + 2, this.canvas.width, cellSize - 4));
+    effect.cols.forEach(col => ctx.fillRect(col * cellSize + 2, 0, cellSize - 4, this.canvas.width));
+
+    const lines = [
+      ...effect.rows.map(row => ({ horizontal: true, index: row })),
+      ...effect.cols.map(col => ({ horizontal: false, index: col }))
+    ];
+    lines.forEach((line, lineIndex) => {
+      for (let i = 0; i < 12; i++) {
+        const travel = (i / 11 + progress * 0.65) % 1;
+        const wave = Math.sin((i + lineIndex * 3) * 2.4 + progress * 10) * cellSize * 0.45;
+        const x = line.horizontal ? travel * this.canvas.width : line.index * cellSize + cellSize / 2 + wave;
+        const y = line.horizontal ? line.index * cellSize + cellSize / 2 + wave : travel * this.canvas.width;
+        const radius = 2 + ((i + lineIndex) % 3) * 1.5;
+        ctx.beginPath();
+        ctx.fillStyle = i % 2 ? `rgba(255,255,255,${pulse})` : `rgba(201,255,67,${pulse})`;
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+    ctx.restore();
   },
 
   updateHud() {
@@ -891,7 +973,7 @@ const game = {
     document.getElementById('gameover-modal').classList.add('active');
   },
 
-  draw() {
+  draw(animationTime) {
     if (!this.ctx || !this.canvas) return;
     const w = this.canvas.width;
     const gridW = w;
@@ -923,6 +1005,8 @@ const game = {
         }
       }
     }
+
+    this.drawLineCelebration(animationTime);
 
     if (this.isDragging && this.draggedPieceIndex !== null) {
       const piece = this.hand[this.draggedPieceIndex];
