@@ -1,7 +1,102 @@
 <!doctype html>
-<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#070b0b"><title>Afiliados — Blockerino</title><link rel="stylesheet" href="../css/style.css"><link rel="stylesheet" href="../css/affiliate.css"></head>
-<body><nav class="topbar"><a class="brand" href="../"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO<small>PARTNERS</small></span></a><div class="nav-links" style="display:flex"><a href="../">Voltar ao jogo</a><button class="balance-pill"><span>Comissões</span><b id="nav-balance">R$ 0,00</b></button></div></nav>
-<main class="affiliate-page"><section id="affiliate-content"><div class="affiliate-hero"><article class="affiliate-lead"><div class="eyebrow"><span></span> BLOCKERINO PARTNERS</div><h1>Sua influência.<br><em>Seu resultado.</em></h1><p>Compartilhe seu link exclusivo e receba comissões em dois níveis. Acompanhe conversões, rede e saldo em um painel transparente.</p><div class="ref-box"><input id="ref-link" readonly><button class="btn btn-primary" onclick="affiliate.copyReferralLink()">Copiar link</button></div></article><article class="affiliate-balance-card"><small>SALDO DE COMISSÕES</small><strong id="stat-balance">R$ 0,00</strong><p>Disponível para resgate imediato</p><button class="btn btn-wide" onclick="affiliate.redeemCommissions()">Transferir para carteira →</button></article></div>
-<div class="affiliate-grid"><article class="metric"><small>INDICADOS DIRETOS</small><strong id="stat-level1">0</strong><span id="rate-level1">10% por depósito</span></article><article class="metric"><small>REDE DE 2º NÍVEL</small><strong id="stat-level2">0</strong><span id="rate-level2">2% por depósito</span></article><article class="metric"><small>TOTAL DE COMISSÕES</small><strong id="stat-commissions">R$ 0,00</strong><span>histórico acumulado</span></article><article class="metric metric-main"><small>ALCANCE TOTAL</small><strong id="stat-total">0</strong><span>pessoas na sua rede</span></article></div>
-<article class="panel commission-table"><div class="panel-title"><div><small>HISTÓRICO</small><h3>Comissões recebidas</h3></div></div><div class="table-wrap"><table><thead><tr><th>Data</th><th>Nível</th><th>Origem</th><th>Comissão</th></tr></thead><tbody id="commission-history"></tbody></table></div></article></section>
-<section id="affiliate-auth" hidden><div class="modal-card" style="margin:50px auto"><div class="brand auth-brand"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO</span></div><h3>Acesse sua rede.</h3><p>Entre para ver indicações e comissões.</p><form id="affiliate-login-form"><label>E-mail</label><input id="aff-email" type="email" required><label>Senha</label><input id="aff-password" type="password" required><button class="btn btn-primary btn-wide">Entrar</button></form></div></section></main><div class="toast-container" id="toast-container"></div><script src="../js/app.js"></script><script src="../js/affiliate.js"></script></body></html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#070b0b">
+  <title>Afiliados — Blockerino</title>
+  <link rel="stylesheet" href="../css/style.css?v=20260730-1">
+  <link rel="stylesheet" href="../css/affiliate.css?v=20260730-1">
+</head>
+<body>
+  <nav class="topbar">
+    <a class="brand" href="../">
+      <span class="brand-mark"><i></i><i></i><i></i><i></i></span>
+      <span>BLOCKERINO<small>PARTNERS</small></span>
+    </a>
+    <div class="nav-links" style="display:flex">
+      <a href="../">Voltar ao jogo</a>
+      <button class="balance-pill"><span>Comissões</span><b id="nav-balance">R$ 0,00</b></button>
+    </div>
+  </nav>
+
+  <main class="affiliate-page">
+    <section id="affiliate-content">
+      <div class="affiliate-hero">
+        <article class="affiliate-lead">
+          <div class="eyebrow"><span></span> BLOCKERINO PARTNERS</div>
+          <h1>Sua influência.<br><em>Seu resultado.</em></h1>
+          <p>Compartilhe seu link exclusivo e receba comissões em dois níveis. Acompanhe conversões, rede e saldo em um painel transparente.</p>
+          <div class="ref-box">
+            <input id="ref-link" readonly aria-label="Seu link de indicação">
+            <button class="btn btn-primary" onclick="affiliate.copyReferralLink()">Copiar link</button>
+          </div>
+        </article>
+        <article class="affiliate-balance-card">
+          <small>SALDO DE COMISSÕES</small>
+          <strong id="stat-balance">R$ 0,00</strong>
+          <p>Disponível para resgate imediato</p>
+          <button class="btn btn-wide" onclick="affiliate.redeemCommissions()">Transferir para carteira →</button>
+        </article>
+      </div>
+
+      <div class="affiliate-grid">
+        <article class="metric"><small>INDICADOS DIRETOS</small><strong id="stat-level1">0</strong><span id="rate-level1">10% por depósito</span></article>
+        <article class="metric"><small>REDE DE 2º NÍVEL</small><strong id="stat-level2">0</strong><span id="rate-level2">2% por depósito</span></article>
+        <article class="metric"><small>TOTAL DE COMISSÕES</small><strong id="stat-commissions">R$ 0,00</strong><span>histórico acumulado</span></article>
+        <article class="metric metric-main"><small>ALCANCE TOTAL</small><strong id="stat-total">0</strong><span>pessoas na sua rede</span></article>
+      </div>
+
+      <article class="panel commission-table">
+        <div class="panel-title"><div><small>HISTÓRICO</small><h3>Comissões recebidas</h3></div></div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Data</th><th>Nível</th><th>Origem</th><th>Comissão</th></tr></thead>
+            <tbody id="commission-history"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section id="affiliate-auth" hidden>
+      <div class="modal-card affiliate-auth-card">
+        <div class="brand auth-brand">
+          <span class="brand-mark"><i></i><i></i><i></i><i></i></span>
+          <span>BLOCKERINO</span>
+        </div>
+        <h3 id="affiliate-auth-title">Acesse sua rede.</h3>
+        <p id="affiliate-auth-copy">Entre para ver indicações e comissões.</p>
+
+        <div class="tabs affiliate-auth-tabs" role="tablist" aria-label="Acesso de afiliados">
+          <button id="affiliate-login-tab" class="active" type="button" role="tab" aria-selected="true" aria-controls="affiliate-login-form" onclick="affiliate.toggleAuth('login')">Entrar</button>
+          <button id="affiliate-register-tab" type="button" role="tab" aria-selected="false" aria-controls="affiliate-register-form" onclick="affiliate.toggleAuth('register')">Criar conta</button>
+        </div>
+
+        <form id="affiliate-login-form">
+          <label for="aff-email">E-mail</label>
+          <input id="aff-email" name="email" type="email" autocomplete="email" required>
+          <label for="aff-password">Senha</label>
+          <input id="aff-password" name="password" type="password" autocomplete="current-password" required>
+          <button class="btn btn-primary btn-wide">Entrar no painel</button>
+        </form>
+
+        <form id="affiliate-register-form" hidden>
+          <label for="aff-username">Nome</label>
+          <input id="aff-username" name="username" type="text" autocomplete="name" minlength="3" required>
+          <label for="aff-register-email">E-mail</label>
+          <input id="aff-register-email" name="email" type="email" autocomplete="email" required>
+          <label for="aff-register-password">Senha</label>
+          <input id="aff-register-password" name="password" type="password" autocomplete="new-password" minlength="6" required>
+          <button class="btn btn-primary btn-wide">Criar conta de afiliado</button>
+          <p class="affiliate-auth-benefit">Sua conta recebe um link exclusivo de indicação automaticamente.</p>
+          <small class="legal">Ao continuar, você confirma ter 18 anos ou mais.</small>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <div class="toast-container" id="toast-container"></div>
+  <script src="../js/app.js?v=20260729-9"></script>
+  <script src="../js/affiliate.js?v=20260730-1"></script>
+</body>
+</html>
