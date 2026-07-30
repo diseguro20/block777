@@ -759,8 +759,8 @@ const game = {
 
       // A dificuldade afeta somente as peças e o tabuleiro.
       // O multiplicador progride igualmente para todos os jogadores.
-      const baseIncrease = totalLines * 0.25;
-      const comboBonus = (this.combo + totalLines) * 0.15;
+      const baseIncrease = totalLines * 0.05;
+      const comboBonus = Math.min(this.combo + totalLines, 5) * 0.01;
       this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
       
       this.score += Math.round(totalLines * this.gridSize * Math.max(1, (this.combo + totalLines) / 2) * Math.max(1, placedBlocks));
