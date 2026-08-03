@@ -404,7 +404,7 @@ const game = {
 
     const ctaBtn = document.getElementById('landing-cta-btn');
     if (ctaBtn) {
-      ctaBtn.innerHTML = `🔥 GANHAR ${profitStr} DE VERDADE (RESGATAR BÔNUS 300%) 🚀`;
+      ctaBtn.innerHTML = `🔥 GANHAR ${profitStr} DE VERDADE (RESGATAR BÔNUS) 🚀`;
     }
   },
 

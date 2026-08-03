@@ -1,7 +1,7 @@
 const wallet = {
   pixCode: '',
   data: null,
-  promotion: { promoEnabled: true, bonusPercent: 300, bonusMinDeposit: 2000, rolloverMultiplier: 10 },
+  promotion: { promoEnabled: true, bonusPercent: 100, bonusMinDeposit: 2000, rolloverMultiplier: 10 },
   toggleTab(tab) {
     const deposit = tab === 'deposit';
     document.getElementById('dep-content').hidden = !deposit;

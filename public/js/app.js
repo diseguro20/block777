@@ -60,7 +60,9 @@ const app = {
       setText('hero-promo-copy', `Seu depósito vale mais. Deposite a partir de ${minLabel}, receba ${percent}% de bônus automático e entre no Blockerino com mais saldo para jogar.`);
       setText('hero-promo-terms', `Bônus promocional sujeito a rollover de ${rollover}x sobre o valor do bônus. Saques ficam indisponíveis até a conclusão do requisito. Consulte as regras na carteira.`);
       const cta = document.getElementById('hero-promo-cta');
-      if (cta) cta.innerHTML = `Quero meus ${percent}% <span>→</span>`;
+      if (cta) cta.innerHTML = percent === 100
+        ? 'Quero dobrar meu depósito <span>→</span>'
+        : `Quero meus ${percent}% <span>→</span>`;
       const trust = document.getElementById('hero-promo-trust');
       if (trust) trust.innerHTML = `<b>+${percent}%</b> a partir de ${minLabel}`;
       setText('hero-example-deposit', minLabel);
@@ -160,7 +162,7 @@ const app = {
     }
     root.innerHTML = items.slice(0, 6).map(tx => {
       const positive = Number(tx.amount) > 0;
-      const label = ({ bet: 'Aposta', win: 'Resgate', deposit: 'Depósito', deposit_bonus: 'Bônus de 300%', bonus_unlock: 'Bônus liberado', withdraw: 'Saque', affiliate_redeem: 'Comissão' })[tx.type] || 'Movimentação';
+      const label = ({ bet: 'Aposta', win: 'Resgate', deposit: 'Depósito', deposit_bonus: 'Bônus promocional', bonus_unlock: 'Bônus liberado', withdraw: 'Saque', affiliate_redeem: 'Comissão' })[tx.type] || 'Movimentação';
       return `<div class="activity-item"><span class="activity-icon">${positive ? '↗' : '↙'}</span><div><b>${label}</b><span>${this.formatDate(tx.created_at)}</span></div><strong class="activity-amount" style="color:${positive ? 'var(--success)' : 'var(--text)'}">${positive ? '+' : ''}${this.formatBRL(tx.amount)}</strong></div>`;
     }).join('');
   },

@@ -51,6 +51,14 @@ function loadData() {
 }
 let store = loadData();
 store.settings = { ...defaultData.settings, ...(store.settings || {}) };
+if (store.settings.promotionVersion !== PROMOTION_DEFAULTS.promotionVersion) {
+  Object.assign(store.settings, {
+    bonusPercent: PROMOTION_DEFAULTS.bonusPercent,
+    bonusMinDeposit: PROMOTION_DEFAULTS.bonusMinDeposit,
+    promotionVersion: PROMOTION_DEFAULTS.promotionVersion
+  });
+  save();
+}
 function save() {
   try {
     fs.mkdirSync(path.dirname(dataFile), { recursive: true });

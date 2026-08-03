@@ -4,15 +4,29 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { createVizzionPix, getVizzionTransaction, parseVizzionWebhook, vizzionPayStatus } from '../lib/vizzionpay.js';
-import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings } from '../lib/promotion.js';
+import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 
+async function getPromotionSettings() {
+  const settingsRef = db.collection('settings').doc('global');
+  const settingsDoc = await settingsRef.get();
+  const settings = settingsDoc.exists ? settingsDoc.data() : {};
+  if (settings.promotionVersion === PROMOTION_DEFAULTS.promotionVersion) return settings;
+  const campaign = {
+    promoEnabled: true,
+    bonusPercent: PROMOTION_DEFAULTS.bonusPercent,
+    bonusMinDeposit: PROMOTION_DEFAULTS.bonusMinDeposit,
+    promotionVersion: PROMOTION_DEFAULTS.promotionVersion
+  };
+  await settingsRef.set(campaign, { merge: true });
+  return { ...settings, ...campaign };
+}
+
 router.get('/promotion', async (req, res) => {
   try {
-    const settingsDoc = await db.collection('settings').doc('global').get();
-    res.json(normalizePromotionSettings(settingsDoc.exists ? settingsDoc.data() : {}));
+    res.json(normalizePromotionSettings(await getPromotionSettings()));
   } catch (_) {
     res.json(normalizePromotionSettings({}));
   }
@@ -24,9 +38,8 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     let minDeposit = 500;
     let settings = {};
     try {
-      const settingsDoc = await db.collection('settings').doc('global').get();
-      if (settingsDoc.exists) {
-        settings = settingsDoc.data();
+      settings = await getPromotionSettings();
+      if (settings) {
         minDeposit = settings.minDeposit ?? minDeposit;
       }
     } catch (e) {}
@@ -378,7 +391,7 @@ router.get('/history', authenticateToken, async (req, res) => {
     const [snapshot, userDoc, settingsDoc] = await Promise.all([
       db.collection('transactions').where('uid', '==', uid).get(),
       db.collection('users').doc(uid).get(),
-      db.collection('settings').doc('global').get()
+      getPromotionSettings()
     ]);
 
     const history = snapshot.docs
@@ -390,7 +403,7 @@ router.get('/history', authenticateToken, async (req, res) => {
       })
       .slice(0, 50);
     const wallet = getWalletBuckets(userDoc.exists ? userDoc.data() : {});
-    const promotion = normalizePromotionSettings(settingsDoc.exists ? settingsDoc.data() : {});
+    const promotion = normalizePromotionSettings(settingsDoc || {});
     const progress = wallet.rolloverTarget > 0
       ? Math.max(0, Math.min(100, Math.round((1 - wallet.rolloverRemaining / wallet.rolloverTarget) * 100)))
       : 100;
