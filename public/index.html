@@ -17,7 +17,7 @@
   <meta name="twitter:description" content="Deposite a partir de R$ 20 e jogue com o dobro. Bônus sujeito a rollover.">
   <meta name="twitter:image" content="https://block777-omega.vercel.app/og.png?v=20260803-1">
   <title>Blockerino — Deposite R$ 20 e jogue com R$ 40</title>
-  <link rel="stylesheet" href="./css/style.css?v=20260804-1">
+  <link rel="stylesheet" href="./css/style.css?v=20260804-2">
 </head>
 <body>
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
@@ -124,18 +124,20 @@
     <section class="screen play-screen" id="game-screen">
       <div class="game-shell">
         <div class="game-head"><button class="back-link" onclick="game.leaveGame()">← Sair da mesa</button><div><small>PARTIDA EM ANDAMENTO</small><b id="game-session-label">BLOCKERINO ORIGINAL</b></div><div class="game-actions"><button id="btn-game-sound" class="game-sound-toggle" type="button" aria-pressed="true" onclick="game.toggleSound()">🔊 Som</button><button id="btn-cashout" class="btn btn-success" type="button" onclick="game.cashout()" aria-label="Retirar o valor disponível">Retirar agora</button></div></div>
-        <div class="game-hud-bar"><div class="game-hud-stat"><span>Multiplicador</span><b id="hud-multiplier">1.00x</b></div><div class="game-hud-stat"><span>Pontuação</span><b id="hud-score">0</b></div><div class="game-hud-stat"><span>Linhas</span><b id="hud-lines">0</b></div><div class="game-hud-stat"><span>Retorno potencial</span><b id="hud-payout">R$ 0,00</b></div></div>
-        <div class="combo-track" aria-label="Progresso do combo"><i id="hud-combo-bar"></i><span id="hud-combo-label">COMBO PRONTO</span></div>
-        <div class="game-stage">
-          <canvas id="blockerino-canvas" aria-label="Tabuleiro Blockerino"></canvas>
-          <div class="cash-in-effect" id="cash-in-effect" aria-live="polite" aria-atomic="true">
-            <div class="cash-coins" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
-            <span>LINHA COMPLETA · CASH IN</span>
-            <strong id="cash-in-value">R$ 0,00</strong>
-            <small id="cash-in-multiplier">1.00x → 1.00x</small>
+        <div class="game-playfield">
+          <div class="game-hud-bar"><div class="game-hud-stat"><span>Multiplicador</span><b id="hud-multiplier">1.00x</b></div><div class="game-hud-stat"><span>Pontuação</span><b id="hud-score">0</b></div><div class="game-hud-stat"><span>Linhas</span><b id="hud-lines">0</b></div><div class="game-hud-stat"><span>Retorno potencial</span><b id="hud-payout">R$ 0,00</b></div></div>
+          <div class="combo-track" aria-label="Progresso do combo"><i id="hud-combo-bar"></i><span id="hud-combo-label">COMBO PRONTO</span></div>
+          <div class="game-stage">
+            <canvas id="blockerino-canvas" aria-label="Tabuleiro Blockerino"></canvas>
+            <div class="cash-in-effect" id="cash-in-effect" aria-live="polite" aria-atomic="true">
+              <div class="cash-coins" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+              <span>LINHA COMPLETA · CASH IN</span>
+              <strong id="cash-in-value">R$ 0,00</strong>
+              <small id="cash-in-multiplier">1.00x → 1.00x</small>
+            </div>
           </div>
+          <p class="game-help">Toque e arraste uma peça para o tabuleiro. No celular, a peça fica acima do dedo para você enxergar o encaixe.</p>
         </div>
-        <p class="game-help">Toque e arraste uma peça para o tabuleiro. No celular, a peça fica acima do dedo para você enxergar o encaixe.</p>
       </div>
     </section>
 

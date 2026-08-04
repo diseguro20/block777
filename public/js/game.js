@@ -505,7 +505,9 @@ const game = {
   },
 
   setupEvents() {
-    window.addEventListener('resize', () => this.resizeCanvas(), { passive: true });
+    const handleViewportResize = () => this.resizeCanvas();
+    window.addEventListener('resize', handleViewportResize, { passive: true });
+    window.visualViewport?.addEventListener('resize', handleViewportResize, { passive: true });
 
     const getPos = (e) => {
       const rect = this.canvas.getBoundingClientRect();
@@ -578,7 +580,16 @@ const game = {
   resizeCanvas() {
     if (!this.canvas) return;
     const container = this.canvas.parentElement;
-    const width = Math.max(260, Math.min(container.clientWidth, window.innerWidth - 16, 620));
+    const shell = this.canvas.closest('.game-shell');
+    const playfield = this.canvas.closest('.game-playfield');
+    const viewportHeight = window.visualViewport?.height || window.innerHeight;
+    const isMobile = window.matchMedia('(max-width: 580px)').matches;
+    const verticalReserve = viewportHeight <= 600 ? 315 : 350;
+    const heightBound = isMobile ? viewportHeight - verticalReserve : 620;
+    const minimumWidth = isMobile ? 210 : 260;
+    const availableWidth = Math.min(shell?.clientWidth || container.clientWidth, window.innerWidth - 16, 620);
+    const width = Math.max(minimumWidth, Math.min(availableWidth, heightBound));
+    if (playfield) playfield.style.maxWidth = `${width}px`;
     if (Math.abs(this.canvas.width - width) < 2 && Math.abs(this.canvas.height - (width + 130)) < 2) return;
     this.canvas.width = width;
     this.canvas.height = width + 130;
