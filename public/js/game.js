@@ -923,6 +923,7 @@ const game = {
     const score = document.getElementById('hud-score');
     const lines = document.getElementById('hud-lines');
     const payoutElement = document.getElementById('hud-payout');
+    const cashoutButton = document.getElementById('btn-cashout');
     const comboBar = document.getElementById('hud-combo-bar');
     const comboLabel = document.getElementById('hud-combo-label');
 
@@ -932,6 +933,11 @@ const game = {
     
     const payout = Math.floor(this.betAmount * this.multiplier);
     if (payoutElement) payoutElement.textContent = app.formatBRL(payout);
+    if (cashoutButton && this.mode === 'real') {
+      const formattedPayout = app.formatBRL(payout);
+      cashoutButton.textContent = `Retirar ${formattedPayout}`;
+      cashoutButton.setAttribute('aria-label', `Retirar agora o valor disponível de ${formattedPayout}`);
+    }
     if (comboBar) comboBar.style.width = `${Math.max(0, 100 - (this.misses / Math.max(1, this.hand.length)) * 100)}%`;
     if (comboLabel) comboLabel.textContent = this.combo > 0 ? `COMBO ${this.combo}x` : 'MONTE SEU COMBO';
   },
