@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#070b0b">
+  <title>Blockerino — Painel do gerente</title>
+  <link rel="stylesheet" href="/css/style.css?v=20260804-2">
+  <link rel="stylesheet" href="/css/manager.css?v=20260808-1">
+</head>
+<body class="manager-body">
+  <header class="manager-topbar">
+    <a class="brand" href="/"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO <small>PAINEL DO GERENTE</small></span></a>
+    <div class="manager-user"><span><b id="manager-name">Gerente</b><small id="manager-email">—</small></span><button class="btn btn-ghost" onclick="manager.logout()">Sair</button></div>
+  </header>
+
+  <main class="manager-main" id="manager-content">
+    <section class="manager-hero">
+      <div><small>OPERAÇÃO POR GGR</small><h1>Sua operação.<br><em>Seus números.</em></h1><p>GGR corresponde ao total apostado menos os prêmios pagos. A taxa da plataforma é calculada automaticamente em cada partida concluída.</p></div>
+      <article class="manager-link-card"><small>LINK PARA CADASTRAR JOGADORES</small><code id="manager-link">Carregando…</code><button class="btn btn-primary" onclick="manager.copyLink()">Copiar link</button></article>
+    </section>
+
+    <section class="manager-period"><div><small>COMPETÊNCIA ATUAL</small><strong id="manager-period">—</strong></div><span>Taxa contratada: <b id="manager-rate">30,00%</b></span></section>
+
+    <section class="manager-metrics">
+      <article><small>JOGADORES</small><strong id="metric-players">0</strong><span>vinculados ao seu código</span></article>
+      <article><small>TOTAL APOSTADO</small><strong id="metric-bets">R$ 0,00</strong><span>competência atual</span></article>
+      <article><small>PRÊMIOS PAGOS</small><strong id="metric-payouts">R$ 0,00</strong><span>competência atual</span></article>
+      <article class="metric-highlight"><small>GGR</small><strong id="metric-ggr">R$ 0,00</strong><span>apostado menos prêmios</span></article>
+      <article><small>TAXA DA PLATAFORMA</small><strong id="metric-fee">R$ 0,00</strong><span>calculada sobre o GGR</span></article>
+      <article class="metric-due"><small>SALDO A PAGAR</small><strong id="metric-due">R$ 0,00</strong><span>acumulado menos pagamentos</span></article>
+    </section>
+
+    <section class="manager-grid">
+      <article class="manager-panel">
+        <div class="panel-title"><div><small>REDE DO GERENTE</small><h3>Jogadores vinculados</h3></div><button onclick="manager.loadPlayers()">Atualizar</button></div>
+        <div class="table-wrap"><table class="manager-table responsive-table"><thead><tr><th>Jogador</th><th>Partidas</th><th>Apostado</th><th>Prêmios</th><th>GGR</th><th>Status</th></tr></thead><tbody id="manager-players-table"></tbody></table></div>
+      </article>
+      <article class="manager-panel">
+        <div class="panel-title"><div><small>AUDITORIA</small><h3>Últimas partidas</h3></div></div>
+        <div class="table-wrap"><table class="manager-table responsive-table"><thead><tr><th>Data</th><th>Aposta</th><th>Prêmio</th><th>GGR</th><th>Taxa</th></tr></thead><tbody id="manager-games-table"></tbody></table></div>
+      </article>
+    </section>
+
+    <section class="manager-panel payments-panel">
+      <div class="panel-title"><div><small>CONCILIAÇÃO</small><h3>Pagamentos registrados</h3></div><strong id="manager-total-paid">R$ 0,00 pagos</strong></div>
+      <div class="table-wrap"><table class="manager-table responsive-table"><thead><tr><th>Data</th><th>Competência</th><th>Descrição</th><th>Valor</th></tr></thead><tbody id="manager-payments-table"></tbody></table></div>
+    </section>
+  </main>
+
+  <section class="manager-login" id="manager-login" hidden>
+    <form class="modal-card" id="manager-login-form"><small>ACESSO DO GERENTE</small><h3>Entre na sua operação.</h3><p>Use a conta que foi ativada como gerente pelo administrador.</p><label>E-mail</label><input id="manager-login-email" type="email" required><label>Senha</label><input id="manager-login-password" type="password" required><button class="btn btn-primary btn-wide">Entrar</button><a href="/">Voltar ao site</a></form>
+  </section>
+
+  <div class="toast-container" id="toast-container"></div>
+  <script src="/js/app.js?v=20260808-1"></script>
+  <script src="/js/manager.js?v=20260808-1"></script>
+</body>
+</html>

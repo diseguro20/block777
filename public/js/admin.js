@@ -1,5 +1,6 @@
 const admin = {
   selectedUserIdForBalance: null,
+  selectedManagerId: null,
   refreshTimer: null,
 
   async init() {
@@ -47,11 +48,13 @@ const admin = {
     document.getElementById('admin-page-title').textContent = ({
       overview: 'Visão geral',
       players: 'Jogadores',
+      managers: 'Gerentes',
       games: 'Partidas',
       finance: 'Financeiro',
       settings: 'Configurações'
     })[name];
     if (name === 'players') this.loadUsers();
+    if (name === 'managers') this.loadManagers();
     if (name === 'games') this.loadGameLogs();
     if (name === 'finance') {
       this.loadDeposits();
@@ -65,6 +68,7 @@ const admin = {
     await Promise.all([
       this.loadOverview(),
       this.loadUsers(),
+      this.loadManagers(),
       this.loadGameLogs(),
       this.loadDeposits(),
       this.loadWithdrawals(),
@@ -104,6 +108,7 @@ const admin = {
       'set-min-withdrawal': data.minWithdrawal / 100,
       'set-level1': data.level1Rate,
       'set-level2': data.level2Rate,
+      'set-manager-ggr': data.defaultManagerGgrRate ?? 30,
       'set-bonus-percent': data.bonusPercent,
       'set-bonus-min': data.bonusMinDeposit / 100,
       'set-rollover': data.rolloverMultiplier
@@ -116,6 +121,8 @@ const admin = {
     if (maintenance) maintenance.checked = Boolean(data.maintenance);
     const promoEnabled = document.getElementById('set-promo-enabled');
     if (promoEnabled) promoEnabled.checked = Boolean(data.promoEnabled);
+    const managerSignupEnabled = document.getElementById('set-manager-signup-enabled');
+    if (managerSignupEnabled) managerSignupEnabled.checked = data.managerSelfRegistrationEnabled !== false;
   },
 
   bindSettings() {
@@ -130,10 +137,12 @@ const admin = {
         minWithdrawal: Math.round(Number(document.getElementById('set-min-withdrawal').value) * 100),
         level1Rate: Number(document.getElementById('set-level1').value),
         level2Rate: Number(document.getElementById('set-level2').value),
+        defaultManagerGgrRate: Number(document.getElementById('set-manager-ggr').value),
         bonusPercent: Number(document.getElementById('set-bonus-percent').value),
         bonusMinDeposit: Math.round(Number(document.getElementById('set-bonus-min').value) * 100),
         rolloverMultiplier: Number(document.getElementById('set-rollover').value),
         promoEnabled: document.getElementById('set-promo-enabled').checked,
+        managerSelfRegistrationEnabled: document.getElementById('set-manager-signup-enabled').checked,
         maintenance: document.getElementById('set-maintenance').checked
       };
       await app.fetchAPI('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });
@@ -167,8 +176,85 @@ const admin = {
         <td data-label="Linhas" class="mono">${Number(user.linesCleared || 0).toLocaleString('pt-BR')}</td>
         <td data-label="Status"><button class="badge badge-${user.status === 'active' ? 'success' : 'danger'}" onclick="admin.toggleStatus('${user.id}','${user.status}')">${user.status === 'active' ? 'Ativo' : 'Suspenso'}</button></td>
         <td data-label="Influencer"><button class="badge ${user.is_influencer ? 'badge-success' : ''}" onclick="admin.toggleInfluencer('${user.id}',${Boolean(user.is_influencer)})">${user.is_influencer ? 'Ativo' : 'Padrão'}</button></td>
-        <td data-label="Ação"><button class="table-action" onclick="admin.openBalanceModal('${user.id}','${this.escape(user.username)}')">Ajustar saldo</button></td>
+        <td data-label="Ação" class="actions"><button class="table-action" onclick="admin.openBalanceModal('${user.id}','${this.escape(user.username)}')">Saldo</button>${user.role === 'admin' ? '' : user.role === 'manager' ? `<button class="table-action" onclick="admin.showView('managers')">Gerente</button>` : `<button class="table-action" onclick="admin.activateManager('${user.id}','${this.escape(user.username)}')">Tornar gerente</button>`}</td>
       </tr>`).join('') : '<tr><td colspan="11" class="empty-state">Nenhum jogador encontrado.</td></tr>';
+  },
+
+  async activateManager(id, name) {
+    const data = await app.fetchAPI(`/api/admin/managers/${id}/activate`, {
+      method: 'POST',
+      body: JSON.stringify({})
+    });
+    app.showToast(`${name} agora é gerente com taxa de ${Number(data.rate || 30).toFixed(2)}%.`);
+    await Promise.all([this.loadUsers(), this.loadManagers()]);
+    this.showView('managers');
+  },
+
+  async loadManagers() {
+    const data = await app.fetchAPI('/api/admin/managers');
+    const managers = data.managers || [];
+    const totalGgr = managers.reduce((total, item) => total + Number(item.ggr || 0), 0);
+    const totalFee = managers.reduce((total, item) => total + Number(item.feeAccrued || 0), 0);
+    const totalDue = managers.reduce((total, item) => total + Number(item.outstanding || 0), 0);
+    const setText = (id, value) => { const element = document.getElementById(id); if (element) element.textContent = value; };
+    setText('manager-stat-count', managers.length.toLocaleString('pt-BR'));
+    setText('manager-stat-ggr', app.formatBRL(totalGgr));
+    setText('manager-stat-fee', app.formatBRL(totalFee));
+    setText('manager-stat-due', app.formatBRL(totalDue));
+    const body = document.getElementById('managers-table');
+    if (!body) return;
+    body.innerHTML = managers.length ? managers.map(item => `<tr>
+      <td data-label="Gerente"><div class="user-cell"><b>${this.escape(item.username)}</b><span>${this.escape(item.email)}</span></div></td>
+      <td data-label="Código"><span class="badge">${this.escape(item.code || '-')}</span></td>
+      <td data-label="Jogadores" class="mono">${Number(item.players || 0).toLocaleString('pt-BR')}</td>
+      <td data-label="Taxa" class="mono">${Number(item.rate || 0).toFixed(2)}%</td>
+      <td data-label="Apostado" class="mono">${app.formatBRL(item.totalBets || 0)}</td>
+      <td data-label="Prêmios" class="mono">${app.formatBRL(item.totalPayouts || 0)}</td>
+      <td data-label="GGR" class="mono ${Number(item.ggr || 0) >= 0 ? 'positive' : ''}">${app.formatBRL(item.ggr || 0)}</td>
+      <td data-label="Pago" class="mono">${app.formatBRL(item.totalPaid || 0)}</td>
+      <td data-label="A receber" class="mono">${app.formatBRL(item.outstanding || 0)}</td>
+      <td data-label="Status"><span class="badge badge-${item.status === 'active' ? 'success' : 'danger'}">${item.status === 'active' ? 'Ativo' : 'Suspenso'}</span></td>
+      <td data-label="Ações"><button class="table-action" onclick="admin.openManagerModal('${item.id}','${this.escape(item.username)}',${Number(item.rate || 0)},'${this.escape(item.code || '')}','${item.status}')">Configurar</button></td>
+    </tr>`).join('') : '<tr><td colspan="11" class="empty-state">Nenhum gerente cadastrado. Use “Tornar gerente” na lista de jogadores.</td></tr>';
+  },
+
+  openManagerModal(id, name, rate, code, status) {
+    this.selectedManagerId = id;
+    document.getElementById('manager-modal-name').textContent = name;
+    document.getElementById('manager-rate-input').value = rate;
+    document.getElementById('manager-code-input').value = code;
+    document.getElementById('manager-status-select').value = status;
+    document.getElementById('manager-payment-input').value = '';
+    document.getElementById('manager-payment-desc').value = 'Pagamento de GGR';
+    document.getElementById('manager-modal').classList.add('active');
+  },
+
+  async saveManager() {
+    if (!this.selectedManagerId) return;
+    await app.fetchAPI(`/api/admin/managers/${this.selectedManagerId}`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        ggrRate: Number(document.getElementById('manager-rate-input').value),
+        code: document.getElementById('manager-code-input').value,
+        status: document.getElementById('manager-status-select').value
+      })
+    });
+    app.closeModal('manager-modal');
+    app.showToast('Gerente atualizado. A nova taxa vale para as próximas partidas.');
+    await this.loadManagers();
+  },
+
+  async registerManagerPayment() {
+    if (!this.selectedManagerId) return;
+    const amount = Math.round(Number(document.getElementById('manager-payment-input').value) * 100);
+    if (!amount) return app.showToast('Informe o valor recebido.');
+    await app.fetchAPI(`/api/admin/managers/${this.selectedManagerId}/payments`, {
+      method: 'POST',
+      body: JSON.stringify({ amount, description: document.getElementById('manager-payment-desc').value })
+    });
+    app.closeModal('manager-modal');
+    app.showToast('Pagamento de GGR registrado.');
+    await this.loadManagers();
   },
 
   async loadGameLogs(search = '') {
@@ -183,13 +269,15 @@ const admin = {
         <td data-label="Resultado"><span class="badge badge-${won ? 'success' : 'danger'}">${won ? 'Vitória' : 'Derrota'}</span></td>
         <td data-label="Aposta" class="mono">${app.formatBRL(game.amount || 0)}</td>
         <td data-label="Prêmio" class="mono ${won ? 'positive' : ''}">${app.formatBRL(game.payout || 0)}</td>
+        <td data-label="GGR" class="mono">${game.manager_id ? app.formatBRL(game.manager_ggr || 0) : '-'}</td>
+        <td data-label="Taxa GGR" class="mono">${game.manager_id ? app.formatBRL(game.manager_platform_fee || 0) : '-'}</td>
         <td data-label="Multiplicador" class="mono">${Number(game.multiplier || 0).toFixed(2)}x</td>
         <td data-label="Blocos" class="mono">${Number(game.blocksPlaced || 0).toLocaleString('pt-BR')}</td>
         <td data-label="Linhas" class="mono">${Number(game.linesCleared || game.floorsReached || 0).toLocaleString('pt-BR')}</td>
         <td data-label="Pontos" class="mono">${Number(game.score || 0).toLocaleString('pt-BR')}</td>
         <td data-label="Sessão"><span class="session-id" title="${this.escape(game.sessionId || '')}">${this.escape(String(game.sessionId || '-').slice(0, 8))}</span></td>
       </tr>`;
-    }).join('') : '<tr><td colspan="10" class="empty-state">Nenhuma partida registrada.</td></tr>';
+    }).join('') : '<tr><td colspan="12" class="empty-state">Nenhuma partida registrada.</td></tr>';
   },
 
   async loadGatewayStatus() {

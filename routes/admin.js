@@ -3,6 +3,7 @@ import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { calculateDepositPromotion, getWalletBuckets, PROMOTION_DEFAULTS } from '../lib/promotion.js';
+import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
 
 const router = express.Router();
 
@@ -171,7 +172,10 @@ router.put('/users/:id', async (req, res) => {
   try {
     const { role, status, is_influencer, affiliate_rate, sub_affiliate_rate } = req.body;
     const updateData = {};
-    if (role !== undefined) updateData.role = role;
+    if (role !== undefined) {
+      if (!['user', 'manager', 'admin'].includes(role)) return res.status(400).json({ error: 'Perfil inválido.' });
+      updateData.role = role;
+    }
     if (status !== undefined) updateData.status = status;
     if (is_influencer !== undefined) updateData.is_influencer = is_influencer;
     if (affiliate_rate !== undefined) updateData.affiliate_rate = affiliate_rate;
@@ -228,6 +232,106 @@ router.delete('/users/:id', async (req, res) => {
   }
 });
 
+router.get('/managers', async (req, res) => {
+  try {
+    const [usersSnapshot, metricsSnapshot, paymentsSnapshot, settingsDoc] = await Promise.all([
+      db.collection('users').get(),
+      db.collection('manager_metrics').get(),
+      db.collection('manager_payments').get(),
+      db.collection('settings').doc('global').get()
+    ]);
+    const settings = settingsDoc.exists ? settingsDoc.data() : {};
+    const defaultRate = normalizeGgrRate(settings.defaultManagerGgrRate, DEFAULT_MANAGER_GGR_RATE);
+    const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const metrics = metricsSnapshot.docs.map(doc => doc.data());
+    const payments = paymentsSnapshot.docs.map(doc => doc.data());
+    const managers = users.filter(user => user.role === 'manager').map(manager => {
+      const managerMetrics = metrics.filter(item => item.manager_id === manager.id);
+      const managerPayments = payments.filter(item => item.manager_id === manager.id);
+      const feeAccrued = managerMetrics.reduce((total, item) => total + (Number(item.platform_fee) || 0), 0);
+      const totalPaid = managerPayments.reduce((total, item) => total + (Number(item.amount) || 0), 0);
+      return {
+        id: manager.id,
+        username: manager.username,
+        email: manager.email,
+        status: manager.status,
+        code: manager.manager_code,
+        rate: normalizeGgrRate(manager.manager_ggr_rate, defaultRate),
+        players: users.filter(user => user.manager_id === manager.id).length,
+        totalBets: managerMetrics.reduce((total, item) => total + (Number(item.total_bets) || 0), 0),
+        totalPayouts: managerMetrics.reduce((total, item) => total + (Number(item.total_payouts) || 0), 0),
+        ggr: managerMetrics.reduce((total, item) => total + (Number(item.ggr) || 0), 0),
+        feeAccrued,
+        totalPaid,
+        outstanding: Math.max(0, feeAccrued - totalPaid)
+      };
+    });
+    res.json({ managers, defaultRate, currentPeriod: managerPeriod() });
+  } catch (error) {
+    console.error('Admin managers error:', error);
+    res.status(500).json({ error: 'Não foi possível carregar os gerentes.' });
+  }
+});
+
+router.post('/managers/:id/activate', async (req, res) => {
+  try {
+    const userRef = db.collection('users').doc(req.params.id);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    if (userDoc.id === 'admin_master_uid') return res.status(400).json({ error: 'A conta principal não pode virar gerente.' });
+    const settingsDoc = await db.collection('settings').doc('global').get();
+    const defaultRate = normalizeGgrRate(settingsDoc.exists ? settingsDoc.data().defaultManagerGgrRate : undefined, DEFAULT_MANAGER_GGR_RATE);
+    const rate = normalizeGgrRate(req.body.ggrRate, defaultRate);
+    const code = userDoc.data().manager_code || buildManagerCode(userDoc.data().username, userDoc.id.slice(0, 5));
+    await userRef.update({ role: 'manager', manager_code: code, manager_ggr_rate: rate, status: 'active' });
+    res.json({ id: userDoc.id, role: 'manager', code, rate });
+  } catch (error) {
+    res.status(500).json({ error: 'Não foi possível ativar o gerente.' });
+  }
+});
+
+router.put('/managers/:id', async (req, res) => {
+  try {
+    const update = {};
+    if (req.body.ggrRate !== undefined) update.manager_ggr_rate = normalizeGgrRate(req.body.ggrRate);
+    if (req.body.status !== undefined) {
+      if (!['active', 'suspended'].includes(req.body.status)) return res.status(400).json({ error: 'Status inválido.' });
+      update.status = req.body.status;
+    }
+    if (req.body.code !== undefined) {
+      const code = String(req.body.code).trim().toLowerCase();
+      if (!/^[a-z0-9]{4,20}$/.test(code)) return res.status(400).json({ error: 'Use um código de 4 a 20 letras ou números.' });
+      const existing = await db.collection('users').where('manager_code', '==', code).limit(1).get();
+      if (!existing.empty && existing.docs[0].id !== req.params.id) return res.status(409).json({ error: 'Este código já está em uso.' });
+      update.manager_code = code;
+    }
+    await db.collection('users').doc(req.params.id).update(update);
+    res.json({ id: req.params.id, ...update });
+  } catch (error) {
+    res.status(500).json({ error: 'Não foi possível atualizar o gerente.' });
+  }
+});
+
+router.post('/managers/:id/payments', async (req, res) => {
+  try {
+    const amount = Math.max(0, Math.round(Number(req.body.amount) || 0));
+    if (!amount) return res.status(400).json({ error: 'Informe um pagamento válido.' });
+    const managerDoc = await db.collection('users').doc(req.params.id).get();
+    if (!managerDoc.exists || managerDoc.data().role !== 'manager') return res.status(404).json({ error: 'Gerente não encontrado.' });
+    const paymentRef = await db.collection('manager_payments').add({
+      manager_id: req.params.id,
+      amount,
+      period: String(req.body.period || managerPeriod()),
+      description: String(req.body.description || 'Pagamento de GGR'),
+      created_by: req.user.uid,
+      created_at: FieldValue.serverTimestamp()
+    });
+    res.status(201).json({ id: paymentRef.id, amount });
+  } catch (error) {
+    res.status(500).json({ error: 'Não foi possível registrar o pagamento.' });
+  }
+});
+
 router.get('/settings', async (req, res) => {
   try {
     let settings = {
@@ -239,6 +343,8 @@ router.get('/settings', async (req, res) => {
       level1Rate: 10,
       level2Rate: 2,
       maintenance: false,
+      defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE,
+      managerSelfRegistrationEnabled: true,
       ...PROMOTION_DEFAULTS
     };
     try {
@@ -249,7 +355,7 @@ router.get('/settings', async (req, res) => {
     } catch (e) {}
     res.json(settings);
   } catch (error) {
-    res.json({ difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false, ...PROMOTION_DEFAULTS });
+    res.json({ difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, ...PROMOTION_DEFAULTS });
   }
 });
 
@@ -264,9 +370,11 @@ router.put('/settings', async (req, res) => {
       level1Rate: 10,
       level2Rate: 2,
       maintenance: false,
+      defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE,
+      managerSelfRegistrationEnabled: true,
       ...PROMOTION_DEFAULTS
     };
-    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance', 'promoEnabled', 'bonusPercent', 'bonusMinDeposit', 'rolloverMultiplier'];
+    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance', 'promoEnabled', 'bonusPercent', 'bonusMinDeposit', 'rolloverMultiplier', 'defaultManagerGgrRate', 'managerSelfRegistrationEnabled'];
     const update = {};
     allowed.forEach(key => {
       if (req.body[key] !== undefined) update[key] = req.body[key];
@@ -275,6 +383,8 @@ router.put('/settings', async (req, res) => {
     if (update.bonusMinDeposit !== undefined) update.bonusMinDeposit = Math.max(100, Math.round(Number(update.bonusMinDeposit) || 0));
     if (update.rolloverMultiplier !== undefined) update.rolloverMultiplier = Math.max(1, Math.min(100, Number(update.rolloverMultiplier) || 1));
     if (update.promoEnabled !== undefined) update.promoEnabled = Boolean(update.promoEnabled);
+    if (update.managerSelfRegistrationEnabled !== undefined) update.managerSelfRegistrationEnabled = Boolean(update.managerSelfRegistrationEnabled);
+    if (update.defaultManagerGgrRate !== undefined) update.defaultManagerGgrRate = normalizeGgrRate(update.defaultManagerGgrRate);
     await db.collection('settings').doc('global').set(update, { merge: true });
     const saved = await db.collection('settings').doc('global').get();
     res.json({ ...defaults, ...saved.data() });

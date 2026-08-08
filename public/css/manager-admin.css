@@ -1,0 +1,47 @@
+.section-copy {
+  margin: 6px 0 0;
+  max-width: 660px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.manager-stats {
+  margin-top: 18px;
+}
+
+.manager-stats .metric:last-child strong {
+  color: #f5cb65;
+}
+
+.modal-divider {
+  margin: 24px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+.admin-section-head > .btn {
+  flex: 0 0 auto;
+}
+
+@media (max-width: 650px) {
+  .side-nav {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+
+  .side-nav button {
+    padding: 0 1px;
+  }
+
+  .side-nav span {
+    font-size: 6.5px;
+  }
+
+  .manager-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .admin-section-head > .btn {
+    width: 100%;
+  }
+}

@@ -4,8 +4,26 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { allocatePromotionalBet, allocatePromotionalPayout, getWalletBuckets } from '../lib/promotion.js';
+import { calculateGgrEntry, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
 
 const router = express.Router();
+
+function recordManagerMetric(transaction, managerId, period, entry, won) {
+  if (!managerId) return;
+  const metricRef = db.collection('manager_metrics').doc(`${managerId}_${period}`);
+  transaction.set(metricRef, {
+    manager_id: managerId,
+    period,
+    total_bets: FieldValue.increment(entry.betAmount),
+    total_payouts: FieldValue.increment(entry.payout),
+    ggr: FieldValue.increment(entry.ggr),
+    platform_fee: FieldValue.increment(entry.platformFee),
+    games: FieldValue.increment(1),
+    wins: FieldValue.increment(won ? 1 : 0),
+    losses: FieldValue.increment(won ? 0 : 1),
+    updated_at: FieldValue.serverTimestamp()
+  }, { merge: true });
+}
 
 router.post('/start', authenticateToken, async (req, res) => {
   try {
@@ -18,6 +36,7 @@ router.post('/start', authenticateToken, async (req, res) => {
     let minBet = 100;
     let maxBet = 10000;
     let maintenance = false;
+    let defaultManagerGgrRate = DEFAULT_MANAGER_GGR_RATE;
     try {
       const settingsDoc = await db.collection('settings').doc('global').get();
       if (settingsDoc.exists) {
@@ -26,6 +45,7 @@ router.post('/start', authenticateToken, async (req, res) => {
         minBet = settings.minBet ?? minBet;
         maxBet = settings.maxBet ?? maxBet;
         maintenance = Boolean(settings.maintenance);
+        defaultManagerGgrRate = normalizeGgrRate(settings.defaultManagerGgrRate, DEFAULT_MANAGER_GGR_RATE);
       }
     } catch (e) {}
     if (maintenance) return res.status(503).json({ error: 'As apostas estão temporariamente pausadas.' });
@@ -50,6 +70,17 @@ router.post('/start', authenticateToken, async (req, res) => {
       const wallet = getWalletBuckets(userData);
       if (wallet.balance < amount) throw new Error('Saldo insuficiente para realizar a aposta.');
 
+      let managerId = userData.manager_id || null;
+      let managerGgrRate = defaultManagerGgrRate;
+      if (managerId) {
+        const managerDoc = await t.get(db.collection('users').doc(managerId));
+        if (!managerDoc.exists || managerDoc.data().role !== 'manager' || managerDoc.data().status !== 'active') {
+          managerId = null;
+        } else {
+          managerGgrRate = normalizeGgrRate(managerDoc.data().manager_ggr_rate, defaultManagerGgrRate);
+        }
+      }
+
       if (userData.is_influencer === 1) {
         difficulty = 'easy';
       } else {
@@ -59,6 +90,13 @@ router.post('/start', authenticateToken, async (req, res) => {
 
       // Marcar apostas anteriores pendentes como encerradas
       pendingBets.docs.forEach(betDoc => {
+        const pending = betDoc.data();
+        const pendingManagerId = pending.manager_id || null;
+        const pendingEntry = calculateGgrEntry({
+          betAmount: pending.amount,
+          payout: 0,
+          rate: pending.manager_ggr_rate ?? defaultManagerGgrRate
+        });
         t.update(betDoc.ref, {
           status: 'completed',
           result: 'loss',
@@ -66,8 +104,12 @@ router.post('/start', authenticateToken, async (req, res) => {
           multiplier: 0,
           blocksPlaced: 0,
           linesCleared: 0,
+          manager_ggr: pendingEntry.ggr,
+          manager_platform_fee: pendingEntry.platformFee,
+          manager_period: managerPeriod(),
           completed_at: FieldValue.serverTimestamp()
         });
+        recordManagerMetric(t, pendingManagerId, managerPeriod(), pendingEntry, false);
       });
 
       const allocation = allocatePromotionalBet(wallet, amount);
@@ -104,6 +146,8 @@ router.post('/start', authenticateToken, async (req, res) => {
         score: 0,
         cashStake,
         bonusStake,
+        manager_id: managerId,
+        manager_ggr_rate: managerGgrRate,
         rolloverCompleted,
         created_at: FieldValue.serverTimestamp()
       });
@@ -175,6 +219,12 @@ router.post('/end', authenticateToken, async (req, res) => {
     const safeBlocks = Math.max(0, Math.floor(Number(blocksPlaced) || 0));
     const safeScore = Math.max(0, Math.floor(Number(score) || 0));
     const resultLabel = payout > 0 ? 'win' : 'loss';
+    const period = managerPeriod();
+    const managerEntry = calculateGgrEntry({
+      betAmount: betData.amount,
+      payout,
+      rate: betData.manager_ggr_rate ?? DEFAULT_MANAGER_GGR_RATE
+    });
     const userRef = db.collection('users').doc(uid);
 
     const result = await db.runTransaction(async (t) => {
@@ -195,8 +245,12 @@ router.post('/end', authenticateToken, async (req, res) => {
         score: safeScore,
         multiplier: finalMultiplier,
         payout,
+        manager_ggr: managerEntry.ggr,
+        manager_platform_fee: managerEntry.platformFee,
+        manager_period: period,
         completed_at: FieldValue.serverTimestamp()
       });
+      recordManagerMetric(t, betData.manager_id, period, managerEntry, payout > 0);
 
       if (payout > 0) {
         const payoutAllocation = allocatePromotionalPayout(wallet, payout, betData);

@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import { v4 as uuid } from 'uuid';
 import { vizzionPayStatus } from '../lib/vizzionpay.js';
 import { allocatePromotionalBet, allocatePromotionalPayout, calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
+import { buildManagerCode, calculateGgrEntry, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
 
 const app = express();
 app.use(cors());
@@ -30,7 +31,8 @@ const firebaseModulesPromise = useFirebase
       import('../routes/affiliate.js'),
       import('../routes/admin.js'),
       import('../lib/firebase.js'),
-      import('../middleware/auth.js')
+      import('../middleware/auth.js'),
+      import('../routes/manager.js')
     ])
   : Promise.resolve(null);
 
@@ -39,8 +41,8 @@ const defaultData = {
     { id: 'admin_master_uid', username: 'admin', email: 'admin@block777.com', password_hash: bcrypt.hashSync('admin777', 10), balance: 100000, cash_balance: 100000, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'admin', status: 'active', ref_code: 'admin777', referred_by: null, affiliate_balance: 0, affiliate_rate: 10, sub_affiliate_rate: 2, is_influencer: 1, created_at: now() },
     { id: 'demo_user', username: 'demo', email: 'demo@blockerino.app', password_hash: bcrypt.hashSync('demo123', 10), balance: 5000, cash_balance: 5000, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active', ref_code: 'demo777', referred_by: null, affiliate_balance: 0, affiliate_rate: 10, sub_affiliate_rate: 2, is_influencer: 0, created_at: now() }
   ],
-  bets: [], transactions: [], deposits: [], withdrawals: [], commissions: [],
-  settings: { difficulty: 'impossible', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false, ...PROMOTION_DEFAULTS }
+  bets: [], transactions: [], deposits: [], withdrawals: [], commissions: [], managerPayments: [],
+  settings: { difficulty: 'impossible', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, maintenance: false, ...PROMOTION_DEFAULTS }
 };
 
 function loadData() {
@@ -51,6 +53,7 @@ function loadData() {
 }
 let store = loadData();
 store.settings = { ...defaultData.settings, ...(store.settings || {}) };
+store.managerPayments = Array.isArray(store.managerPayments) ? store.managerPayments : [];
 if (store.settings.promotionVersion !== PROMOTION_DEFAULTS.promotionVersion) {
   Object.assign(store.settings, {
     bonusPercent: PROMOTION_DEFAULTS.bonusPercent,
@@ -86,11 +89,26 @@ function admin(req, res, next) {
   if (req.currentUser?.role !== 'admin') return res.status(403).json({ error: 'Acesso exclusivo para administradores.' });
   next();
 }
+function manager(req, res, next) {
+  if (req.currentUser?.role !== 'manager') return res.status(403).json({ error: 'Acesso exclusivo para gerentes.' });
+  next();
+}
 function addTransaction(uid, type, amount, status = 'completed', extra = {}) {
   const user = store.users.find(item => item.id === uid);
   const tx = { id: uuid(), uid, type, amount, status, balance_after: user?.balance || 0, created_at: now(), ...extra };
   store.transactions.unshift(tx);
   return tx;
+}
+function settleLocalManagerBet(bet, payout) {
+  const entry = calculateGgrEntry({
+    betAmount: bet.amount,
+    payout,
+    rate: bet.manager_ggr_rate ?? store.settings.defaultManagerGgrRate
+  });
+  bet.manager_ggr = entry.ggr;
+  bet.manager_platform_fee = entry.platformFee;
+  bet.manager_period = managerPeriod();
+  return entry;
 }
 
 // Na Vercel, usa as coleções duráveis do Firebase já configuradas no projeto.
@@ -109,6 +127,7 @@ if (useFirebase) {
   app.use('/api/wallet', mountFirebaseRouter(2));
   app.use('/api/affiliate', mountFirebaseRouter(3));
   app.use('/api/admin', mountFirebaseRouter(4));
+  app.use('/api/manager', mountFirebaseRouter(7));
   app.get('/api/dashboard', async (req, res, next) => {
     try {
       const modules = await firebaseModulesPromise;
@@ -154,7 +173,39 @@ app.post('/api/auth/register', async (req, res) => {
   if (username.length < 3 || !email.includes('@') || password.length < 6) return res.status(400).json({ error: 'Use um nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
   if (store.users.some(user => user.email === email || user.username.toLowerCase() === username.toLowerCase())) return res.status(409).json({ error: 'E-mail ou nome de usuário já cadastrado.' });
   const referrer = store.users.find(user => user.ref_code === String(req.body.referred_by || '').toLowerCase());
-  const user = { id: uuid(), username, email, password_hash: await bcrypt.hash(password, 10), balance: 0, cash_balance: 0, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active', ref_code: `${username.replace(/\W/g, '').slice(0, 12)}${crypto.randomBytes(2).toString('hex')}`.toLowerCase(), referred_by: referrer?.id || null, affiliate_balance: 0, affiliate_rate: null, sub_affiliate_rate: null, is_influencer: 0, created_at: now() };
+  const managerCode = String(req.body.manager_code || '').trim().toLowerCase();
+  const managerUser = managerCode ? store.users.find(user => user.role === 'manager' && user.status === 'active' && user.manager_code === managerCode) : null;
+  if (managerCode && !managerUser) return res.status(400).json({ error: 'Código de gerente inválido ou indisponível.' });
+  const user = { id: uuid(), username, email, password_hash: await bcrypt.hash(password, 10), balance: 0, cash_balance: 0, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active', ref_code: `${username.replace(/\W/g, '').slice(0, 12)}${crypto.randomBytes(2).toString('hex')}`.toLowerCase(), referred_by: referrer?.id || null, manager_id: managerUser?.id || null, affiliate_balance: 0, affiliate_rate: null, sub_affiliate_rate: null, is_influencer: 0, created_at: now() };
+  store.users.push(user); save();
+  res.status(201).json({ token: tokenFor(user), user: publicUser(user) });
+});
+
+app.post('/api/auth/register-manager', async (req, res) => {
+  if (store.settings.managerSelfRegistrationEnabled === false) {
+    return res.status(403).json({ error: 'Novos cadastros de gerente estão temporariamente fechados.' });
+  }
+  const username = String(req.body.username || '').trim();
+  const email = cleanEmail(req.body.email);
+  const password = String(req.body.password || '');
+  if (username.length < 3 || !email.includes('@') || password.length < 6) {
+    return res.status(400).json({ error: 'Use um nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
+  }
+  if (store.users.some(user => user.email === email || user.username.toLowerCase() === username.toLowerCase())) {
+    return res.status(409).json({ error: 'E-mail ou nome de usuário já cadastrado.' });
+  }
+  let managerCode = buildManagerCode(username, crypto.randomBytes(3).toString('hex'));
+  if (store.users.some(user => user.manager_code === managerCode)) managerCode = buildManagerCode(username, crypto.randomBytes(5).toString('hex'));
+  const user = {
+    id: uuid(), username, email, password_hash: await bcrypt.hash(password, 10),
+    balance: 0, cash_balance: 0, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0,
+    role: 'manager', status: 'active', manager_code: managerCode,
+    manager_ggr_rate: normalizeGgrRate(store.settings.defaultManagerGgrRate), manager_id: null,
+    ref_code: buildManagerCode(username, crypto.randomBytes(2).toString('hex')),
+    referred_by: null, sub_referred_by: null, affiliate_balance: 0,
+    affiliate_rate: null, sub_affiliate_rate: null, is_influencer: 0,
+    signup_source: 'hidden_manager_page', created_at: now()
+  };
   store.users.push(user); save();
   res.status(201).json({ token: tokenFor(user), user: publicUser(user) });
 });
@@ -182,6 +233,7 @@ app.post('/api/game/start', auth, (req, res) => {
   if (wallet.balance < amount) return res.status(400).json({ error: 'Saldo insuficiente.' });
   store.bets.filter(bet => bet.uid === req.currentUser.id && bet.status === 'pending').forEach(bet => {
     Object.assign(bet, { status: 'completed', result: 'loss', payout: 0, multiplier: 0, blocksPlaced: 0, linesCleared: 0, score: 0, completed_at: now() });
+    settleLocalManagerBet(bet, 0);
   });
   const allocation = allocatePromotionalBet(wallet, amount);
   req.currentUser.balance = allocation.balance;
@@ -191,7 +243,9 @@ app.post('/api/game/start', auth, (req, res) => {
   if (allocation.rolloverCompleted) req.currentUser.rollover_target = 0;
   const sessionId = uuid();
   const seedHash = crypto.createHash('sha256').update(crypto.randomBytes(32)).digest('hex');
-  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, cashStake: allocation.cashStake, bonusStake: allocation.bonusStake, rolloverCompleted: allocation.rolloverCompleted, created_at: now() });
+  const managerUser = store.users.find(user => user.id === req.currentUser.manager_id && user.role === 'manager' && user.status === 'active');
+  const managerRate = normalizeGgrRate(managerUser?.manager_ggr_rate, store.settings.defaultManagerGgrRate);
+  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, cashStake: allocation.cashStake, bonusStake: allocation.bonusStake, rolloverCompleted: allocation.rolloverCompleted, manager_id: managerUser?.id || null, manager_ggr_rate: managerRate, created_at: now() });
   addTransaction(req.currentUser.id, 'bet', -amount);
   if (allocation.rolloverCompleted) addTransaction(req.currentUser.id, 'bonus_unlock', 0, 'completed', { unlocked_amount: allocation.unlockedBonus });
   save();
@@ -208,6 +262,7 @@ app.post('/api/game/end', auth, (req, res) => {
   const score = Math.max(0, Math.floor(Number(req.body.score) || 0));
   const result = payout > 0 ? 'win' : 'loss';
   Object.assign(bet, { status: 'completed', result, payout, multiplier, floorsReached: linesCleared, linesCleared, blocksPlaced, score, completed_at: now() });
+  settleLocalManagerBet(bet, payout);
   if (payout) {
     const payoutAllocation = allocatePromotionalPayout(getWalletBuckets(req.currentUser), payout, bet);
     req.currentUser.balance = payoutAllocation.balance;
@@ -322,7 +377,7 @@ app.get('/api/admin/game-logs', auth, admin, (req, res) => {
 });
 app.put('/api/admin/users/:id', auth, admin, (req, res) => {
   const user = store.users.find(item => item.id === req.params.id); if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
-  ['status', 'is_influencer', 'affiliate_rate', 'sub_affiliate_rate'].forEach(key => { if (req.body[key] !== undefined) user[key] = req.body[key]; });
+  ['role', 'status', 'is_influencer', 'affiliate_rate', 'sub_affiliate_rate'].forEach(key => { if (req.body[key] !== undefined) user[key] = req.body[key]; });
   save(); res.json(publicUser(user));
 });
 app.put('/api/admin/users/:id/balance', auth, admin, (req, res) => {
@@ -336,10 +391,101 @@ app.put('/api/admin/users/:id/balance', auth, admin, (req, res) => {
   res.json({ balance: user.balance });
 });
 app.get('/api/admin/settings', auth, admin, (_, res) => res.json(store.settings));
-app.put('/api/admin/settings', auth, admin, (req, res) => { store.settings = { ...store.settings, ...req.body }; save(); res.json(store.settings); });
+app.put('/api/admin/settings', auth, admin, (req, res) => {
+  store.settings = { ...store.settings, ...req.body };
+  store.settings.defaultManagerGgrRate = normalizeGgrRate(store.settings.defaultManagerGgrRate);
+  save(); res.json(store.settings);
+});
 app.put('/api/admin/settings/difficulty', auth, admin, (req, res) => {
   if (!['easy', 'balanced', 'strict'].includes(req.body.level)) return res.status(400).json({ error: 'Nível inválido.' });
   store.settings.difficulty = req.body.level; save(); res.json(store.settings);
+});
+function localManagerSummary(managerUser) {
+  const games = store.bets.filter(bet => bet.manager_id === managerUser.id && bet.status === 'completed');
+  const payments = store.managerPayments.filter(payment => payment.manager_id === managerUser.id);
+  const feeAccrued = games.reduce((total, bet) => total + (Number(bet.manager_platform_fee) || 0), 0);
+  const totalPaid = payments.reduce((total, payment) => total + (Number(payment.amount) || 0), 0);
+  return {
+    id: managerUser.id,
+    username: managerUser.username,
+    email: managerUser.email,
+    status: managerUser.status,
+    code: managerUser.manager_code,
+    rate: normalizeGgrRate(managerUser.manager_ggr_rate, store.settings.defaultManagerGgrRate),
+    players: store.users.filter(user => user.manager_id === managerUser.id).length,
+    totalBets: games.reduce((total, bet) => total + (Number(bet.amount) || 0), 0),
+    totalPayouts: games.reduce((total, bet) => total + (Number(bet.payout) || 0), 0),
+    ggr: games.reduce((total, bet) => total + (Number(bet.manager_ggr) || 0), 0),
+    feeAccrued,
+    totalPaid,
+    outstanding: Math.max(0, feeAccrued - totalPaid),
+    games: games.length
+  };
+}
+app.get('/api/admin/managers', auth, admin, (_, res) => res.json({
+  managers: store.users.filter(user => user.role === 'manager').map(localManagerSummary),
+  defaultRate: normalizeGgrRate(store.settings.defaultManagerGgrRate),
+  currentPeriod: managerPeriod()
+}));
+app.post('/api/admin/managers/:id/activate', auth, admin, (req, res) => {
+  const user = store.users.find(item => item.id === req.params.id);
+  if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
+  if (user.id === 'admin_master_uid') return res.status(400).json({ error: 'A conta principal não pode virar gerente.' });
+  user.role = 'manager';
+  user.status = 'active';
+  user.manager_code ||= buildManagerCode(user.username, user.id.replace(/\W/g, '').slice(0, 5));
+  user.manager_ggr_rate = normalizeGgrRate(req.body.ggrRate, store.settings.defaultManagerGgrRate);
+  save(); res.json(localManagerSummary(user));
+});
+app.put('/api/admin/managers/:id', auth, admin, (req, res) => {
+  const user = store.users.find(item => item.id === req.params.id && item.role === 'manager');
+  if (!user) return res.status(404).json({ error: 'Gerente não encontrado.' });
+  if (req.body.ggrRate !== undefined) user.manager_ggr_rate = normalizeGgrRate(req.body.ggrRate);
+  if (req.body.status !== undefined) user.status = req.body.status === 'suspended' ? 'suspended' : 'active';
+  if (req.body.code !== undefined) {
+    const code = String(req.body.code).trim().toLowerCase();
+    if (!/^[a-z0-9]{4,20}$/.test(code)) return res.status(400).json({ error: 'Use um código de 4 a 20 letras ou números.' });
+    if (store.users.some(item => item.id !== user.id && item.manager_code === code)) return res.status(409).json({ error: 'Este código já está em uso.' });
+    user.manager_code = code;
+  }
+  save(); res.json(localManagerSummary(user));
+});
+app.post('/api/admin/managers/:id/payments', auth, admin, (req, res) => {
+  const user = store.users.find(item => item.id === req.params.id && item.role === 'manager');
+  if (!user) return res.status(404).json({ error: 'Gerente não encontrado.' });
+  const amount = Math.max(0, Math.round(Number(req.body.amount) || 0));
+  if (!amount) return res.status(400).json({ error: 'Informe um pagamento válido.' });
+  const payment = { id: uuid(), manager_id: user.id, amount, period: String(req.body.period || managerPeriod()), description: String(req.body.description || 'Pagamento de GGR'), created_at: now() };
+  store.managerPayments.unshift(payment); save(); res.status(201).json(payment);
+});
+app.get('/api/manager/dashboard', auth, manager, (req, res) => {
+  const summary = localManagerSummary(req.currentUser);
+  const currentPeriod = managerPeriod();
+  const currentGames = store.bets.filter(bet => bet.manager_id === req.currentUser.id && bet.status === 'completed' && bet.manager_period === currentPeriod);
+  res.json({
+    manager: { id: req.currentUser.id, username: req.currentUser.username, email: req.currentUser.email, code: req.currentUser.manager_code, rate: summary.rate, referralLink: `${req.protocol}://${req.get('host')}/?manager=${req.currentUser.manager_code}` },
+    currentPeriod,
+    current: {
+      totalBets: currentGames.reduce((total, bet) => total + (bet.amount || 0), 0),
+      totalPayouts: currentGames.reduce((total, bet) => total + (bet.payout || 0), 0),
+      ggr: currentGames.reduce((total, bet) => total + (bet.manager_ggr || 0), 0),
+      platformFee: currentGames.reduce((total, bet) => total + (bet.manager_platform_fee || 0), 0),
+      games: currentGames.length,
+      wins: currentGames.filter(bet => bet.payout > 0).length,
+      losses: currentGames.filter(bet => !bet.payout).length
+    },
+    allTime: { totalBets: summary.totalBets, totalPayouts: summary.totalPayouts, ggr: summary.ggr, platformFee: summary.feeAccrued, totalPaid: summary.totalPaid, outstanding: summary.outstanding, games: summary.games },
+    players: summary.players,
+    recentGames: store.bets.filter(bet => bet.manager_id === req.currentUser.id && bet.status === 'completed').slice(-20).reverse(),
+    payments: store.managerPayments.filter(payment => payment.manager_id === req.currentUser.id).slice(0, 20)
+  });
+});
+app.get('/api/manager/players', auth, manager, (req, res) => {
+  const players = store.users.filter(user => user.manager_id === req.currentUser.id).map(user => {
+    const games = store.bets.filter(bet => bet.uid === user.id && bet.status === 'completed');
+    return { id: user.id, username: user.username, email: user.email, status: user.status, games: games.length, totalBets: games.reduce((total, bet) => total + (bet.amount || 0), 0), totalPayouts: games.reduce((total, bet) => total + (bet.payout || 0), 0), ggr: games.reduce((total, bet) => total + (bet.manager_ggr || 0), 0) };
+  });
+  res.json({ players });
 });
 app.get('/api/admin/deposits', auth, admin, (_, res) => res.json({ deposits: store.deposits.filter(item => item.status === 'pending') }));
 app.get('/api/admin/withdrawals', auth, admin, (_, res) => res.json({ withdrawals: store.withdrawals.filter(item => item.status === 'pending').map(item => ({ ...item, pix_key: item.pixKey })) }));

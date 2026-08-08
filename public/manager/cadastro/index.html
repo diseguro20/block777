@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#070b0b">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <title>Blockerino — Cadastro de gerente</title>
+  <link rel="stylesheet" href="/css/style.css?v=20260804-2">
+  <link rel="stylesheet" href="/css/manager.css?v=20260808-2">
+</head>
+<body class="manager-body manager-register-body">
+  <main class="manager-register-shell">
+    <section class="manager-register-intro">
+      <a class="brand" href="/manager/"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO <small>OPERAÇÃO</small></span></a>
+      <div><small>ACESSO DIRETO</small><h1>Abra sua<br><em>operação.</em></h1><p>Crie sua conta de gerente, receba seu link exclusivo e acompanhe jogadores, partidas, GGR e pagamentos em um único painel.</p></div>
+      <ul><li>Link exclusivo para captar jogadores</li><li>GGR calculado em cada partida</li><li>Relatórios e conciliação em tempo real</li></ul>
+    </section>
+
+    <section class="manager-register-card">
+      <div><small>CADASTRO DE GERENTE</small><h2>Crie seu acesso.</h2><p>A taxa padrão definida pela plataforma será aplicada à sua conta.</p></div>
+      <form id="manager-register-form">
+        <label>Nome de usuário<input id="manager-register-name" name="username" autocomplete="username" minlength="3" maxlength="40" required></label>
+        <label>E-mail<input id="manager-register-email" name="email" type="email" autocomplete="email" required></label>
+        <label>Senha<input id="manager-register-password" name="password" type="password" autocomplete="new-password" minlength="6" required></label>
+        <label>Confirme a senha<input id="manager-register-confirm" type="password" autocomplete="new-password" minlength="6" required></label>
+        <label class="manager-register-terms"><input id="manager-register-terms" type="checkbox" required><span>Confirmo que li e aceito as regras comerciais e de GGR da plataforma.</span></label>
+        <button class="btn btn-primary btn-wide" id="manager-register-submit" type="submit">Criar conta de gerente →</button>
+      </form>
+      <p class="manager-register-login">Já possui conta? <a href="/manager/">Entrar no painel</a></p>
+      <div class="manager-register-message" id="manager-register-message" role="alert" hidden></div>
+    </section>
+  </main>
+  <script src="/js/manager-register.js?v=20260808-1"></script>
+</body>
+</html>

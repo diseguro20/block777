@@ -28,6 +28,7 @@ const app = {
   captureRef() {
     const params = new URLSearchParams(location.search);
     if (params.get('ref')) localStorage.setItem('ref', params.get('ref'));
+    if (params.get('manager')) localStorage.setItem('manager_code', params.get('manager').trim().toLowerCase());
   },
 
   async loadPublicPromotion() {
@@ -89,6 +90,7 @@ const app = {
       event.preventDefault();
       const payload = Object.fromEntries(new FormData(register));
       payload.referred_by = localStorage.getItem('ref') || null;
+      payload.manager_code = localStorage.getItem('manager_code') || null;
       try {
         const data = await this.fetchAPI('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
         this.setSession(data);
@@ -131,6 +133,8 @@ const app = {
       this.updateBalanceDisplays();
       const adminLink = document.getElementById('btn-admin-link');
       if (adminLink) adminLink.style.display = this.user.role === 'admin' ? '' : 'none';
+      const managerLink = document.getElementById('btn-manager-link');
+      if (managerLink) managerLink.style.display = this.user.role === 'manager' ? '' : 'none';
       const registerButton = document.getElementById('landing-register-btn');
       if (registerButton) registerButton.hidden = true;
       document.getElementById('nav-actions').style.display = '';

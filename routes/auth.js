@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, normalizeGgrRate } from '../lib/ggr.js';
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
@@ -39,7 +40,7 @@ async function ensureMasterAdmin() {
 
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password, referred_by, sub_referred_by } = req.body;
+    const { username, email, password, referred_by, sub_referred_by, manager_code } = req.body;
     
     if (!username || !email || !password) {
       return res.status(400).json({ error: 'Preencha usuário, e-mail e senha.' });
@@ -67,6 +68,20 @@ router.post('/register', async (req, res) => {
       } catch (e) {}
     }
 
+    let manager = null;
+    if (manager_code) {
+      try {
+        const managerSnapshot = await db.collection('users')
+          .where('manager_code', '==', String(manager_code).trim().toLowerCase())
+          .limit(1)
+          .get();
+        if (!managerSnapshot.empty && managerSnapshot.docs[0].data().role === 'manager' && managerSnapshot.docs[0].data().status === 'active') {
+          manager = managerSnapshot.docs[0];
+        }
+      } catch (e) {}
+      if (!manager) return res.status(400).json({ error: 'Código de gerente inválido ou indisponível.' });
+    }
+
     const newUser = {
       username,
       email,
@@ -81,6 +96,7 @@ router.post('/register', async (req, res) => {
       ref_code,
       referred_by: referrer?.id || null,
       sub_referred_by: referrer?.data()?.referred_by || null,
+      manager_id: manager?.id || null,
       is_influencer: 0,
       affiliate_balance: 0,
       affiliate_rate: null,
@@ -104,6 +120,72 @@ router.post('/register', async (req, res) => {
   } catch (error) {
     console.error('Register error:', error);
     res.status(500).json({ error: 'Erro ao criar conta' });
+  }
+});
+
+router.post('/register-manager', async (req, res) => {
+  try {
+    const username = String(req.body.username || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const password = String(req.body.password || '');
+
+    if (username.length < 3 || !email.includes('@') || password.length < 6) {
+      return res.status(400).json({ error: 'Use um nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
+    }
+
+    const settingsDoc = await db.collection('settings').doc('global').get();
+    const settings = settingsDoc.exists ? settingsDoc.data() : {};
+    if (settings.managerSelfRegistrationEnabled === false) {
+      return res.status(403).json({ error: 'Novos cadastros de gerente estão temporariamente fechados.' });
+    }
+
+    const [emailCheck, usernameCheck] = await Promise.all([
+      db.collection('users').where('email', '==', email).limit(1).get(),
+      db.collection('users').where('username', '==', username).limit(1).get()
+    ]);
+    if (!emailCheck.empty) return res.status(409).json({ error: 'E-mail já cadastrado.' });
+    if (!usernameCheck.empty) return res.status(409).json({ error: 'Nome de usuário em uso.' });
+
+    let managerCode = buildManagerCode(username, crypto.randomBytes(3).toString('hex'));
+    const codeCheck = await db.collection('users').where('manager_code', '==', managerCode).limit(1).get();
+    if (!codeCheck.empty) managerCode = buildManagerCode(username, crypto.randomBytes(5).toString('hex'));
+
+    const password_hash = await bcrypt.hash(password, 10);
+    const rate = normalizeGgrRate(settings.defaultManagerGgrRate, DEFAULT_MANAGER_GGR_RATE);
+    const newManager = {
+      username,
+      email,
+      password_hash,
+      balance: 0,
+      cash_balance: 0,
+      bonus_balance: 0,
+      rollover_remaining: 0,
+      rollover_target: 0,
+      role: 'manager',
+      status: 'active',
+      manager_code: managerCode,
+      manager_ggr_rate: rate,
+      manager_id: null,
+      ref_code: buildManagerCode(username, crypto.randomBytes(2).toString('hex')),
+      referred_by: null,
+      sub_referred_by: null,
+      is_influencer: 0,
+      affiliate_balance: 0,
+      affiliate_rate: null,
+      sub_affiliate_rate: null,
+      signup_source: 'hidden_manager_page',
+      created_at: FieldValue.serverTimestamp()
+    };
+
+    const docRef = await db.collection('users').add(newManager);
+    const token = jwt.sign({ uid: docRef.id, email, role: 'manager' }, JWT_SECRET, { expiresIn: '30d' });
+    res.status(201).json({
+      token,
+      user: { uid: docRef.id, username, email, role: 'manager', balance: 0, manager_code: managerCode, manager_ggr_rate: rate }
+    });
+  } catch (error) {
+    console.error('Manager register error:', error);
+    res.status(500).json({ error: 'Não foi possível criar a conta de gerente.' });
   }
 });
 

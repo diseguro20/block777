@@ -14,6 +14,7 @@
     "server": "node server/index.js",
     "test": "jest --watchAll",
     "lint": "expo lint",
+    "test:ggr": "node scripts/test-ggr.mjs",
     "deploy": "gh-pages --nojekyll -d dist",
     "predeploy": "expo export -p web"
   },
