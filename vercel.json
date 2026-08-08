@@ -11,6 +11,18 @@
     {
       "source": "/affiliate",
       "destination": "/affiliate/index.html"
+    },
+    {
+      "source": "/manager",
+      "destination": "/manager/index.html"
+    },
+    {
+      "source": "/manager/cadastro",
+      "destination": "/manager/cadastro/index.html"
+    },
+    {
+      "source": "/manager/cadastro/:path*",
+      "destination": "/manager/cadastro/index.html"
     }
   ]
 }
