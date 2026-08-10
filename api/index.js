@@ -250,7 +250,7 @@ app.post('/api/game/start', auth, (req, res) => {
   addTransaction(req.currentUser.id, 'bet', -amount);
   if (allocation.rolloverCompleted) addTransaction(req.currentUser.id, 'bonus_unlock', 0, 'completed', { unlocked_amount: allocation.unlockedBonus });
   save();
-  res.json({ sessionId, seed: seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', multiplierProfile: demoAccount ? 'demo' : 'standard', balance_after: req.currentUser.balance });
+  res.json({ sessionId, seed: seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', multiplierProfile: demoAccount ? 'demo' : 'standard', startingMultiplier: 1, balance_after: req.currentUser.balance });
 });
 
 app.post('/api/game/end', auth, (req, res) => {

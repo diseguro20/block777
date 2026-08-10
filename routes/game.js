@@ -183,6 +183,7 @@ router.post('/start', authenticateToken, async (req, res) => {
         seed: seedHash,
         difficulty,
         multiplierProfile: demoAccount ? 'demo' : 'standard',
+        startingMultiplier: 1,
         balance_after: newBalance,
         rollover_remaining: newRolloverRemaining,
         rollover_completed: rolloverCompleted

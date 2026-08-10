@@ -70,6 +70,7 @@ try {
   assert.equal(gameStart.response.status, 200);
   assert.equal(gameStart.data.difficulty, 'easy');
   assert.equal(gameStart.data.multiplierProfile, 'demo');
+  assert.equal(gameStart.data.startingMultiplier, 1);
   await request('/api/game/end', {
     method: 'POST', headers: demoAuth,
     body: JSON.stringify({ sessionId: gameStart.data.sessionId, multiplier: 2, floorsReached: 1, blocksPlaced: 4, score: 100 })

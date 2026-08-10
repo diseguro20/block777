@@ -87,6 +87,7 @@ const game = {
   landingCtx: null,
 
   isPlaying: false,
+  isStarting: false,
   mode: 'demo', // 'real' ou 'demo'
   gameMode: 'classic', // 'classic' (8x8) ou 'chaos' (10x10)
   gridSize: 8,
@@ -603,6 +604,9 @@ const game = {
     this.gridSize = gameModeType === 'chaos' ? 10 : 8;
 
     if (mode === 'real') {
+      // Evita exibir o multiplicador residual da partida anterior durante a preparação.
+      this.multiplier = 1.0;
+      this.updateHud();
       document.getElementById('prep-modal').classList.add('active');
     } else {
       this.startDemoGame();
@@ -610,6 +614,7 @@ const game = {
   },
 
   async startRealGame() {
+    if (this.isStarting) return;
     const inputVal = document.getElementById('bet-input-val').value;
     const betVal = parseFloat(inputVal);
     if (isNaN(betVal) || betVal < 1.0 || betVal > 100.0) {
@@ -626,6 +631,9 @@ const game = {
       return;
     }
 
+    const startButton = document.querySelector('#prep-modal .btn-primary');
+    this.isStarting = true;
+    if (startButton) startButton.disabled = true;
     try {
       const data = await app.fetchAPI('/api/game/start', {
         method: 'POST',
@@ -658,6 +666,9 @@ const game = {
       app.showToast('🎉 Partida iniciada no Arraiá! Boa sorte!');
     } catch (err) {
       app.showToast(err.message || 'Erro ao iniciar partida.');
+    } finally {
+      this.isStarting = false;
+      if (startButton) startButton.disabled = false;
     }
   },
 
@@ -742,6 +753,13 @@ const game = {
     return filled / (this.gridSize * this.gridSize);
   },
 
+  advanceDemoMultiplier() {
+    const current = Number.isFinite(Number(this.multiplier)) ? Number(this.multiplier) : 1;
+    const normalized = Math.max(1, Math.round(current * 2) / 2);
+    this.multiplier = Math.min(10, normalized + 0.50);
+    return this.multiplier;
+  },
+
   tryPlacePiece() {
     if (this.draggedPieceIndex === null) return;
     const piece = this.hand[this.draggedPieceIndex];
@@ -768,7 +786,7 @@ const game = {
       this.score += placedBlocks;
       this.blocksPlaced += placedBlocks;
       if (this.multiplierProfile === 'demo') {
-        this.multiplier = Math.min(10, parseFloat((this.multiplier + 0.50).toFixed(2)));
+        this.advanceDemoMultiplier();
       }
       const clearedLines = this.checkLines(placedBlocks);
 
@@ -842,10 +860,9 @@ const game = {
 
       this.linesCleared += totalLines;
 
-      if (this.multiplierProfile === 'demo') {
-        // Demo avança sempre em passos exatos de 0,50x, até o teto de 10x.
-        this.multiplier = Math.min(10, parseFloat((this.multiplier + totalLines * 0.50).toFixed(2)));
-      } else {
+      // No demo, a peça já concedeu o único avanço de 0,50x da jogada.
+      // Fechar uma linha não aplica um segundo salto.
+      if (this.multiplierProfile !== 'demo') {
         const baseIncrease = totalLines * 0.05;
         const comboBonus = Math.min(this.combo + totalLines, 5) * 0.01;
         this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));

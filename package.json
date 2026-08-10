@@ -16,6 +16,7 @@
     "lint": "expo lint",
     "test:ggr": "node scripts/test-ggr.mjs",
     "test:manager-demo": "node scripts/test-manager-demo.mjs",
+    "test:demo-multiplier": "node scripts/test-demo-multiplier.mjs",
     "deploy": "gh-pages --nojekyll -d dist",
     "predeploy": "expo export -p web"
   },
