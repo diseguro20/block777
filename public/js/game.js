@@ -753,10 +753,11 @@ const game = {
     return filled / (this.gridSize * this.gridSize);
   },
 
-  advanceDemoMultiplier() {
+  advanceDemoMultiplier(completedLines = 1) {
     const current = Number.isFinite(Number(this.multiplier)) ? Number(this.multiplier) : 1;
     const normalized = Math.max(1, Math.round(current * 2) / 2);
-    this.multiplier = Math.min(10, normalized + 0.50);
+    const safeLines = Math.max(0, Math.floor(Number(completedLines) || 0));
+    this.multiplier = Math.min(10, normalized + safeLines * 0.50);
     return this.multiplier;
   },
 
@@ -785,9 +786,6 @@ const game = {
       piece.used = true;
       this.score += placedBlocks;
       this.blocksPlaced += placedBlocks;
-      if (this.multiplierProfile === 'demo') {
-        this.advanceDemoMultiplier();
-      }
       const clearedLines = this.checkLines(placedBlocks);
 
       if (clearedLines === 0) {
@@ -860,9 +858,10 @@ const game = {
 
       this.linesCleared += totalLines;
 
-      // No demo, a peça já concedeu o único avanço de 0,50x da jogada.
-      // Fechar uma linha não aplica um segundo salto.
-      if (this.multiplierProfile !== 'demo') {
+      if (this.multiplierProfile === 'demo') {
+        // O demo avança 0,50x somente por fileira concluída.
+        this.advanceDemoMultiplier(totalLines);
+      } else {
         const baseIncrease = totalLines * 0.05;
         const comboBonus = Math.min(this.combo + totalLines, 5) * 0.01;
         this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));

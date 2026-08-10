@@ -22,4 +22,7 @@ assert.equal(game.advanceDemoMultiplier(), 10);
 
 game.multiplier = 3.14;
 assert.equal(game.advanceDemoMultiplier(), 3.5);
+game.multiplier = 1;
+assert.equal(game.advanceDemoMultiplier(0), 1);
+assert.equal(game.advanceDemoMultiplier(2), 2);
 console.log('Demo multiplier progression validated.');
