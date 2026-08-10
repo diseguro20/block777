@@ -150,6 +150,7 @@ router.post('/start', authenticateToken, async (req, res) => {
         manager_id: managerId,
         demo_manager_id: demoAccount ? (userData.manager_id || null) : null,
         is_demo: demoAccount,
+        multiplier_profile: demoAccount ? 'demo' : 'standard',
         manager_ggr_rate: managerGgrRate,
         rolloverCompleted,
         created_at: FieldValue.serverTimestamp()
@@ -181,6 +182,7 @@ router.post('/start', authenticateToken, async (req, res) => {
         sessionId,
         seed: seedHash,
         difficulty,
+        multiplierProfile: demoAccount ? 'demo' : 'standard',
         balance_after: newBalance,
         rollover_remaining: newRolloverRemaining,
         rollover_completed: rolloverCompleted

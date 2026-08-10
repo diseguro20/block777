@@ -94,6 +94,7 @@ const game = {
   hand: [],
   sessionId: null,
   difficulty: 'easy',
+  multiplierProfile: 'standard',
   betAmount: 200,
   multiplier: 1.0,
   linesCleared: 0,
@@ -636,6 +637,7 @@ const game = {
 
       this.sessionId = data.sessionId;
       this.difficulty = data.difficulty;
+      this.multiplierProfile = data.multiplierProfile === 'demo' ? 'demo' : 'standard';
       this.multiplier = 1.0;
       this.linesCleared = 0;
       this.score = 0;
@@ -662,6 +664,7 @@ const game = {
   async startDemoGame() {
     this.sessionId = 'demo-' + Date.now();
     this.difficulty = 'easy';
+    this.multiplierProfile = 'standard';
     this.multiplier = 1.0;
     this.linesCleared = 0;
     this.score = 0;
@@ -764,6 +767,9 @@ const game = {
       piece.used = true;
       this.score += placedBlocks;
       this.blocksPlaced += placedBlocks;
+      if (this.multiplierProfile === 'demo') {
+        this.multiplier = Math.min(3, parseFloat((this.multiplier + 0.01).toFixed(2)));
+      }
       const clearedLines = this.checkLines(placedBlocks);
 
       if (clearedLines === 0) {
@@ -836,11 +842,11 @@ const game = {
 
       this.linesCleared += totalLines;
 
-      // A dificuldade afeta somente as peças e o tabuleiro.
-      // O multiplicador progride igualmente para todos os jogadores.
-      const baseIncrease = totalLines * 0.05;
+      // Conta demo recebe um impulso moderado, mantendo teto de 3x.
+      const baseIncrease = totalLines * (this.multiplierProfile === 'demo' ? 0.08 : 0.05);
       const comboBonus = Math.min(this.combo + totalLines, 5) * 0.01;
-      this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
+      const nextMultiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
+      this.multiplier = this.multiplierProfile === 'demo' ? Math.min(3, nextMultiplier) : nextMultiplier;
       this.playLineCompleteSound(totalLines);
       
       this.score += Math.round(totalLines * this.gridSize * Math.max(1, (this.combo + totalLines) / 2) * Math.max(1, placedBlocks));

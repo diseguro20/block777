@@ -246,11 +246,11 @@ app.post('/api/game/start', auth, (req, res) => {
   const demoAccount = Boolean(req.currentUser.demo_account);
   const managerUser = demoAccount ? null : store.users.find(user => user.id === req.currentUser.manager_id && user.role === 'manager' && user.status === 'active');
   const managerRate = normalizeGgrRate(managerUser?.manager_ggr_rate, store.settings.defaultManagerGgrRate);
-  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, cashStake: allocation.cashStake, bonusStake: allocation.bonusStake, rolloverCompleted: allocation.rolloverCompleted, manager_id: managerUser?.id || null, demo_manager_id: demoAccount ? req.currentUser.manager_id : null, is_demo: demoAccount, manager_ggr_rate: managerRate, created_at: now() });
+  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, cashStake: allocation.cashStake, bonusStake: allocation.bonusStake, rolloverCompleted: allocation.rolloverCompleted, manager_id: managerUser?.id || null, demo_manager_id: demoAccount ? req.currentUser.manager_id : null, is_demo: demoAccount, multiplier_profile: demoAccount ? 'demo' : 'standard', manager_ggr_rate: managerRate, created_at: now() });
   addTransaction(req.currentUser.id, 'bet', -amount);
   if (allocation.rolloverCompleted) addTransaction(req.currentUser.id, 'bonus_unlock', 0, 'completed', { unlocked_amount: allocation.unlockedBonus });
   save();
-  res.json({ sessionId, seed: seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', balance_after: req.currentUser.balance });
+  res.json({ sessionId, seed: seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', multiplierProfile: demoAccount ? 'demo' : 'standard', balance_after: req.currentUser.balance });
 });
 
 app.post('/api/game/end', auth, (req, res) => {
