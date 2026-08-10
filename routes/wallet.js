@@ -51,6 +51,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     const docRef = db.collection('deposit_requests').doc();
     const userDoc = await db.collection('users').doc(req.user.uid).get();
     const user = userDoc.exists ? userDoc.data() : {};
+    if (user.demo_account) return res.status(403).json({ error: 'Contas demo utilizam saldo virtual e não aceitam depósitos.' });
     const webhookUrl = `${req.protocol}://${req.get('host')}/api/wallet/webhook/vizzionpay`;
     const charge = await createVizzionPix({
       amountCents: amount,
@@ -342,6 +343,7 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
       if (!userDoc.exists) throw new Error('User not found');
       
       const userData = userDoc.data();
+      if (userData.demo_account) throw new Error('Saldo de conta demo é virtual e não pode ser sacado.');
       const wallet = getWalletBuckets(userData);
       if (wallet.rolloverRemaining > 0) {
         throw new Error(`Complete o rollover de R$ ${(wallet.rolloverRemaining / 100).toFixed(2)} em apostas antes de sacar.`);

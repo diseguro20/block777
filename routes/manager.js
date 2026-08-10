@@ -1,8 +1,10 @@
 import express from 'express';
-import { db } from '../lib/firebase.js';
+import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
+import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requireManager } from '../middleware/manager.js';
-import { DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
+import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -85,6 +87,8 @@ router.get('/players', async (req, res) => {
         username: playerDoc.data().username,
         email: playerDoc.data().email,
         status: playerDoc.data().status,
+        isInfluencer: Number(playerDoc.data().is_influencer) === 1,
+        demoAccount: Boolean(playerDoc.data().demo_account),
         games: games.length,
         totalBets: sum(games, 'amount'),
         totalPayouts: sum(games, 'payout'),
@@ -94,6 +98,75 @@ router.get('/players', async (req, res) => {
     res.json({ players });
   } catch (error) {
     res.status(500).json({ error: 'Não foi possível carregar os jogadores vinculados.' });
+  }
+});
+
+router.put('/players/:id/influencer', async (req, res) => {
+  try {
+    const playerRef = db.collection('users').doc(req.params.id);
+    const playerDoc = await playerRef.get();
+    if (!playerDoc.exists || playerDoc.data().manager_id !== req.managerUser.id || playerDoc.data().role !== 'user') {
+      return res.status(404).json({ error: 'Jogador vinculado não encontrado.' });
+    }
+    const enabled = req.body.enabled === true;
+    await playerRef.update({
+      is_influencer: enabled ? 1 : 0,
+      influencer_updated_by_manager: req.managerUser.id,
+      influencer_updated_at: FieldValue.serverTimestamp()
+    });
+    res.json({ id: playerDoc.id, isInfluencer: enabled, demoAccount: Boolean(playerDoc.data().demo_account) });
+  } catch (error) {
+    res.status(500).json({ error: 'Não foi possível atualizar o modo influenciador.' });
+  }
+});
+
+router.post('/demo-accounts', async (req, res) => {
+  try {
+    const username = String(req.body.username || '').trim();
+    const email = String(req.body.email || '').trim().toLowerCase();
+    const password = String(req.body.password || '');
+    const demoBalance = Math.max(10000, Math.min(1000000, Math.round(Number(req.body.demoBalance) || 50000)));
+    if (username.length < 3 || !email.includes('@') || password.length < 6) {
+      return res.status(400).json({ error: 'Use nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
+    }
+    const [emailCheck, usernameCheck] = await Promise.all([
+      db.collection('users').where('email', '==', email).limit(1).get(),
+      db.collection('users').where('username', '==', username).limit(1).get()
+    ]);
+    if (!emailCheck.empty) return res.status(409).json({ error: 'E-mail já cadastrado.' });
+    if (!usernameCheck.empty) return res.status(409).json({ error: 'Nome de usuário em uso.' });
+
+    const password_hash = await bcrypt.hash(password, 10);
+    const ref_code = buildManagerCode(username, crypto.randomBytes(3).toString('hex'));
+    const demoUser = {
+      username,
+      email,
+      password_hash,
+      balance: demoBalance,
+      cash_balance: demoBalance,
+      bonus_balance: 0,
+      rollover_remaining: 0,
+      rollover_target: 0,
+      role: 'user',
+      status: 'active',
+      manager_id: req.managerUser.id,
+      ref_code,
+      referred_by: null,
+      sub_referred_by: null,
+      is_influencer: 1,
+      demo_account: true,
+      demo_initial_balance: demoBalance,
+      affiliate_balance: 0,
+      affiliate_rate: null,
+      sub_affiliate_rate: null,
+      created_by_manager: req.managerUser.id,
+      created_at: FieldValue.serverTimestamp()
+    };
+    const docRef = await db.collection('users').add(demoUser);
+    res.status(201).json({ id: docRef.id, username, email, demoBalance, isInfluencer: true, demoAccount: true });
+  } catch (error) {
+    console.error('Manager demo account error:', error);
+    res.status(500).json({ error: 'Não foi possível criar a conta demo.' });
   }
 });
 

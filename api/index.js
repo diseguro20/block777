@@ -19,7 +19,7 @@ app.use(express.json({ limit: '64kb' }));
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-production';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
-const dataFile = path.join(root, '.data', 'local-db.json');
+const dataFile = process.env.BLOCKERINO_DATA_FILE || path.join(root, '.data', 'local-db.json');
 const now = () => new Date().toISOString();
 const cleanEmail = value => String(value || '').trim().toLowerCase();
 const useFirebase = Boolean(process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY);
@@ -243,9 +243,10 @@ app.post('/api/game/start', auth, (req, res) => {
   if (allocation.rolloverCompleted) req.currentUser.rollover_target = 0;
   const sessionId = uuid();
   const seedHash = crypto.createHash('sha256').update(crypto.randomBytes(32)).digest('hex');
-  const managerUser = store.users.find(user => user.id === req.currentUser.manager_id && user.role === 'manager' && user.status === 'active');
+  const demoAccount = Boolean(req.currentUser.demo_account);
+  const managerUser = demoAccount ? null : store.users.find(user => user.id === req.currentUser.manager_id && user.role === 'manager' && user.status === 'active');
   const managerRate = normalizeGgrRate(managerUser?.manager_ggr_rate, store.settings.defaultManagerGgrRate);
-  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, cashStake: allocation.cashStake, bonusStake: allocation.bonusStake, rolloverCompleted: allocation.rolloverCompleted, manager_id: managerUser?.id || null, manager_ggr_rate: managerRate, created_at: now() });
+  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, cashStake: allocation.cashStake, bonusStake: allocation.bonusStake, rolloverCompleted: allocation.rolloverCompleted, manager_id: managerUser?.id || null, demo_manager_id: demoAccount ? req.currentUser.manager_id : null, is_demo: demoAccount, manager_ggr_rate: managerRate, created_at: now() });
   addTransaction(req.currentUser.id, 'bet', -amount);
   if (allocation.rolloverCompleted) addTransaction(req.currentUser.id, 'bonus_unlock', 0, 'completed', { unlocked_amount: allocation.unlockedBonus });
   save();
@@ -277,6 +278,7 @@ app.post('/api/game/demo/start', (_, res) => res.json({ sessionId: uuid(), seed:
 
 app.get('/api/wallet/promotion', (_, res) => res.json(normalizePromotionSettings(store.settings)));
 app.post('/api/wallet/deposit', auth, (req, res) => {
+  if (req.currentUser.demo_account) return res.status(403).json({ error: 'Contas demo utilizam saldo virtual e não aceitam depósitos.' });
   const amount = Math.round(Number(req.body.amount));
   if (amount < store.settings.minDeposit || amount > 100000) return res.status(400).json({ error: 'O depósito deve ficar entre R$ 5 e R$ 1.000.' });
   const promotion = calculateDepositPromotion(amount, store.settings);
@@ -287,6 +289,7 @@ app.post('/api/wallet/deposit', auth, (req, res) => {
   save(); res.json({ depositId, pixCode, status: 'pending', bonusAmount: promotion.bonusAmount, totalAfterPayment: amount + promotion.bonusAmount, rolloverRequired: promotion.rolloverRequired });
 });
 app.post('/api/wallet/withdraw', auth, (req, res) => {
+  if (req.currentUser.demo_account) return res.status(403).json({ error: 'Saldo de conta demo é virtual e não pode ser sacado.' });
   const amount = Math.round(Number(req.body.amount)); const pixKey = String(req.body.pixKey || '').trim();
   if (amount < store.settings.minWithdrawal || !pixKey) return res.status(400).json({ error: 'Informe uma chave PIX e saque no mínimo R$ 10.' });
   const wallet = getWalletBuckets(req.currentUser);
@@ -325,7 +328,7 @@ app.post('/api/affiliate/redeem', auth, (req, res) => {
 });
 
 app.get('/api/admin/stats', auth, admin, (_, res) => {
-  const completedBets = store.bets.filter(bet => bet.status === 'completed');
+  const completedBets = store.bets.filter(bet => bet.status === 'completed' && !bet.is_demo);
   const totalBets = completedBets.reduce((sum, bet) => sum + bet.amount, 0);
   const totalPayouts = completedBets.reduce((sum, bet) => sum + (bet.payout || 0), 0);
   res.json({
@@ -483,9 +486,37 @@ app.get('/api/manager/dashboard', auth, manager, (req, res) => {
 app.get('/api/manager/players', auth, manager, (req, res) => {
   const players = store.users.filter(user => user.manager_id === req.currentUser.id).map(user => {
     const games = store.bets.filter(bet => bet.uid === user.id && bet.status === 'completed');
-    return { id: user.id, username: user.username, email: user.email, status: user.status, games: games.length, totalBets: games.reduce((total, bet) => total + (bet.amount || 0), 0), totalPayouts: games.reduce((total, bet) => total + (bet.payout || 0), 0), ggr: games.reduce((total, bet) => total + (bet.manager_ggr || 0), 0) };
+    return { id: user.id, username: user.username, email: user.email, status: user.status, isInfluencer: Number(user.is_influencer) === 1, demoAccount: Boolean(user.demo_account), games: games.length, totalBets: games.reduce((total, bet) => total + (bet.amount || 0), 0), totalPayouts: games.reduce((total, bet) => total + (bet.payout || 0), 0), ggr: games.reduce((total, bet) => total + (bet.manager_ggr || 0), 0) };
   });
   res.json({ players });
+});
+app.put('/api/manager/players/:id/influencer', auth, manager, (req, res) => {
+  const player = store.users.find(user => user.id === req.params.id && user.manager_id === req.currentUser.id && user.role === 'user');
+  if (!player) return res.status(404).json({ error: 'Jogador vinculado não encontrado.' });
+  player.is_influencer = req.body.enabled === true ? 1 : 0;
+  player.influencer_updated_by_manager = req.currentUser.id;
+  player.influencer_updated_at = now();
+  save();
+  res.json({ id: player.id, isInfluencer: player.is_influencer === 1, demoAccount: Boolean(player.demo_account) });
+});
+app.post('/api/manager/demo-accounts', auth, manager, async (req, res) => {
+  const username = String(req.body.username || '').trim();
+  const email = cleanEmail(req.body.email);
+  const password = String(req.body.password || '');
+  const demoBalance = Math.max(10000, Math.min(1000000, Math.round(Number(req.body.demoBalance) || 50000)));
+  if (username.length < 3 || !email.includes('@') || password.length < 6) return res.status(400).json({ error: 'Use nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
+  if (store.users.some(user => user.email === email || user.username.toLowerCase() === username.toLowerCase())) return res.status(409).json({ error: 'E-mail ou nome de usuário já cadastrado.' });
+  const user = {
+    id: uuid(), username, email, password_hash: await bcrypt.hash(password, 10),
+    balance: demoBalance, cash_balance: demoBalance, bonus_balance: 0,
+    rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active',
+    manager_id: req.currentUser.id, ref_code: buildManagerCode(username, crypto.randomBytes(3).toString('hex')),
+    referred_by: null, sub_referred_by: null, is_influencer: 1, demo_account: true,
+    demo_initial_balance: demoBalance, affiliate_balance: 0, affiliate_rate: null,
+    sub_affiliate_rate: null, created_by_manager: req.currentUser.id, created_at: now()
+  };
+  store.users.push(user); save();
+  res.status(201).json({ id: user.id, username, email, demoBalance, isInfluencer: true, demoAccount: true });
 });
 app.get('/api/admin/deposits', auth, admin, (_, res) => res.json({ deposits: store.deposits.filter(item => item.status === 'pending') }));
 app.get('/api/admin/withdrawals', auth, admin, (_, res) => res.json({ withdrawals: store.withdrawals.filter(item => item.status === 'pending').map(item => ({ ...item, pix_key: item.pixKey })) }));

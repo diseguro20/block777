@@ -70,7 +70,8 @@ router.post('/start', authenticateToken, async (req, res) => {
       const wallet = getWalletBuckets(userData);
       if (wallet.balance < amount) throw new Error('Saldo insuficiente para realizar a aposta.');
 
-      let managerId = userData.manager_id || null;
+      const demoAccount = Boolean(userData.demo_account);
+      let managerId = demoAccount ? null : (userData.manager_id || null);
       let managerGgrRate = defaultManagerGgrRate;
       if (managerId) {
         const managerDoc = await t.get(db.collection('users').doc(managerId));
@@ -147,6 +148,8 @@ router.post('/start', authenticateToken, async (req, res) => {
         cashStake,
         bonusStake,
         manager_id: managerId,
+        demo_manager_id: demoAccount ? (userData.manager_id || null) : null,
+        is_demo: demoAccount,
         manager_ggr_rate: managerGgrRate,
         rolloverCompleted,
         created_at: FieldValue.serverTimestamp()

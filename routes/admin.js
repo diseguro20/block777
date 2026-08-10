@@ -38,6 +38,7 @@ router.get('/stats', async (req, res) => {
       const betsSnapshot = await db.collection('bets').get();
       betsSnapshot.forEach(doc => {
         const data = doc.data();
+        if (data.is_demo) return;
         totalBets += data.amount || 0;
         totalPayouts += data.payout || 0;
         if (data.status === 'completed') {

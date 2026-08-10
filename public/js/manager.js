@@ -2,6 +2,7 @@ const manager = {
   data: null,
 
   async init() {
+    this.bindDemoForm();
     if (!app.token) return this.requireLogin();
     try {
       await app.fetchUserDataOnly();
@@ -59,7 +60,59 @@ const manager = {
   async loadPlayers() {
     const data = await app.fetchAPI('/api/manager/players');
     const body = document.getElementById('manager-players-table');
-    body.innerHTML = data.players.length ? data.players.map(player => `<tr><td data-label="Jogador"><b>${this.escape(player.username)}</b><br><small>${this.escape(player.email)}</small></td><td data-label="Partidas">${Number(player.games || 0).toLocaleString('pt-BR')}</td><td data-label="Apostado">${app.formatBRL(player.totalBets || 0)}</td><td data-label="Prêmios">${app.formatBRL(player.totalPayouts || 0)}</td><td data-label="GGR">${app.formatBRL(player.ggr || 0)}</td><td data-label="Status"><span class="badge badge-${player.status === 'active' ? 'success' : 'danger'}">${player.status === 'active' ? 'Ativo' : 'Suspenso'}</span></td></tr>`).join('') : '<tr><td colspan="6" class="empty-state">Nenhum jogador vinculado ainda.</td></tr>';
+    body.innerHTML = data.players.length ? data.players.map(player => `<tr><td data-label="Jogador"><b>${this.escape(player.username)}</b><br><small>${this.escape(player.email)}</small></td><td data-label="Partidas">${Number(player.games || 0).toLocaleString('pt-BR')}</td><td data-label="Apostado">${app.formatBRL(player.totalBets || 0)}</td><td data-label="Prêmios">${app.formatBRL(player.totalPayouts || 0)}</td><td data-label="GGR">${player.demoAccount ? 'Virtual' : app.formatBRL(player.ggr || 0)}</td><td data-label="Modo"><span class="badge ${player.isInfluencer ? 'badge-success' : ''}">${player.demoAccount ? 'Demo' : player.isInfluencer ? 'Influencer' : 'Normal'}</span></td><td data-label="Status"><span class="badge badge-${player.status === 'active' ? 'success' : 'danger'}">${player.status === 'active' ? 'Ativo' : 'Suspenso'}</span></td><td data-label="Ação"><button class="table-action" onclick="manager.toggleInfluencer('${player.id}',${!player.isInfluencer})">${player.isInfluencer ? 'Desativar demo' : 'Ativar demo'}</button></td></tr>`).join('') : '<tr><td colspan="8" class="empty-state">Nenhum jogador vinculado ainda.</td></tr>';
+  },
+
+  async toggleInfluencer(playerId, enabled) {
+    const action = enabled ? 'ativar' : 'desativar';
+    if (!window.confirm(`Deseja ${action} o modo influencer para este jogador?`)) return;
+    try {
+      await app.fetchAPI(`/api/manager/players/${encodeURIComponent(playerId)}/influencer`, {
+        method: 'PUT',
+        body: JSON.stringify({ enabled })
+      });
+      app.showToast(enabled ? 'Modo influencer ativado.' : 'Modo influencer desativado.');
+      await this.loadPlayers();
+    } catch (error) {
+      app.showToast(error.message);
+    }
+  },
+
+  openDemoModal() {
+    document.getElementById('manager-demo-modal').classList.add('active');
+  },
+
+  bindDemoForm() {
+    const form = document.getElementById('manager-demo-form');
+    if (!form || form.dataset.bound) return;
+    form.dataset.bound = 'true';
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const submit = document.getElementById('demo-submit');
+      submit.disabled = true;
+      submit.textContent = 'Criando…';
+      try {
+        const data = await app.fetchAPI('/api/manager/demo-accounts', {
+          method: 'POST',
+          body: JSON.stringify({
+            username: document.getElementById('demo-username').value.trim(),
+            email: document.getElementById('demo-email').value.trim(),
+            password: document.getElementById('demo-password').value,
+            demoBalance: Math.round(Number(document.getElementById('demo-balance').value) * 100)
+          })
+        });
+        app.closeModal('manager-demo-modal');
+        form.reset();
+        document.getElementById('demo-balance').value = 500;
+        app.showToast(`Conta demo de ${data.username} criada com ${app.formatBRL(data.demoBalance)}.`);
+        await Promise.all([this.loadPlayers(), this.loadDashboard()]);
+      } catch (error) {
+        app.showToast(error.message);
+      } finally {
+        submit.disabled = false;
+        submit.textContent = 'Criar conta demo';
+      }
+    };
   },
 
   renderGames(games) {

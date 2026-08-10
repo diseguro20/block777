@@ -15,6 +15,7 @@
     "test": "jest --watchAll",
     "lint": "expo lint",
     "test:ggr": "node scripts/test-ggr.mjs",
+    "test:manager-demo": "node scripts/test-manager-demo.mjs",
     "deploy": "gh-pages --nojekyll -d dist",
     "predeploy": "expo export -p web"
   },
