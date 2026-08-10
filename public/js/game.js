@@ -768,7 +768,7 @@ const game = {
       this.score += placedBlocks;
       this.blocksPlaced += placedBlocks;
       if (this.multiplierProfile === 'demo') {
-        this.multiplier = Math.min(3, parseFloat((this.multiplier + 0.01).toFixed(2)));
+        this.multiplier = Math.min(10, parseFloat((this.multiplier + 0.50).toFixed(2)));
       }
       const clearedLines = this.checkLines(placedBlocks);
 
@@ -842,11 +842,14 @@ const game = {
 
       this.linesCleared += totalLines;
 
-      // Conta demo recebe um impulso moderado, mantendo teto de 3x.
-      const baseIncrease = totalLines * (this.multiplierProfile === 'demo' ? 0.08 : 0.05);
-      const comboBonus = Math.min(this.combo + totalLines, 5) * 0.01;
-      const nextMultiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
-      this.multiplier = this.multiplierProfile === 'demo' ? Math.min(3, nextMultiplier) : nextMultiplier;
+      if (this.multiplierProfile === 'demo') {
+        // Demo avança sempre em passos exatos de 0,50x, até o teto de 10x.
+        this.multiplier = Math.min(10, parseFloat((this.multiplier + totalLines * 0.50).toFixed(2)));
+      } else {
+        const baseIncrease = totalLines * 0.05;
+        const comboBonus = Math.min(this.combo + totalLines, 5) * 0.01;
+        this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
+      }
       this.playLineCompleteSound(totalLines);
       
       this.score += Math.round(totalLines * this.gridSize * Math.max(1, (this.combo + totalLines) / 2) * Math.max(1, placedBlocks));
