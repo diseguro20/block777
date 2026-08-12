@@ -711,8 +711,9 @@ const game = {
     let pool, weights;
 
     if (this.difficulty === 'easy') {
-      pool = EASY_SHAPES;
-      weights = null;
+      // Influencer/Demo: jogo normal, todas as peças, balanceado
+      pool = ALL_SHAPES;
+      weights = ORIGINAL_WEIGHTS;
     } else if (this.difficulty === 'impossible' || this.difficulty === 'balanced') {
       pool = IMPOSSIBLE_SHAPES;
       weights = IMPOSSIBLE_WEIGHTS;
@@ -861,7 +862,13 @@ const game = {
       if (this.multiplierProfile === 'demo') {
         // O demo avança 0,50x somente por fileira concluída.
         this.advanceDemoMultiplier(totalLines);
+      } else if (this.difficulty === 'easy') {
+        // Influencer: multiplicador sobe normalmente
+        const baseIncrease = totalLines * 0.15;
+        const comboBonus = Math.min(this.combo + totalLines, 5) * 0.10;
+        this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
       } else {
+        // Normal/Impossível: multiplicador quase não sobe
         const baseIncrease = totalLines * 0.05;
         const comboBonus = Math.min(this.combo + totalLines, 5) * 0.01;
         this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
