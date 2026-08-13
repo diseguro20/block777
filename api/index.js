@@ -362,6 +362,10 @@ app.get('/api/admin/users', auth, admin, (req, res) => {
       blocksPlaced: games.reduce((sum, bet) => sum + (bet.blocksPlaced || 0), 0),
       linesCleared: games.reduce((sum, bet) => sum + (bet.linesCleared || bet.floorsReached || 0), 0)
     };
+  }).sort((a, b) => {
+    const aTime = new Date(a.created_at || 0).getTime();
+    const bTime = new Date(b.created_at || 0).getTime();
+    return (Number.isFinite(bTime) ? bTime : 0) - (Number.isFinite(aTime) ? aTime : 0);
   }) });
 });
 app.get('/api/admin/game-logs', auth, admin, (req, res) => {

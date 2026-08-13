@@ -164,7 +164,15 @@ const admin = {
     const data = await app.fetchAPI(`/api/admin/users?search=${encodeURIComponent(search)}`);
     const body = document.getElementById('users-table');
     if (!body) return;
-    body.innerHTML = data.users.length ? data.users.map(user => `
+    const createdAtMillis = value => {
+      if (!value) return 0;
+      const seconds = Number(value.seconds ?? value._seconds);
+      if (Number.isFinite(seconds)) return seconds * 1000;
+      const parsed = new Date(value).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    const users = [...(data.users || [])].sort((a, b) => createdAtMillis(b.created_at) - createdAtMillis(a.created_at));
+    body.innerHTML = users.length ? users.map(user => `
       <tr>
         <td data-label="Jogador"><div class="user-cell"><b>${this.escape(user.username)}</b><span>${this.escape(user.email)}</span></div></td>
         <td data-label="Saldo" class="mono">${app.formatBRL(user.balance)}</td>

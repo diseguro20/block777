@@ -125,6 +125,16 @@ router.get('/users', async (req, res) => {
       );
     }
 
+    const createdAtMillis = value => {
+      if (!value) return 0;
+      if (typeof value.toMillis === 'function') return value.toMillis();
+      const seconds = Number(value.seconds ?? value._seconds);
+      if (Number.isFinite(seconds)) return seconds * 1000;
+      const parsed = new Date(value).getTime();
+      return Number.isFinite(parsed) ? parsed : 0;
+    };
+    users.sort((a, b) => createdAtMillis(b.created_at) - createdAtMillis(a.created_at));
+
     res.json({ users });
   } catch (error) {
     console.error('Admin users error:', error);
