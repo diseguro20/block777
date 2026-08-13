@@ -144,6 +144,6 @@
   <div class="modal" id="manager-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('manager-modal')">×</button><small>CONFIGURAÇÃO DO GERENTE</small><h3 id="manager-modal-name">Gerente</h3><label>Taxa de GGR da plataforma (%)</label><input id="manager-rate-input" type="number" min="0" max="100" step="0.01"><label>Código do link</label><input id="manager-code-input" minlength="4" maxlength="20"><label>Status</label><select id="manager-status-select"><option value="active">Ativo</option><option value="suspended">Suspenso</option></select><button class="btn btn-primary btn-wide" type="button" onclick="admin.saveManager()">Salvar gerente</button><hr class="modal-divider"><small>BAIXA DE PAGAMENTO</small><label>Valor recebido em R$</label><input id="manager-payment-input" type="number" min="0.01" step="0.01"><label>Descrição</label><input id="manager-payment-desc" placeholder="Pagamento de GGR"><button class="btn btn-ghost btn-wide" type="button" onclick="admin.registerManagerPayment()">Registrar pagamento</button></div></div>
   <div class="toast-container" id="toast-container"></div>
   <script src="/js/app.js?v=20260729-9"></script>
-  <script src="/js/admin.js?v=20260808-2"></script>
+  <script src="/js/admin.js?v=20260813-1"></script>
 </body>
 </html>
