@@ -219,8 +219,33 @@ const app = {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(cents) / 100);
   },
   formatDate(value) {
-    const date = value?.seconds ? new Date(value.seconds * 1000) : new Date(value || Date.now());
-    return date.toLocaleString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    if (value === null || value === undefined || value === '') return 'Data não informada';
+
+    let timestamp = value;
+    if (typeof value?.toDate === 'function') timestamp = value.toDate();
+    else {
+      const seconds = Number(value?.seconds ?? value?._seconds);
+      const nanoseconds = Number(value?.nanoseconds ?? value?._nanoseconds ?? 0);
+      if (Number.isFinite(seconds)) timestamp = (seconds * 1000) + (Number.isFinite(nanoseconds) ? nanoseconds / 1e6 : 0);
+      else if (typeof value === 'number') timestamp = value < 1e12 ? value * 1000 : value;
+      else if (typeof value === 'string' && /^\d+$/.test(value.trim())) {
+        const numeric = Number(value);
+        timestamp = numeric < 1e12 ? numeric * 1000 : numeric;
+      }
+    }
+
+    const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+    if (!Number.isFinite(date.getTime())) return 'Data não informada';
+    return new Intl.DateTimeFormat('pt-BR', {
+      timeZone: 'America/Sao_Paulo',
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    }).format(date).replace(',', '');
   },
   showToast(message) {
     const container = document.getElementById('toast-container');
