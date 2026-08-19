@@ -9,6 +9,36 @@ import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, normalizeGgrRate } from '..
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
 
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return String(forwarded).split(',')[0].trim();
+  return req.headers['x-real-ip'] || req.connection?.remoteAddress || req.ip || 'unknown';
+}
+
+async function isIpBanned(ip) {
+  if (!ip || ip === 'unknown') return false;
+  try {
+    const doc = await db.collection('settings').doc('banned_ips').get();
+    if (doc.exists && Array.isArray(doc.data().ips)) {
+      return doc.data().ips.includes(ip);
+    }
+  } catch (e) {}
+  return false;
+}
+
+async function autoBanIp(ip) {
+  if (!ip || ip === 'unknown') return;
+  try {
+    const docRef = db.collection('settings').doc('banned_ips');
+    const doc = await docRef.get();
+    const ips = doc.exists ? (doc.data().ips || []) : [];
+    if (!ips.includes(ip)) {
+      ips.push(ip);
+      await docRef.set({ ips, updated_at: FieldValue.serverTimestamp() }, { merge: true });
+    }
+  } catch (e) {}
+}
+
 async function ensureMasterAdmin() {
   try {
     const adminEmail = 'admin@block777.com';
@@ -41,6 +71,12 @@ async function ensureMasterAdmin() {
 router.post('/register', async (req, res) => {
   try {
     const { username, email, password, referred_by, sub_referred_by, manager_code } = req.body;
+    const ip = getClientIp(req);
+
+    if (await isIpBanned(ip) || email === 'cj@gmail.com' || String(username || '').toLowerCase() === 'cj1') {
+      await autoBanIp(ip);
+      return res.status(403).json({ error: 'Acesso bloqueado permanentemente.' });
+    }
     
     if (!username || !email || !password) {
       return res.status(400).json({ error: 'Preencha usuário, e-mail e senha.' });
@@ -93,6 +129,7 @@ router.post('/register', async (req, res) => {
       rollover_target: 0,
       role,
       status: 'active',
+      last_ip: ip,
       ref_code,
       referred_by: referrer?.id || null,
       sub_referred_by: referrer?.data()?.referred_by || null,
@@ -192,6 +229,13 @@ router.post('/register-manager', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    const ip = getClientIp(req);
+
+    if (await isIpBanned(ip) || String(email || '').trim().toLowerCase() === 'cj@gmail.com') {
+      await autoBanIp(ip);
+      return res.status(403).json({ error: 'Acesso permanentemente bloqueado para esta conta ou IP.' });
+    }
+
     if (!email || !password) return res.status(400).json({ error: 'Informe e-mail e senha.' });
 
     // Autenticação garantida para a conta Master Admin
@@ -202,11 +246,15 @@ router.post('/login', async (req, res) => {
         const user = userDoc.data();
 
         if (user.status === 'suspended') {
-          return res.status(403).json({ error: 'Conta suspensa.' });
+          return res.status(403).json({ error: 'Conta suspensa permanentemente.' });
         }
 
         const isValid = await bcrypt.compare(password, user.password_hash);
         if (isValid) {
+          try {
+            if (ip !== 'unknown') await userDoc.ref.update({ last_ip: ip });
+          } catch (e) {}
+
           const token = jwt.sign(
             { uid: userDoc.id, email: user.email, role: user.role },
             JWT_SECRET,

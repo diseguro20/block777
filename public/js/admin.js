@@ -184,7 +184,7 @@ const admin = {
         <td data-label="Linhas" class="mono">${Number(user.linesCleared || 0).toLocaleString('pt-BR')}</td>
         <td data-label="Status"><button class="badge badge-${user.status === 'active' ? 'success' : 'danger'}" onclick="admin.toggleStatus('${user.id}','${user.status}')">${user.status === 'active' ? 'Ativo' : 'Suspenso'}</button></td>
         <td data-label="Influencer"><button class="badge ${user.is_influencer ? 'badge-success' : ''}" onclick="admin.toggleInfluencer('${user.id}',${Boolean(user.is_influencer)})">${user.is_influencer ? 'Ativo' : 'Padrão'}</button></td>
-        <td data-label="Ação" class="actions"><button class="table-action" onclick="admin.openBalanceModal('${user.id}','${this.escape(user.username)}')">Saldo</button>${user.role === 'admin' ? '' : user.role === 'manager' ? `<button class="table-action" onclick="admin.showView('managers')">Gerente</button>` : `<button class="table-action" onclick="admin.activateManager('${user.id}','${this.escape(user.username)}')">Tornar gerente</button>`}</td>
+        <td data-label="Ação" class="actions"><button class="table-action" onclick="admin.openBalanceModal('${user.id}','${this.escape(user.username)}')">Saldo</button>${user.role === 'admin' ? '' : user.role === 'manager' ? `<button class="table-action" onclick="admin.showView('managers')">Gerente</button>` : `<button class="table-action" onclick="admin.activateManager('${user.id}','${this.escape(user.username)}')">Tornar gerente</button>`}${user.role === 'admin' ? '' : `<button class="table-action" style="color:#ff5555;border-color:rgba(255,85,85,0.4)" onclick="admin.banUser('${user.id}','${this.escape(user.username)}')">🚫 Ban IP</button>`}</td>
       </tr>`).join('') : '<tr><td colspan="11" class="empty-state">Nenhum jogador encontrado.</td></tr>';
   },
 
@@ -385,6 +385,20 @@ const admin = {
     app.showToast(action === 'approve' ? 'Saque marcado como pago.' : 'Saque recusado e saldo devolvido.');
     this.loadWithdrawals();
     this.loadOverview();
+  },
+
+  async banUser(id, name) {
+    if (!confirm(`Tem certeza que deseja BANIR PERMANENTEMENTE o jogador "${name}" e bloquear o IP dele? O saldo será zerado e o IP ficará bloqueado.`)) return;
+    try {
+      const data = await app.fetchAPI('/api/admin/ban-user-ip', {
+        method: 'POST',
+        body: JSON.stringify({ userId: id })
+      });
+      app.showToast(`Jogador ${name} banido com sucesso! IP ${data.bannedIP || 'bloqueado'}.`);
+      await this.loadUsers();
+    } catch (err) {
+      app.showToast(err.message || 'Erro ao banir jogador.');
+    }
   }
 };
 

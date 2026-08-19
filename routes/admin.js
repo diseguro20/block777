@@ -571,4 +571,97 @@ router.put('/withdrawals/:id/reject', async (req, res) => {
   }
 });
 
+router.get('/banned-ips', async (req, res) => {
+  try {
+    const doc = await db.collection('settings').doc('banned_ips').get();
+    const bannedIPs = doc.exists ? (doc.data().ips || []) : [];
+    res.json({ bannedIPs });
+  } catch (error) {
+    res.json({ bannedIPs: [] });
+  }
+});
+
+router.post('/ban-ip', async (req, res) => {
+  try {
+    const ip = String(req.body.ip || '').trim();
+    if (!ip) return res.status(400).json({ error: 'IP obrigatório.' });
+    const docRef = db.collection('settings').doc('banned_ips');
+    const doc = await docRef.get();
+    const ips = doc.exists ? (doc.data().ips || []) : [];
+    if (!ips.includes(ip)) {
+      ips.push(ip);
+      await docRef.set({ ips, updated_at: FieldValue.serverTimestamp() }, { merge: true });
+      
+      const usersSnap = await db.collection('users').where('last_ip', '==', ip).get();
+      const batch = db.batch();
+      usersSnap.forEach(userDoc => {
+        if (userDoc.data().role !== 'admin') {
+          batch.update(userDoc.ref, {
+            status: 'suspended',
+            balance: 0,
+            cash_balance: 0,
+            bonus_balance: 0,
+            rollover_remaining: 0,
+            rollover_target: 0,
+            ban_reason: 'IP banido permanentemente'
+          });
+        }
+      });
+      await batch.commit();
+    }
+    res.json({ success: true, totalBanned: ips.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.post('/ban-user-ip', async (req, res) => {
+  try {
+    const userId = req.body.userId || req.body.user_id;
+    const userRef = db.collection('users').doc(userId);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    const userData = userDoc.data();
+    if (userData.role === 'admin') return res.status(400).json({ error: 'Não é possível banir um administrador.' });
+
+    await userRef.update({
+      status: 'suspended',
+      balance: 0,
+      cash_balance: 0,
+      bonus_balance: 0,
+      rollover_remaining: 0,
+      rollover_target: 0,
+      ban_reason: 'Ban permanente por admin'
+    });
+
+    const userIp = userData.last_ip;
+    if (userIp) {
+      const docRef = db.collection('settings').doc('banned_ips');
+      const doc = await docRef.get();
+      const ips = doc.exists ? (doc.data().ips || []) : [];
+      if (!ips.includes(userIp)) {
+        ips.push(userIp);
+        await docRef.set({ ips, updated_at: FieldValue.serverTimestamp() }, { merge: true });
+      }
+    }
+    res.json({ success: true, bannedIP: userIp || 'nenhum IP registrado', user: userData.username });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+router.delete('/ban-ip/:ip', async (req, res) => {
+  try {
+    const ip = req.params.ip;
+    const docRef = db.collection('settings').doc('banned_ips');
+    const doc = await docRef.get();
+    let ips = doc.exists ? (doc.data().ips || []) : [];
+    ips = ips.filter(i => i !== ip);
+    await docRef.set({ ips, updated_at: FieldValue.serverTimestamp() }, { merge: true });
+    res.json({ success: true, totalBanned: ips.length });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 export default router;

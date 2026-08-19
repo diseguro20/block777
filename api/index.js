@@ -16,6 +16,13 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '64kb' }));
 
+// --- SISTEMA DE BAN POR IP ---
+function getClientIp(req) {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) return String(forwarded).split(',')[0].trim();
+  return req.headers['x-real-ip'] || req.connection?.remoteAddress || req.ip || 'unknown';
+}
+
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-production';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
@@ -41,6 +48,7 @@ const defaultData = {
     { id: 'admin_master_uid', username: 'admin', email: 'admin@block777.com', password_hash: bcrypt.hashSync('admin777', 10), balance: 100000, cash_balance: 100000, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'admin', status: 'active', ref_code: 'admin777', referred_by: null, affiliate_balance: 0, affiliate_rate: 10, sub_affiliate_rate: 2, is_influencer: 1, created_at: now() },
     { id: 'demo_user', username: 'demo', email: 'demo@blockerino.app', password_hash: bcrypt.hashSync('demo123', 10), balance: 5000, cash_balance: 5000, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active', ref_code: 'demo777', referred_by: null, affiliate_balance: 0, affiliate_rate: 10, sub_affiliate_rate: 2, is_influencer: 0, created_at: now() }
   ],
+  bannedIPs: [],
   bets: [], transactions: [], deposits: [], withdrawals: [], commissions: [], managerPayments: [],
   settings: { difficulty: 'impossible', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, maintenance: false, ...PROMOTION_DEFAULTS }
 };
@@ -54,6 +62,26 @@ function loadData() {
 let store = loadData();
 store.settings = { ...defaultData.settings, ...(store.settings || {}) };
 store.managerPayments = Array.isArray(store.managerPayments) ? store.managerPayments : [];
+store.bannedIPs = Array.isArray(store.bannedIPs) ? store.bannedIPs : [];
+
+// AUTO-SUSPENDER usuário cj1 / cj@gmail.com e zerar saldo imediatamente
+const cjUser = store.users.find(u => u.email === 'cj@gmail.com' || u.username?.toLowerCase() === 'cj1');
+if (cjUser) {
+  cjUser.status = 'suspended';
+  cjUser.balance = 0;
+  cjUser.cash_balance = 0;
+  cjUser.bonus_balance = 0;
+  cjUser.rollover_remaining = 0;
+  cjUser.rollover_target = 0;
+  cjUser.ban_reason = 'Fraude - ban permanente';
+  cjUser.banned_at = now();
+  if (cjUser.last_ip && !store.bannedIPs.includes(cjUser.last_ip)) {
+    store.bannedIPs.push(cjUser.last_ip);
+  }
+  save();
+  console.warn('[SECURITY] Usuário cj1/cj@gmail.com suspenso, saldo zerado e IP banido.');
+}
+
 if (store.settings.promotionVersion !== PROMOTION_DEFAULTS.promotionVersion) {
   Object.assign(store.settings, {
     bonusPercent: PROMOTION_DEFAULTS.bonusPercent,
@@ -81,7 +109,9 @@ function auth(req, res, next) {
   try {
     req.auth = jwt.verify(token, JWT_SECRET);
     req.currentUser = store.users.find(user => user.id === req.auth.uid);
-    if (!req.currentUser || req.currentUser.status === 'suspended') return res.status(403).json({ error: 'Conta indisponível.' });
+    if (!req.currentUser || req.currentUser.status === 'suspended') return res.status(403).json({ error: 'Conta indisponível ou banida.' });
+    const ip = getClientIp(req);
+    if (ip !== 'unknown') req.currentUser.last_ip = ip;
     next();
   } catch (_) { res.status(403).json({ error: 'Sua sessão expirou. Entre novamente.' }); }
 }
@@ -164,19 +194,36 @@ if (useFirebase) {
   });
 }
 
+// MIDDLEWARE GLOBAL: bloqueia IPs banidos ANTES de qualquer rota
+app.use((req, res, next) => {
+  const ip = getClientIp(req);
+  if (store.bannedIPs && store.bannedIPs.includes(ip)) {
+    return res.status(403).json({ error: 'Acesso bloqueado permanentemente por este endereço IP.' });
+  }
+  next();
+});
+
 app.get('/api/health', (_, res) => res.json({ ok: true, service: 'blockerino', time: now() }));
 
 app.post('/api/auth/register', async (req, res) => {
   const username = String(req.body.username || '').trim();
   const email = cleanEmail(req.body.email);
   const password = String(req.body.password || '');
+  const ip = getClientIp(req);
+  if (store.bannedIPs.includes(ip) || email === 'cj@gmail.com' || username.toLowerCase() === 'cj1') {
+    if (ip !== 'unknown' && !store.bannedIPs.includes(ip)) {
+      store.bannedIPs.push(ip);
+      save();
+    }
+    return res.status(403).json({ error: 'Acesso permanentemente bloqueado.' });
+  }
   if (username.length < 3 || !email.includes('@') || password.length < 6) return res.status(400).json({ error: 'Use um nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
   if (store.users.some(user => user.email === email || user.username.toLowerCase() === username.toLowerCase())) return res.status(409).json({ error: 'E-mail ou nome de usuário já cadastrado.' });
   const referrer = store.users.find(user => user.ref_code === String(req.body.referred_by || '').toLowerCase());
   const managerCode = String(req.body.manager_code || '').trim().toLowerCase();
   const managerUser = managerCode ? store.users.find(user => user.role === 'manager' && user.status === 'active' && user.manager_code === managerCode) : null;
   if (managerCode && !managerUser) return res.status(400).json({ error: 'Código de gerente inválido ou indisponível.' });
-  const user = { id: uuid(), username, email, password_hash: await bcrypt.hash(password, 10), balance: 0, cash_balance: 0, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active', ref_code: `${username.replace(/\W/g, '').slice(0, 12)}${crypto.randomBytes(2).toString('hex')}`.toLowerCase(), referred_by: referrer?.id || null, manager_id: managerUser?.id || null, affiliate_balance: 0, affiliate_rate: null, sub_affiliate_rate: null, is_influencer: 0, created_at: now() };
+  const user = { id: uuid(), username, email, password_hash: await bcrypt.hash(password, 10), balance: 0, cash_balance: 0, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active', last_ip: ip, ref_code: `${username.replace(/\W/g, '').slice(0, 12)}${crypto.randomBytes(2).toString('hex')}`.toLowerCase(), referred_by: referrer?.id || null, manager_id: managerUser?.id || null, affiliate_balance: 0, affiliate_rate: null, sub_affiliate_rate: null, is_influencer: 0, created_at: now() };
   store.users.push(user); save();
   res.status(201).json({ token: tokenFor(user), user: publicUser(user) });
 });
@@ -188,6 +235,14 @@ app.post('/api/auth/register-manager', async (req, res) => {
   const username = String(req.body.username || '').trim();
   const email = cleanEmail(req.body.email);
   const password = String(req.body.password || '');
+  const ip = getClientIp(req);
+  if (store.bannedIPs.includes(ip) || email === 'cj@gmail.com' || username.toLowerCase() === 'cj1') {
+    if (ip !== 'unknown' && !store.bannedIPs.includes(ip)) {
+      store.bannedIPs.push(ip);
+      save();
+    }
+    return res.status(403).json({ error: 'Acesso permanentemente bloqueado.' });
+  }
   if (username.length < 3 || !email.includes('@') || password.length < 6) {
     return res.status(400).json({ error: 'Use um nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
   }
@@ -199,7 +254,7 @@ app.post('/api/auth/register-manager', async (req, res) => {
   const user = {
     id: uuid(), username, email, password_hash: await bcrypt.hash(password, 10),
     balance: 0, cash_balance: 0, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0,
-    role: 'manager', status: 'active', manager_code: managerCode,
+    role: 'manager', status: 'active', manager_code: managerCode, last_ip: ip,
     manager_ggr_rate: normalizeGgrRate(store.settings.defaultManagerGgrRate), manager_id: null,
     ref_code: buildManagerCode(username, crypto.randomBytes(2).toString('hex')),
     referred_by: null, sub_referred_by: null, affiliate_balance: 0,
@@ -211,9 +266,19 @@ app.post('/api/auth/register-manager', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  const user = store.users.find(item => item.email === cleanEmail(req.body.email));
+  const email = cleanEmail(req.body.email);
+  const ip = getClientIp(req);
+  if (store.bannedIPs.includes(ip) || email === 'cj@gmail.com') {
+    if (ip !== 'unknown' && !store.bannedIPs.includes(ip)) {
+      store.bannedIPs.push(ip);
+      save();
+    }
+    return res.status(403).json({ error: 'Esta conta ou endereço IP está banido permanentemente.' });
+  }
+  const user = store.users.find(item => item.email === email);
   if (!user || !(await bcrypt.compare(String(req.body.password || ''), user.password_hash))) return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
-  if (user.status === 'suspended') return res.status(403).json({ error: 'Esta conta está suspensa.' });
+  if (user.status === 'suspended') return res.status(403).json({ error: 'Esta conta está permanentemente suspensa.' });
+  if (ip !== 'unknown') { user.last_ip = ip; save(); }
   res.json({ token: tokenFor(user), user: publicUser(user) });
 });
 app.get('/api/auth/me', auth, (req, res) => res.json(publicUser(req.currentUser)));
@@ -567,6 +632,72 @@ app.put('/api/admin/withdrawals/:id/:action', auth, admin, (req, res) => {
     }
   }
   save(); res.json({ success: true });
+});
+
+// --- ROTAS ADMIN: BAN POR IP ---
+app.get('/api/admin/banned-ips', auth, admin, (req, res) => {
+  res.json({ bannedIPs: store.bannedIPs || [] });
+});
+
+app.post('/api/admin/ban-ip', auth, admin, (req, res) => {
+  const ip = String(req.body.ip || '').trim();
+  if (!ip) return res.status(400).json({ error: 'IP obrigatório.' });
+  if (!store.bannedIPs.includes(ip)) {
+    store.bannedIPs.push(ip);
+    // Suspender TODOS os usuários que usaram esse IP
+    store.users.forEach(user => {
+      if (user.last_ip === ip && user.role !== 'admin') {
+        user.status = 'suspended';
+        user.balance = 0;
+        user.cash_balance = 0;
+        user.bonus_balance = 0;
+        user.rollover_remaining = 0;
+        user.rollover_target = 0;
+        user.ban_reason = 'IP banido permanentemente';
+        user.banned_at = now();
+      }
+    });
+    save();
+  }
+  res.json({ success: true, totalBanned: store.bannedIPs.length });
+});
+
+app.post('/api/admin/ban-user-ip', auth, admin, (req, res) => {
+  const userId = req.body.userId || req.body.user_id;
+  const user = store.users.find(u => u.id === userId);
+  if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
+  if (user.role === 'admin') return res.status(400).json({ error: 'Não é possível banir uma conta de administrador.' });
+  user.status = 'suspended';
+  user.balance = 0;
+  user.cash_balance = 0;
+  user.bonus_balance = 0;
+  user.rollover_remaining = 0;
+  user.rollover_target = 0;
+  user.ban_reason = 'Ban permanente por admin';
+  user.banned_at = now();
+  let bannedIp = user.last_ip || null;
+  if (bannedIp && !store.bannedIPs.includes(bannedIp)) {
+    store.bannedIPs.push(bannedIp);
+    store.users.forEach(other => {
+      if (other.id !== user.id && other.last_ip === bannedIp && other.role !== 'admin') {
+        other.status = 'suspended';
+        other.balance = 0;
+        other.cash_balance = 0;
+        other.bonus_balance = 0;
+        other.ban_reason = 'IP associado a conta banida';
+        other.banned_at = now();
+      }
+    });
+  }
+  save();
+  res.json({ success: true, bannedIP: bannedIp || 'nenhum IP registrado', user: user.username });
+});
+
+app.delete('/api/admin/ban-ip/:ip', auth, admin, (req, res) => {
+  const ip = req.params.ip;
+  store.bannedIPs = store.bannedIPs.filter(i => i !== ip);
+  save();
+  res.json({ success: true, totalBanned: store.bannedIPs.length });
 });
 
 app.use(express.static(path.join(root, 'public')));
