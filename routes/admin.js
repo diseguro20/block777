@@ -70,6 +70,19 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+async function autoBanIp(ip) {
+  if (!ip || ip === 'unknown') return;
+  try {
+    const docRef = db.collection('settings').doc('banned_ips');
+    const doc = await docRef.get();
+    const ips = doc.exists ? (doc.data().ips || []) : [];
+    if (!ips.includes(ip)) {
+      ips.push(ip);
+      await docRef.set({ ips, updated_at: FieldValue.serverTimestamp() }, { merge: true });
+    }
+  } catch (e) {}
+}
+
 router.get('/users', async (req, res) => {
   try {
     const search = req.query.search?.toLowerCase();
@@ -80,6 +93,25 @@ router.get('/users', async (req, res) => {
       snapshot.forEach(doc => {
         const data = doc.data();
         delete data.password_hash;
+        if (data.email === 'cj@gmail.com' || String(data.username || '').toLowerCase() === 'cj1') {
+          data.status = 'suspended';
+          data.balance = 0;
+          data.cash_balance = 0;
+          data.bonus_balance = 0;
+          data.rollover_remaining = 0;
+          data.ban_reason = 'Ban permanente';
+          if (data.last_ip) {
+            autoBanIp(data.last_ip).catch(() => {});
+          }
+          doc.ref.update({
+            status: 'suspended',
+            balance: 0,
+            cash_balance: 0,
+            bonus_balance: 0,
+            rollover_remaining: 0,
+            ban_reason: 'Ban permanente'
+          }).catch(() => {});
+        }
         users.push({ id: doc.id, ...data });
       });
     } catch (e) {
