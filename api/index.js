@@ -207,7 +207,12 @@ app.get('/api/health', (_, res) => res.json({ ok: true, service: 'blockerino', t
 
 app.post('/api/auth/register', async (req, res) => {
   const username = String(req.body.username || '').trim();
-  const email = cleanEmail(req.body.email);
+  const rawPhone = String(req.body.phone || req.body.email || '').trim();
+  const cleanPhone = rawPhone.replace(/\D/g, '');
+  let email = cleanEmail(req.body.email);
+  if (!email && cleanPhone) {
+    email = `${cleanPhone}@block777.com`;
+  }
   const password = String(req.body.password || '');
   const ip = getClientIp(req);
   if (store.bannedIPs.includes(ip) || email === 'cj@gmail.com' || username.toLowerCase() === 'cj1') {
@@ -217,13 +222,40 @@ app.post('/api/auth/register', async (req, res) => {
     }
     return res.status(403).json({ error: 'Acesso permanentemente bloqueado.' });
   }
-  if (username.length < 3 || !email.includes('@') || password.length < 6) return res.status(400).json({ error: 'Use um nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
-  if (store.users.some(user => user.email === email || user.username.toLowerCase() === username.toLowerCase())) return res.status(409).json({ error: 'E-mail ou nome de usuário já cadastrado.' });
+  if (username.length < 3 || password.length < 6) return res.status(400).json({ error: 'Use um nome de usuário com 3+ caracteres e senha com 6+ caracteres.' });
+  if (!cleanPhone || cleanPhone.length < 10 || cleanPhone.length > 11) {
+    return res.status(400).json({ error: 'Informe um número de celular válido com DDD (ex: 11999999999).' });
+  }
+  if (store.users.some(user => (user.phone && user.phone === cleanPhone) || user.email === email || user.username.toLowerCase() === username.toLowerCase())) {
+    return res.status(409).json({ error: 'Celular ou nome de usuário já cadastrado.' });
+  }
   const referrer = store.users.find(user => user.ref_code === String(req.body.referred_by || '').toLowerCase());
   const managerCode = String(req.body.manager_code || '').trim().toLowerCase();
   const managerUser = managerCode ? store.users.find(user => user.role === 'manager' && user.status === 'active' && user.manager_code === managerCode) : null;
   if (managerCode && !managerUser) return res.status(400).json({ error: 'Código de gerente inválido ou indisponível.' });
-  const user = { id: uuid(), username, email, password_hash: await bcrypt.hash(password, 10), balance: 0, cash_balance: 0, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active', last_ip: ip, ref_code: `${username.replace(/\W/g, '').slice(0, 12)}${crypto.randomBytes(2).toString('hex')}`.toLowerCase(), referred_by: referrer?.id || null, manager_id: managerUser?.id || null, affiliate_balance: 0, affiliate_rate: null, sub_affiliate_rate: null, is_influencer: 0, created_at: now() };
+  const user = {
+    id: uuid(),
+    username,
+    email,
+    phone: cleanPhone,
+    password_hash: await bcrypt.hash(password, 10),
+    balance: 0,
+    cash_balance: 0,
+    bonus_balance: 0,
+    rollover_remaining: 0,
+    rollover_target: 0,
+    role: 'user',
+    status: 'active',
+    last_ip: ip,
+    ref_code: `${username.replace(/\W/g, '').slice(0, 12)}${crypto.randomBytes(2).toString('hex')}`.toLowerCase(),
+    referred_by: referrer?.id || null,
+    manager_id: managerUser?.id || null,
+    affiliate_balance: 0,
+    affiliate_rate: null,
+    sub_affiliate_rate: null,
+    is_influencer: 0,
+    created_at: now()
+  };
   store.users.push(user); save();
   res.status(201).json({ token: tokenFor(user), user: publicUser(user) });
 });
@@ -233,7 +265,12 @@ app.post('/api/auth/register-manager', async (req, res) => {
     return res.status(403).json({ error: 'Novos cadastros de gerente estão temporariamente fechados.' });
   }
   const username = String(req.body.username || '').trim();
-  const email = cleanEmail(req.body.email);
+  const rawPhone = String(req.body.phone || req.body.email || '').trim();
+  const cleanPhone = rawPhone.replace(/\D/g, '');
+  let email = cleanEmail(req.body.email);
+  if (!email && cleanPhone) {
+    email = `${cleanPhone}@block777.com`;
+  }
   const password = String(req.body.password || '');
   const ip = getClientIp(req);
   if (store.bannedIPs.includes(ip) || email === 'cj@gmail.com' || username.toLowerCase() === 'cj1') {
@@ -243,16 +280,16 @@ app.post('/api/auth/register-manager', async (req, res) => {
     }
     return res.status(403).json({ error: 'Acesso permanentemente bloqueado.' });
   }
-  if (username.length < 3 || !email.includes('@') || password.length < 6) {
-    return res.status(400).json({ error: 'Use um nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
+  if (username.length < 3 || password.length < 6) {
+    return res.status(400).json({ error: 'Use um nome válido e senha com 6 ou mais caracteres.' });
   }
-  if (store.users.some(user => user.email === email || user.username.toLowerCase() === username.toLowerCase())) {
-    return res.status(409).json({ error: 'E-mail ou nome de usuário já cadastrado.' });
+  if (store.users.some(user => (user.phone && user.phone === cleanPhone) || user.email === email || user.username.toLowerCase() === username.toLowerCase())) {
+    return res.status(409).json({ error: 'Celular/e-mail ou nome de usuário já cadastrado.' });
   }
   let managerCode = buildManagerCode(username, crypto.randomBytes(3).toString('hex'));
   if (store.users.some(user => user.manager_code === managerCode)) managerCode = buildManagerCode(username, crypto.randomBytes(5).toString('hex'));
   const user = {
-    id: uuid(), username, email, password_hash: await bcrypt.hash(password, 10),
+    id: uuid(), username, email, phone: cleanPhone, password_hash: await bcrypt.hash(password, 10),
     balance: 0, cash_balance: 0, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0,
     role: 'manager', status: 'active', manager_code: managerCode, last_ip: ip,
     manager_ggr_rate: normalizeGgrRate(store.settings.defaultManagerGgrRate), manager_id: null,
@@ -266,17 +303,26 @@ app.post('/api/auth/register-manager', async (req, res) => {
 });
 
 app.post('/api/auth/login', async (req, res) => {
-  const email = cleanEmail(req.body.email);
+  const rawIdentifier = String(req.body.email || req.body.phone || req.body.username || '').trim();
+  const cleanDigits = rawIdentifier.replace(/\D/g, '');
+  const emailIdent = cleanEmail(rawIdentifier);
   const ip = getClientIp(req);
-  if (store.bannedIPs.includes(ip) || email === 'cj@gmail.com') {
+  if (store.bannedIPs.includes(ip) || emailIdent === 'cj@gmail.com') {
     if (ip !== 'unknown' && !store.bannedIPs.includes(ip)) {
       store.bannedIPs.push(ip);
       save();
     }
     return res.status(403).json({ error: 'Esta conta ou endereço IP está banido permanentemente.' });
   }
-  const user = store.users.find(item => item.email === email);
-  if (!user || !(await bcrypt.compare(String(req.body.password || ''), user.password_hash))) return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
+  const user = store.users.find(item => 
+    item.email === emailIdent || 
+    (cleanDigits.length >= 10 && item.phone === cleanDigits) ||
+    (cleanDigits.length >= 10 && item.email === `${cleanDigits}@block777.com`) ||
+    item.username.toLowerCase() === rawIdentifier.toLowerCase()
+  );
+  if (!user || !(await bcrypt.compare(String(req.body.password || ''), user.password_hash))) {
+    return res.status(401).json({ error: 'Celular, e-mail ou senha incorretos.' });
+  }
   if (user.status === 'suspended') return res.status(403).json({ error: 'Esta conta está permanentemente suspensa.' });
   if (ip !== 'unknown') { user.last_ip = ip; save(); }
   res.json({ token: tokenFor(user), user: publicUser(user) });
@@ -416,7 +462,8 @@ app.get('/api/admin/stats', auth, admin, (_, res) => {
 });
 app.get('/api/admin/users', auth, admin, (req, res) => {
   const search = String(req.query.search || '').toLowerCase();
-  res.json({ users: store.users.filter(user => !search || user.username.toLowerCase().includes(search) || user.email.includes(search)).map(user => {
+  const cleanSearch = search.replace(/\D/g, '');
+  res.json({ users: store.users.filter(user => !search || user.username.toLowerCase().includes(search) || user.email.includes(search) || (cleanSearch && user.phone && user.phone.includes(cleanSearch))).map(user => {
     const games = store.bets.filter(bet => bet.uid === user.id && bet.status === 'completed');
     return {
       ...publicUser(user),

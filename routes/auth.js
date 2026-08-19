@@ -70,7 +70,13 @@ async function ensureMasterAdmin() {
 
 router.post('/register', async (req, res) => {
   try {
-    const { username, email, password, referred_by, sub_referred_by, manager_code } = req.body;
+    const { username, password, referred_by, sub_referred_by, manager_code } = req.body;
+    const rawPhone = String(req.body.phone || req.body.email || '').trim();
+    const cleanPhone = rawPhone.replace(/\D/g, '');
+    let email = String(req.body.email || '').trim().toLowerCase();
+    if (!email && cleanPhone) {
+      email = `${cleanPhone}@block777.com`;
+    }
     const ip = getClientIp(req);
 
     if (await isIpBanned(ip) || email === 'cj@gmail.com' || String(username || '').toLowerCase() === 'cj1') {
@@ -78,15 +84,26 @@ router.post('/register', async (req, res) => {
       return res.status(403).json({ error: 'Acesso bloqueado permanentemente.' });
     }
     
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Preencha usuário, e-mail e senha.' });
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Preencha o nome de usuário e senha.' });
+    }
+
+    if (username.length < 3 || password.length < 6) {
+      return res.status(400).json({ error: 'Nome de usuário deve ter 3+ caracteres e senha 6+ caracteres.' });
+    }
+
+    if (!cleanPhone || cleanPhone.length < 10 || cleanPhone.length > 11) {
+      return res.status(400).json({ error: 'Informe um número de celular válido com DDD (ex: 11999999999).' });
     }
 
     try {
-      const emailCheck = await db.collection('users').where('email', '==', email).get();
-      if (!emailCheck.empty) return res.status(400).json({ error: 'E-mail já cadastrado.' });
+      const emailCheck = await db.collection('users').where('email', '==', email).limit(1).get();
+      if (!emailCheck.empty) return res.status(400).json({ error: 'Celular já cadastrado.' });
+
+      const phoneCheck = await db.collection('users').where('phone', '==', cleanPhone).limit(1).get();
+      if (!phoneCheck.empty) return res.status(400).json({ error: 'Celular já cadastrado.' });
       
-      const usernameCheck = await db.collection('users').where('username', '==', username).get();
+      const usernameCheck = await db.collection('users').where('username', '==', username).limit(1).get();
       if (!usernameCheck.empty) return res.status(400).json({ error: 'Nome de usuário em uso.' });
     } catch (e) {}
 
@@ -121,6 +138,7 @@ router.post('/register', async (req, res) => {
     const newUser = {
       username,
       email,
+      phone: cleanPhone,
       password_hash,
       balance: 0,
       cash_balance: 0,
@@ -228,19 +246,32 @@ router.post('/register-manager', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const rawIdentifier = String(req.body.email || req.body.phone || req.body.username || '').trim();
+    const cleanDigits = rawIdentifier.replace(/\D/g, '');
+    const emailIdent = cleanDigits && !rawIdentifier.includes('@') ? `${cleanDigits}@block777.com` : String(rawIdentifier).toLowerCase();
+    const password = String(req.body.password || '');
     const ip = getClientIp(req);
 
-    if (await isIpBanned(ip) || String(email || '').trim().toLowerCase() === 'cj@gmail.com') {
+    if (await isIpBanned(ip) || emailIdent === 'cj@gmail.com') {
       await autoBanIp(ip);
       return res.status(403).json({ error: 'Acesso permanentemente bloqueado para esta conta ou IP.' });
     }
 
-    if (!email || !password) return res.status(400).json({ error: 'Informe e-mail e senha.' });
+    if (!rawIdentifier || !password) return res.status(400).json({ error: 'Informe celular/e-mail e senha.' });
 
-    // Autenticação garantida para a conta Master Admin
+    // Autenticação garantida para a conta Master Admin ou busca por e-mail/celular/usuário
     try {
-      const snapshot = await db.collection('users').where('email', '==', email).limit(1).get();
+      let snapshot = await db.collection('users').where('email', '==', emailIdent).limit(1).get();
+      if (snapshot.empty && cleanDigits.length >= 10) {
+        snapshot = await db.collection('users').where('phone', '==', cleanDigits).limit(1).get();
+      }
+      if (snapshot.empty && cleanDigits.length >= 10) {
+        snapshot = await db.collection('users').where('email', '==', `${cleanDigits}@block777.com`).limit(1).get();
+      }
+      if (snapshot.empty) {
+        snapshot = await db.collection('users').where('username', '==', rawIdentifier).limit(1).get();
+      }
+
       if (!snapshot.empty) {
         const userDoc = snapshot.docs[0];
         const user = userDoc.data();
@@ -261,12 +292,12 @@ router.post('/login', async (req, res) => {
             { expiresIn: '30d' }
           );
 
-          return res.json({ token, user: { uid: userDoc.id, email: user.email, username: user.username, role: user.role, balance: user.balance } });
+          return res.json({ token, user: { uid: userDoc.id, email: user.email, phone: user.phone || null, username: user.username, role: user.role, balance: user.balance } });
         }
       }
     } catch (e) {}
 
-    return res.status(401).json({ error: 'E-mail ou senha incorretos.' });
+    return res.status(401).json({ error: 'Celular, e-mail ou senha incorretos.' });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Erro no servidor' });

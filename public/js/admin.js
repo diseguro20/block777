@@ -160,6 +160,25 @@ const admin = {
     app.showToast('Dificuldade global atualizada.');
   },
 
+  formatPhone(value) {
+    if (!value) return '';
+    const digits = String(value).replace(/\D/g, '').slice(0, 11);
+    if (!digits) return '';
+    if (digits.length <= 2) return `(${digits}`;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+  },
+
+  getWhatsAppUrl(phone, username) {
+    if (!phone) return null;
+    const cleanDigits = String(phone).replace(/\D/g, '');
+    if (cleanDigits.length < 10) return null;
+    const fullNumber = cleanDigits.startsWith('55') && cleanDigits.length >= 12 ? cleanDigits : `55${cleanDigits}`;
+    const text = encodeURIComponent(`Olá ${username || 'jogador'}, tudo bem? Aqui é da equipe do Block777!`);
+    return `https://wa.me/${fullNumber}?text=${text}`;
+  },
+
   async loadUsers(search = '') {
     const data = await app.fetchAPI(`/api/admin/users?search=${encodeURIComponent(search)}`);
     const body = document.getElementById('users-table');
@@ -172,9 +191,19 @@ const admin = {
       return Number.isFinite(parsed) ? parsed : 0;
     };
     const users = [...(data.users || [])].sort((a, b) => createdAtMillis(b.created_at) - createdAtMillis(a.created_at));
-    body.innerHTML = users.length ? users.map(user => `
+    body.innerHTML = users.length ? users.map(user => {
+      const phoneDigits = user.phone ? String(user.phone).replace(/\D/g, '') : (user.email && user.email.includes('@block777.com') ? user.email.split('@')[0].replace(/\D/g, '') : '');
+      const waUrl = this.getWhatsAppUrl(phoneDigits, user.username);
+      const displayContact = phoneDigits ? `📱 ${this.formatPhone(phoneDigits)}` : this.escape(user.email);
+      return `
       <tr>
-        <td data-label="Jogador"><div class="user-cell"><b>${this.escape(user.username)}</b><span>${this.escape(user.email)}</span></div></td>
+        <td data-label="Jogador">
+          <div class="user-cell">
+            <b>${this.escape(user.username)}</b>
+            <span>${displayContact}</span>
+            ${waUrl ? `<a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="whatsapp-btn" title="Chamar no WhatsApp"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.771-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.312.045-.698.056-1.144-.086-.282-.09-.643-.223-1.109-.425-1.951-.844-3.218-2.83-3.315-2.961-.098-.13-1.077-1.434-1.077-2.735 0-1.302.684-1.942.927-2.203.243-.261.532-.326.709-.326.178 0 .355.002.511.009.167.007.391-.063.612.468.228.548.777 1.896.845 2.034.068.138.114.3.023.479-.091.178-.137.29-.273.45-.136.16-.286.357-.409.479-.136.136-.279.284-.12.558.159.274.708 1.168 1.521 1.892 1.047.933 1.929 1.222 2.203 1.358.274.137.433.114.593-.069.16-.183.684-.799.866-1.073.183-.274.366-.228.616-.137.251.091 1.589.749 1.863.886.274.137.457.205.525.32.068.114.068.662-.076 1.067z"/></svg><span>WhatsApp</span></a>` : ''}
+          </div>
+        </td>
         <td data-label="Saldo" class="mono">${app.formatBRL(user.balance)}</td>
         <td data-label="Bônus" class="mono positive">${app.formatBRL(user.bonus_balance || 0)}</td>
         <td data-label="Rollover" class="mono">${app.formatBRL(user.rollover_remaining || 0)}</td>
@@ -185,7 +214,8 @@ const admin = {
         <td data-label="Status"><button class="badge badge-${user.status === 'active' ? 'success' : 'danger'}" onclick="admin.toggleStatus('${user.id}','${user.status}')">${user.status === 'active' ? 'Ativo' : 'Suspenso'}</button></td>
         <td data-label="Influencer"><button class="badge ${user.is_influencer ? 'badge-success' : ''}" onclick="admin.toggleInfluencer('${user.id}',${Boolean(user.is_influencer)})">${user.is_influencer ? 'Ativo' : 'Padrão'}</button></td>
         <td data-label="Ação" class="actions"><button class="table-action" onclick="admin.openBalanceModal('${user.id}','${this.escape(user.username)}')">Saldo</button>${user.role === 'admin' ? '' : user.role === 'manager' ? `<button class="table-action" onclick="admin.showView('managers')">Gerente</button>` : `<button class="table-action" onclick="admin.activateManager('${user.id}','${this.escape(user.username)}')">Tornar gerente</button>`}${user.role === 'admin' ? '' : `<button class="table-action" style="color:#ff5555;border-color:rgba(255,85,85,0.4)" onclick="admin.banUser('${user.id}','${this.escape(user.username)}')">🚫 Ban IP</button>`}</td>
-      </tr>`).join('') : '<tr><td colspan="11" class="empty-state">Nenhum jogador encontrado.</td></tr>';
+      </tr>`;
+    }).join('') : '<tr><td colspan="11" class="empty-state">Nenhum jogador encontrado.</td></tr>';
   },
 
   async activateManager(id, name) {

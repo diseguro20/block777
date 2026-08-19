@@ -151,9 +151,11 @@ router.get('/users', async (req, res) => {
     }));
 
     if (search) {
+      const cleanSearch = search.replace(/\D/g, '');
       users = users.filter(u => 
         (u.username && u.username.toLowerCase().includes(search)) || 
-        (u.email && u.email.toLowerCase().includes(search))
+        (u.email && u.email.toLowerCase().includes(search)) ||
+        (cleanSearch && u.phone && u.phone.includes(cleanSearch))
       );
     }
 

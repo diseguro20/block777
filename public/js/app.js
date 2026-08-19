@@ -75,9 +75,25 @@ const app = {
     } catch (_) {}
   },
 
+  formatPhone(value) {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 11);
+    if (!digits) return '';
+    if (digits.length <= 2) return `(${digits}`;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+  },
+
   bindForms() {
     const login = document.getElementById('login-form');
     const register = document.getElementById('register-form');
+    const phoneInput = document.getElementById('reg-phone-input');
+    if (phoneInput) {
+      phoneInput.addEventListener('input', (e) => {
+        e.target.value = this.formatPhone(e.target.value);
+      });
+    }
+
     if (login) login.onsubmit = async (event) => {
       event.preventDefault();
       const form = new FormData(login);
@@ -91,10 +107,13 @@ const app = {
       const payload = Object.fromEntries(new FormData(register));
       payload.referred_by = localStorage.getItem('ref') || null;
       payload.manager_code = localStorage.getItem('manager_code') || null;
+      if (payload.phone) {
+        payload.phone = String(payload.phone).trim();
+      }
       try {
         const data = await this.fetchAPI('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
         this.setSession(data);
-        this.showToast('Conta criada. Bem-vindo ao Blockerino!');
+        this.showToast('Conta criada com sucesso! Bem-vindo ao Blockerino!');
       } catch (_) {}
     };
   },
