@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Block777 — Desafio de Puzzle</title>
+  <meta name="description" content="Jogue o melhor puzzle de blocos grátis! Teste sua inteligência e bata recordes no Block777.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #0a0a1a;
+      color: #fff;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      background: radial-gradient(ellipse at 50% 20%, #1a1040 0%, #0a0a1a 70%);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -50%; left: -50%;
+      width: 200%; height: 200%;
+      background: conic-gradient(from 0deg, transparent, rgba(124,58,237,0.05), transparent, rgba(236,72,153,0.05), transparent);
+      animation: rotate 20s linear infinite;
+    }
+    @keyframes rotate { to { transform: rotate(360deg); } }
+    .hero-content {
+      position: relative; z-index: 2;
+      text-align: center; max-width: 500px; width: 100%;
+    }
+    .logo {
+      font-size: 3rem; font-weight: 900;
+      background: linear-gradient(135deg, #7c3aed, #ec4899, #f59e0b);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; letter-spacing: -1px; margin-bottom: 8px;
+    }
+    .tagline {
+      font-size: 1.1rem; color: rgba(255,255,255,0.6);
+      margin-bottom: 32px; font-weight: 400;
+    }
+    .demo-wrapper {
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 20px; padding: 16px;
+      margin-bottom: 32px; backdrop-filter: blur(12px);
+    }
+    .demo-header {
+      display: flex; justify-content: space-between;
+      align-items: center; margin-bottom: 12px; padding: 0 4px;
+    }
+    .demo-label {
+      font-size: 0.75rem; color: rgba(255,255,255,0.4);
+      text-transform: uppercase; letter-spacing: 2px;
+    }
+    .demo-score { font-size: 0.85rem; color: #f59e0b; font-weight: 700; }
+    #mini-game { width: 100%; border-radius: 12px; touch-action: none; cursor: pointer; }
+    .demo-hint {
+      font-size: 0.8rem; color: rgba(255,255,255,0.35);
+      margin-top: 10px; text-align: center;
+    }
+    .cta-btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+      width: 100%; max-width: 380px; padding: 18px 32px;
+      font-size: 1.15rem; font-weight: 800; color: #fff;
+      background: linear-gradient(135deg, #7c3aed, #ec4899);
+      border: none; border-radius: 16px; cursor: pointer;
+      text-decoration: none; transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 8px 32px rgba(124,58,237,0.35);
+      text-transform: uppercase; letter-spacing: 0.5px;
+    }
+    .cta-btn:hover { transform: translateY(-2px); box-shadow: 0 12px 40px rgba(124,58,237,0.5); }
+    .cta-btn:active { transform: scale(0.97); }
+    .cta-sub { font-size: 0.8rem; color: rgba(255,255,255,0.4); margin-top: 12px; }
+    .features { padding: 60px 20px; max-width: 500px; margin: 0 auto; }
+    .features h2 { text-align: center; font-size: 1.6rem; font-weight: 800; margin-bottom: 32px; }
+    .feature-card {
+      display: flex; align-items: flex-start; gap: 16px; padding: 20px;
+      background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px; margin-bottom: 12px;
+    }
+    .feature-icon { font-size: 2rem; flex-shrink: 0; width: 48px; text-align: center; }
+    .feature-card h3 { font-size: 1rem; font-weight: 700; margin-bottom: 4px; }
+    .feature-card p { font-size: 0.85rem; color: rgba(255,255,255,0.5); line-height: 1.4; }
+    .how-to { padding: 40px 20px 60px; max-width: 500px; margin: 0 auto; }
+    .how-to h2 { text-align: center; font-size: 1.6rem; font-weight: 800; margin-bottom: 32px; }
+    .step { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+    .step-num {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: linear-gradient(135deg, #7c3aed, #ec4899);
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 800; font-size: 1.1rem; flex-shrink: 0;
+    }
+    .step-text { font-size: 0.95rem; color: rgba(255,255,255,0.75); }
+    .bottom-cta {
+      padding: 40px 20px 60px; text-align: center;
+      background: linear-gradient(to top, rgba(124,58,237,0.08), transparent);
+    }
+    .bottom-cta h2 { font-size: 1.5rem; font-weight: 800; margin-bottom: 8px; }
+    .bottom-cta p { color: rgba(255,255,255,0.5); font-size: 0.9rem; margin-bottom: 24px; }
+    .reviews { padding: 20px 20px 40px; max-width: 500px; margin: 0 auto; }
+    .review {
+      padding: 16px; background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 14px; margin-bottom: 10px;
+    }
+    .review-stars { color: #f59e0b; font-size: 0.85rem; margin-bottom: 6px; }
+    .review-text { font-size: 0.85rem; color: rgba(255,255,255,0.6); line-height: 1.4; margin-bottom: 6px; }
+    .review-name { font-size: 0.75rem; color: rgba(255,255,255,0.3); }
+    .footer { text-align: center; padding: 20px; font-size: 0.7rem; color: rgba(255,255,255,0.2); }
+    .particle {
+      position: fixed; border-radius: 4px; opacity: 0.15;
+      pointer-events: none; animation: float linear infinite;
+    }
+    @keyframes float {
+      0% { transform: translateY(100vh) rotate(0deg); opacity: 0; }
+      10% { opacity: 0.15; } 90% { opacity: 0.15; }
+      100% { transform: translateY(-20vh) rotate(360deg); opacity: 0; }
+    }
+  </style>
+</head>
+<body>
+
+<script>
+  const colors = ['#7c3aed','#ec4899','#f59e0b','#10b981','#3b82f6'];
+  for(let i=0;i<12;i++){
+    const p=document.createElement('div');
+    p.className='particle';
+    const s=Math.random()*12+6;
+    p.style.cssText=`width:${s}px;height:${s}px;left:${Math.random()*100}%;background:${colors[i%5]};animation-duration:${Math.random()*12+10}s;animation-delay:${Math.random()*8}s;`;
+    document.body.appendChild(p);
+  }
+</script>
+
+<section class="hero">
+  <div class="hero-content">
+    <div class="logo">BLOCK777</div>
+    <p class="tagline">O desafio de puzzle que todo mundo está jogando 🧩</p>
+    <div class="demo-wrapper">
+      <div class="demo-header">
+        <span class="demo-label">▶ Teste rápido</span>
+        <span class="demo-score" id="score-display">Pontos: 0</span>
+      </div>
+      <canvas id="mini-game"></canvas>
+      <p class="demo-hint">👆 Arraste os blocos para o tabuleiro</p>
+    </div>
+    <a href="https://block777-omega.vercel.app" class="cta-btn" id="main-cta">🎮 Jogar Versão Completa Grátis</a>
+    <p class="cta-sub">Sem cadastro para testar • 100% gratuito</p>
+  </div>
+</section>
+
+<section class="features">
+  <h2>Por que todo mundo ama? 🔥</h2>
+  <div class="feature-card">
+    <div class="feature-icon">🧠</div>
+    <div><h3>Treina seu Cérebro</h3><p>Melhore seu raciocínio lógico e espacial com desafios que ficam cada vez mais intensos.</p></div>
+  </div>
+  <div class="feature-card">
+    <div class="feature-icon">⚡</div>
+    <div><h3>Partidas Rápidas</h3><p>Ideal para jogar nos intervalos. Uma partida leva de 2 a 5 minutos.</p></div>
+  </div>
+  <div class="feature-card">
+    <div class="feature-icon">🏆</div>
+    <div><h3>Sistema de Multiplicador</h3><p>Quebre linhas consecutivas e veja seu multiplicador subir! Quão alto você consegue chegar?</p></div>
+  </div>
+  <div class="feature-card">
+    <div class="feature-icon">📱</div>
+    <div><h3>Jogue em Qualquer Lugar</h3><p>Funciona direto no navegador, sem precisar baixar nada. Celular, tablet ou PC.</p></div>
+  </div>
+</section>
+
+<section class="how-to">
+  <h2>Como Jogar 🎯</h2>
+  <div class="step"><div class="step-num">1</div><div class="step-text">Arraste os blocos da sua mão para o tabuleiro 8x8</div></div>
+  <div class="step"><div class="step-num">2</div><div class="step-text">Complete linhas horizontais ou verticais para limpar</div></div>
+  <div class="step"><div class="step-num">3</div><div class="step-text">Cada linha limpa aumenta seu multiplicador e pontuação</div></div>
+  <div class="step"><div class="step-num">4</div><div class="step-text">Continue jogando e tente bater seu recorde pessoal!</div></div>
+</section>
+
+<section class="reviews">
+  <div class="review">
+    <div class="review-stars">⭐⭐⭐⭐⭐</div>
+    <div class="review-text">"Viciei nesse jogo! Simples mas muito desafiador. Jogo toda hora no intervalo do trabalho."</div>
+    <div class="review-name">— Lucas M.</div>
+  </div>
+  <div class="review">
+    <div class="review-stars">⭐⭐⭐⭐⭐</div>
+    <div class="review-text">"Melhor puzzle de blocos que já joguei. O sistema de multiplicador é genial."</div>
+    <div class="review-name">— Ana C.</div>
+  </div>
+  <div class="review">
+    <div class="review-stars">⭐⭐⭐⭐⭐</div>
+    <div class="review-text">"Não precisa baixar nada, joga direto no navegador. Muito prático!"</div>
+    <div class="review-name">— Rafael S.</div>
+  </div>
+</section>
+
+<section class="bottom-cta">
+  <h2>Pronto para o desafio? 🧩</h2>
+  <p>Milhares de jogadores já estão quebrando recordes</p>
+  <a href="https://block777-omega.vercel.app" class="cta-btn">🚀 Começar a Jogar Agora</a>
+</section>
+
+<div class="footer">© 2026 Block777 • Jogo de Puzzle • Todos os direitos reservados</div>
+
+<script>
+(function() {
+  const canvas = document.getElementById('mini-game');
+  const ctx = canvas.getContext('2d');
+  const COLORS = ['#7c3aed','#ec4899','#f59e0b','#10b981','#3b82f6','#ef4444'];
+  const GRID = 8;
+  let score = 0;
+  let board = Array(GRID).fill(null).map(() => Array(GRID).fill(null));
+  let hand = [];
+  let dragging = false, dragIdx = null, dragX = 0, dragY = 0, dragLift = 30;
+  const SHAPES = [
+    [[1,1],[1,1]], [[1,1,1]], [[1],[1],[1]], [[1,1]], [[1],[1]],
+    [[1,0],[1,1]], [[0,1],[1,1]], [[1,1],[1,0]], [[1,1],[0,1]],
+    [[1]], [[1,1,1],[0,1,0]], [[0,1,0],[1,1,1]]
+  ];
+  function resize() {
+    const w = Math.min(canvas.parentElement.clientWidth - 32, 400);
+    canvas.width = w; canvas.height = w + 100; draw();
+  }
+  function genHand() {
+    hand = [];
+    for (let i = 0; i < 3; i++) {
+      const shape = SHAPES[Math.floor(Math.random() * SHAPES.length)];
+      const color = COLORS[Math.floor(Math.random() * COLORS.length)];
+      hand.push({ shape, color, used: false });
+    }
+  }
+  function canPlace(shape, r, c) {
+    for (let dr = 0; dr < shape.length; dr++)
+      for (let dc = 0; dc < shape[dr].length; dc++)
+        if (shape[dr][dc] && (r+dr<0||r+dr>=GRID||c+dc<0||c+dc>=GRID||board[r+dr][c+dc]))
+          return false;
+    return true;
+  }
+  function place(shape, color, r, c) {
+    let count = 0;
+    for (let dr = 0; dr < shape.length; dr++)
+      for (let dc = 0; dc < shape[dr].length; dc++)
+        if (shape[dr][dc]) { board[r+dr][c+dc] = color; count++; }
+    score += count; checkLines();
+    document.getElementById('score-display').textContent = 'Pontos: ' + score;
+    if (hand.every(p => p.used)) genHand();
+  }
+  function checkLines() {
+    let cleared = 0;
+    for (let r = 0; r < GRID; r++)
+      if (board[r].every(c => c)) { board[r] = Array(GRID).fill(null); cleared++; }
+    for (let c = 0; c < GRID; c++) {
+      let full = true;
+      for (let r = 0; r < GRID; r++) if (!board[r][c]) full = false;
+      if (full) { for (let r = 0; r < GRID; r++) board[r][c] = null; cleared++; }
+    }
+    if (cleared) score += cleared * GRID * 2;
+  }
+  function drawBlock(x, y, s, color) {
+    ctx.fillStyle = color;
+    ctx.fillRect(x+1, y+1, s-2, s-2);
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillRect(x+1, y+1, s-2, 2); ctx.fillRect(x+1, y+1, 2, s-2);
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.fillRect(x+1, y+s-3, s-2, 2); ctx.fillRect(x+s-3, y+1, 2, s-2);
+  }
+  function draw() {
+    const w = canvas.width, cell = w / GRID;
+    ctx.clearRect(0, 0, w, canvas.height);
+    ctx.fillStyle = '#0f0f2a'; ctx.fillRect(0, 0, w, w);
+    ctx.strokeStyle = 'rgba(124,58,237,0.12)'; ctx.lineWidth = 1;
+    for (let i = 0; i <= GRID; i++) {
+      ctx.beginPath(); ctx.moveTo(0, i*cell); ctx.lineTo(w, i*cell); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(i*cell, 0); ctx.lineTo(i*cell, w); ctx.stroke();
+    }
+    for (let r = 0; r < GRID; r++)
+      for (let c = 0; c < GRID; c++)
+        if (board[r][c]) drawBlock(c*cell, r*cell, cell, board[r][c]);
+    if (dragging && dragIdx !== null && hand[dragIdx]) {
+      const p = hand[dragIdx];
+      const gc = Math.floor((dragX - p.shape[0].length*cell/2)/cell + 0.5);
+      const gr = Math.floor((dragY - dragLift - p.shape.length*cell/2)/cell + 0.5);
+      if (canPlace(p.shape, gr, gc)) {
+        ctx.globalAlpha = 0.4;
+        for (let r = 0; r < p.shape.length; r++)
+          for (let c = 0; c < p.shape[r].length; c++)
+            if (p.shape[r][c]) drawBlock((gc+c)*cell, (gr+r)*cell, cell, p.color);
+        ctx.globalAlpha = 1;
+      }
+    }
+    ctx.fillStyle = '#0a0a1e'; ctx.fillRect(0, w, w, 100);
+    ctx.strokeStyle = 'rgba(124,58,237,0.15)';
+    ctx.beginPath(); ctx.moveTo(0, w); ctx.lineTo(w, w); ctx.stroke();
+    const slot = w / 3, mini = cell * 0.55;
+    hand.forEach((p, i) => {
+      if (p.used) return;
+      if (dragging && dragIdx === i) {
+        for (let r = 0; r < p.shape.length; r++)
+          for (let c = 0; c < p.shape[r].length; c++)
+            if (p.shape[r][c])
+              drawBlock(dragX-p.shape[0].length*cell/2+c*cell, dragY-dragLift-p.shape.length*cell/2+r*cell, cell, p.color);
+      } else {
+        const sx = i*slot + slot/2 - p.shape[0].length*mini/2;
+        const sy = w + 50 - p.shape.length*mini/2;
+        for (let r = 0; r < p.shape.length; r++)
+          for (let c = 0; c < p.shape[r].length; c++)
+            if (p.shape[r][c]) drawBlock(sx+c*mini, sy+r*mini, mini, p.color);
+      }
+    });
+  }
+  function getPos(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX-r.left)*(canvas.width/r.width), y: (e.clientY-r.top)*(canvas.height/r.height) };
+  }
+  canvas.addEventListener('pointerdown', e => {
+    if (!e.isPrimary) return;
+    const pos = getPos(e), w = canvas.width;
+    if (pos.y >= w) {
+      const i = Math.floor(pos.x / (w/3));
+      if (hand[i] && !hand[i].used) {
+        dragging = true; dragIdx = i; dragX = pos.x; dragY = pos.y;
+        dragLift = e.pointerType === 'touch' ? 60 : 30;
+        canvas.setPointerCapture?.(e.pointerId); e.preventDefault(); draw();
+      }
+    }
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!dragging) return; e.preventDefault();
+    const pos = getPos(e); dragX = pos.x; dragY = pos.y; draw();
+  });
+  canvas.addEventListener('pointerup', e => {
+    if (!dragging) return;
+    const pos = getPos(e), cell = canvas.width / GRID, p = hand[dragIdx];
+    if (p) {
+      const gc = Math.floor((pos.x - p.shape[0].length*cell/2)/cell + 0.5);
+      const gr = Math.floor((pos.y - dragLift - p.shape.length*cell/2)/cell + 0.5);
+      if (canPlace(p.shape, gr, gc)) { place(p.shape, p.color, gr, gc); p.used = true; }
+    }
+    dragging = false; dragIdx = null;
+    canvas.releasePointerCapture?.(e.pointerId); draw();
+  });
+  canvas.addEventListener('pointercancel', e => {
+    dragging = false; dragIdx = null;
+    canvas.releasePointerCapture?.(e.pointerId); draw();
+  });
+  board[6][0]='#7c3aed'; board[6][1]='#7c3aed';
+  board[7][0]='#ec4899'; board[7][1]='#ec4899'; board[7][2]='#ec4899';
+  genHand(); resize();
+  window.addEventListener('resize', resize);
+})();
+</script>
+</body>
+</html>
