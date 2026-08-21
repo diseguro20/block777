@@ -137,7 +137,16 @@
     </main>
 
     <section class="admin-auth" id="admin-auth" hidden>
-      <form class="modal-card" id="admin-login-form"><small>ACESSO RESTRITO</small><h3>Entrar no painel</h3><label>E-mail</label><input id="admin-email" type="email" required><label>Senha</label><input id="admin-password" type="password" required><button class="btn btn-primary btn-wide">Entrar</button></form>
+      <form class="modal-card" id="admin-login-form" onsubmit="admin.handleLogin(event)">
+        <small>ACESSO RESTRITO</small>
+        <h3>Entrar no painel</h3>
+        <div id="admin-login-error" style="display:none;color:#ff6b6b;background:rgba(255,80,80,0.12);border:1px solid rgba(255,80,80,0.3);padding:10px 12px;border-radius:8px;font-size:12px;margin:8px 0 12px"></div>
+        <label>E-mail</label>
+        <input id="admin-email" type="email" autocomplete="username" required>
+        <label>Senha</label>
+        <input id="admin-password" type="password" autocomplete="current-password" required>
+        <button id="admin-login-btn" class="btn btn-primary btn-wide" type="submit" style="cursor:pointer">Entrar</button>
+      </form>
     </section>
   </div>
 

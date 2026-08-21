@@ -21,24 +21,56 @@ const admin = {
     const auth = document.getElementById('admin-auth');
     if (!auth) return;
     auth.hidden = false;
-    document.getElementById('admin-login-form').onsubmit = async event => {
-      event.preventDefault();
-      try {
-        const data = await app.fetchAPI('/api/auth/login', {
-          method: 'POST',
-          body: JSON.stringify({
-            email: document.getElementById('admin-email').value,
-            password: document.getElementById('admin-password').value
-          })
-        });
-        if (data.user.role !== 'admin') throw new Error('Esta conta não possui acesso administrativo.');
-        app.token = data.token;
-        localStorage.setItem('token', data.token);
-        location.reload();
-      } catch (error) {
-        app.showToast(error.message);
+  },
+
+  async handleLogin(event) {
+    if (event) event.preventDefault();
+    const emailEl = document.getElementById('admin-email');
+    const passEl = document.getElementById('admin-password');
+    const errEl = document.getElementById('admin-login-error');
+    const btn = document.getElementById('admin-login-btn') || document.querySelector('#admin-login-form button');
+
+    const email = String(emailEl?.value || '').trim();
+    const password = String(passEl?.value || '');
+
+    if (errEl) { errEl.style.display = 'none'; errEl.textContent = ''; }
+    if (!email || !password) {
+      if (errEl) {
+        errEl.style.display = 'block';
+        errEl.textContent = 'Informe e-mail e senha para entrar.';
       }
-    };
+      app.showToast('Informe e-mail e senha para entrar.');
+      return;
+    }
+
+    if (btn) {
+      btn.disabled = true;
+      btn.textContent = 'Entrando...';
+    }
+
+    try {
+      const data = await app.fetchAPI('/api/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ email, password })
+      });
+      if (data?.user?.role !== 'admin') {
+        throw new Error('Esta conta não possui acesso administrativo.');
+      }
+      app.token = data.token;
+      localStorage.setItem('token', data.token);
+      location.reload();
+    } catch (error) {
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Entrar';
+      }
+      const msg = error.message || 'E-mail ou senha incorretos.';
+      if (errEl) {
+        errEl.style.display = 'block';
+        errEl.textContent = msg;
+      }
+      app.showToast(msg);
+    }
   },
 
   showView(name) {
