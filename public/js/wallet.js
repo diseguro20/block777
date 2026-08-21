@@ -60,6 +60,38 @@ const wallet = {
       this.renderHistory(data.transactions || data || []);
     } catch (_) {}
   },
+  depositCheckTimer: null,
+  startDepositPolling(depositId) {
+    if (this.depositCheckTimer) clearInterval(this.depositCheckTimer);
+    this.depositCheckTimer = setInterval(async () => {
+      try {
+        const res = await app.fetchAPI(`/api/wallet/check-deposit/${encodeURIComponent(depositId)}`);
+        if (res && res.status === 'approved') {
+          clearInterval(this.depositCheckTimer);
+          this.depositCheckTimer = null;
+          if (app.user) {
+            app.user.balance = res.balance;
+            if (res.cash_balance != null) app.user.cash_balance = res.cash_balance;
+            if (res.bonus_balance != null) app.user.bonus_balance = res.bonus_balance;
+          }
+          app.updateBalanceDisplays();
+          const pixBox = document.getElementById('pix-result-container');
+          if (pixBox) {
+            pixBox.innerHTML = `
+              <div style="background:#132818;border:1px solid #2d8b4e;border-radius:10px;padding:20px;text-align:center;margin-top:15px">
+                <div style="font-size:32px;color:#60e49c;margin-bottom:8px">✓</div>
+                <strong style="color:#60e49c;font-size:16px;display:block;margin-bottom:5px">PAGAMENTO CONFIRMADO!</strong>
+                <p style="color:#f1f5f2;font-size:13px;margin:0 0 14px">Seu saldo de <b>${app.formatBRL(res.amount + (res.bonusAmount || 0))}</b> já está disponível na sua conta para jogar.</p>
+                <button class="btn btn-primary btn-wide" onclick="app.showScreen('game-screen');game.showPrep('real','classic')">Jogar agora ➔</button>
+              </div>
+            `;
+          }
+          app.showToast('🎉 Depósito confirmado com sucesso! Saldo creditado.');
+          await this.loadWallet();
+        }
+      } catch (_) {}
+    }, 2500);
+  },
   async requestDeposit() {
     const amount = Number(document.getElementById('dep-amount-input').value);
     if (amount < 20 || amount > 1000) return app.showToast('O depósito mínimo é de R$ 20.');
@@ -79,6 +111,9 @@ const wallet = {
       app.showToast(data.bonusAmount > 0
         ? `PIX gerado. Após pagar, você recebe ${app.formatBRL(data.bonusAmount)} de bônus.`
         : 'PIX gerado. Aguardando confirmação do pagamento.');
+      if (data.depositId) {
+        this.startDepositPolling(data.depositId);
+      }
       await this.loadWallet();
     } catch (_) {}
   },

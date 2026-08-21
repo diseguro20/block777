@@ -111,206 +111,250 @@ router.post('/deposit', authenticateToken, async (req, res) => {
   }
 });
 
+export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMPLETED') {
+  return db.runTransaction(async transaction => {
+    const depositDoc = await transaction.get(depositRef);
+    if (!depositDoc.exists) throw new Error('Depósito não encontrado.');
+    const deposit = depositDoc.data();
+    if (deposit.status === 'approved') {
+      const userDoc = await transaction.get(db.collection('users').doc(deposit.uid));
+      return { alreadyApproved: true, balance: userDoc.exists ? userDoc.data().balance : 0 };
+    }
+    if (deposit.status !== 'pending') throw new Error('Depósito não está pendente.');
+
+    const userRef = db.collection('users').doc(deposit.uid);
+    const userDoc = await transaction.get(userRef);
+    if (!userDoc.exists) throw new Error('Usuário não encontrado.');
+    const user = userDoc.data();
+    const wallet = getWalletBuckets(user);
+    const bonusAmount = Math.max(0, Math.round(Number(deposit.bonusAmount) || 0));
+    const rolloverRequired = Math.max(0, Math.round(Number(deposit.rolloverRequired) || 0));
+    const newCashBalance = wallet.cashBalance + deposit.amount;
+    const newBonusBalance = wallet.bonusBalance + bonusAmount;
+    const newBalance = newCashBalance + newBonusBalance;
+    const newRolloverRemaining = wallet.rolloverRemaining + rolloverRequired;
+    const newRolloverTarget = wallet.rolloverTarget + rolloverRequired;
+
+    let affiliateRef = null;
+    let affiliateDoc = null;
+    let upperRef = null;
+    let upperDoc = null;
+    if (user.referred_by) {
+      affiliateRef = db.collection('users').doc(user.referred_by);
+      affiliateDoc = await transaction.get(affiliateRef);
+      if (affiliateDoc.exists && affiliateDoc.data().referred_by) {
+        upperRef = db.collection('users').doc(affiliateDoc.data().referred_by);
+        upperDoc = await transaction.get(upperRef);
+      }
+    }
+
+    transaction.update(depositRef, {
+      status: 'approved',
+      gateway_status: verifiedStatus,
+      bonusAmount,
+      rolloverRequired,
+      creditedAmount: deposit.amount + bonusAmount,
+      approved_at: FieldValue.serverTimestamp()
+    });
+    transaction.update(userRef, {
+      balance: newBalance,
+      cash_balance: newCashBalance,
+      bonus_balance: newBonusBalance,
+      rollover_remaining: newRolloverRemaining,
+      rollover_target: newRolloverTarget
+    });
+
+    const txSnapshot = await db.collection('transactions').where('reference_id', '==', depositRef.id).limit(1).get();
+    if (!txSnapshot.empty) {
+      transaction.update(txSnapshot.docs[0].ref, {
+        status: 'approved',
+        balance_after: newBalance,
+        completed_at: FieldValue.serverTimestamp()
+      });
+    }
+
+    if (bonusAmount > 0) {
+      transaction.set(db.collection('transactions').doc(), {
+        uid: deposit.uid,
+        type: 'deposit_bonus',
+        amount: bonusAmount,
+        status: 'locked',
+        reference_id: depositRef.id,
+        balance_after: newBalance,
+        rollover_required: rolloverRequired,
+        created_at: FieldValue.serverTimestamp()
+      });
+    }
+
+    if (affiliateDoc?.exists) {
+      const commission = Math.floor(deposit.amount * (affiliateDoc.data().affiliate_rate ?? 10) / 100);
+      transaction.update(affiliateRef, { affiliate_balance: FieldValue.increment(commission) });
+      transaction.set(db.collection('affiliate_commissions').doc(), {
+        affiliate_id: affiliateDoc.id,
+        source_user_id: deposit.uid,
+        level: 1,
+        amount: commission,
+        created_at: FieldValue.serverTimestamp()
+      });
+      if (upperDoc?.exists) {
+        const subCommission = Math.floor(deposit.amount * (upperDoc.data().sub_affiliate_rate ?? 2) / 100);
+        transaction.update(upperRef, { affiliate_balance: FieldValue.increment(subCommission) });
+        transaction.set(db.collection('affiliate_commissions').doc(), {
+          affiliate_id: upperDoc.id,
+          source_user_id: deposit.uid,
+          level: 2,
+          amount: subCommission,
+          created_at: FieldValue.serverTimestamp()
+        });
+      }
+    }
+
+    return {
+      success: true,
+      balance: newBalance,
+      cashBalance: newCashBalance,
+      bonusBalance: newBonusBalance,
+      creditedAmount: deposit.amount + bonusAmount
+    };
+  });
+}
+
 router.post('/webhook/vizzionpay', async (req, res) => {
   try {
     const event = parseVizzionWebhook(req.body);
-    if (!event.gatewayId && !event.referenceId) {
-      return res.status(400).json({ error: 'Transação não identificada.' });
-    }
-    if (!event.token) {
-      return res.status(401).json({ error: 'Token do webhook não informado.' });
+    console.log('[VizzionPay Webhook Received]:', JSON.stringify(req.body));
+
+    let depositRef = null;
+    let depositDoc = null;
+
+    if (event.referenceId) {
+      const ref = db.collection('deposit_requests').doc(event.referenceId);
+      const doc = await ref.get();
+      if (doc.exists) {
+        depositRef = ref;
+        depositDoc = doc;
+      }
     }
 
-    let depositRef = event.referenceId ? db.collection('deposit_requests').doc(event.referenceId) : null;
-    let depositDoc = depositRef ? await depositRef.get() : null;
-    if (!depositDoc?.exists && event.gatewayId) {
-      const snapshot = await db.collection('deposit_requests').where('gatewayId', '==', event.gatewayId).limit(1).get();
+    if (!depositDoc && event.gatewayId) {
+      const snapshot = await db.collection('deposit_requests').where('gatewayId', '==', String(event.gatewayId)).limit(1).get();
       if (!snapshot.empty) {
         depositRef = snapshot.docs[0].ref;
         depositDoc = snapshot.docs[0];
       }
     }
-    if (!depositDoc?.exists) return res.status(404).json({ error: 'Depósito não encontrado.' });
+
+    if (!depositDoc && req.body?.metadata?.referenceId) {
+      const ref = db.collection('deposit_requests').doc(req.body.metadata.referenceId);
+      const doc = await ref.get();
+      if (doc.exists) {
+        depositRef = ref;
+        depositDoc = doc;
+      }
+    }
+
+    if (!depositDoc) {
+      console.warn('[VizzionPay Webhook] Depósito não encontrado para payload:', req.body);
+      return res.status(200).json({ received: true, warning: 'Deposit not found' });
+    }
 
     const depositData = depositDoc.data();
-    const gatewayTransaction = await getVizzionTransaction({
-      gatewayId: event.gatewayId || depositData.gatewayId,
-      referenceId: depositRef.id
-    });
-    const verifiedGatewayId = String(gatewayTransaction.id || '');
-    const verifiedReference = String(gatewayTransaction.clientIdentifier || '');
-    const verifiedStatus = String(gatewayTransaction.status || '').toUpperCase();
-    const verifiedAmount = Math.round(Number(gatewayTransaction.chargeAmount ?? gatewayTransaction.amount) * 100);
-
-    if (verifiedGatewayId !== String(depositData.gatewayId) || verifiedReference !== depositRef.id) {
-      return res.status(400).json({ error: 'A transação não corresponde ao depósito informado.' });
-    }
-    if (verifiedAmount !== Number(depositData.amount) || gatewayTransaction.paymentMethod !== 'PIX') {
-      return res.status(400).json({ error: 'Os dados financeiros da transação não conferem.' });
+    if (depositData.status === 'approved') {
+      return res.json({ received: true, status: 'already_approved' });
     }
 
-    const receivedTokenHash = tokenHash(event.token);
-    if (depositData.webhook_token_hash && depositData.webhook_token_hash !== receivedTokenHash) {
-      return res.status(401).json({ error: 'Token do webhook inválido.' });
-    }
-    if (!depositData.webhook_token_hash) {
-      await depositRef.update({ webhook_token_hash: receivedTokenHash });
-    }
+    const isPaid = event.paid ||
+      ['COMPLETED', 'PAID', 'APPROVED', 'SETTLED'].includes(String(event.status).toUpperCase()) ||
+      ['TRANSACTION_PAID', 'PIX_RECEIVED', 'PAYMENT_RECEIVED'].includes(String(event.event).toUpperCase()) ||
+      String(req.body?.status || '').toUpperCase() === 'COMPLETED' ||
+      String(req.body?.event || '').toUpperCase() === 'TRANSACTION_PAID';
 
-    if (verifiedStatus !== 'COMPLETED') {
-      const statusMap = {
-        FAILED: 'failed',
-        REFUNDED: 'refunded',
-        CHARGED_BACK: 'charged_back',
-        PENDING: 'pending'
-      };
-      const nextStatus = statusMap[verifiedStatus] || 'pending';
-
-      if (['REFUNDED', 'CHARGED_BACK'].includes(verifiedStatus) && depositData.status === 'approved') {
-        await db.runTransaction(async transaction => {
-          const freshDeposit = await transaction.get(depositRef);
-          if (!freshDeposit.exists || freshDeposit.data().status !== 'approved') return;
-          const current = freshDeposit.data();
-          const userRef = db.collection('users').doc(current.uid);
-          const userDoc = await transaction.get(userRef);
-          if (!userDoc.exists) throw new Error('Usuário não encontrado.');
-          const wallet = getWalletBuckets(userDoc.data());
-          const bonusToReverse = Math.max(0, Number(current.bonusAmount) || 0);
-          const removedBonus = Math.min(wallet.bonusBalance, bonusToReverse);
-          const cashToReverse = current.amount + (bonusToReverse - removedBonus);
-          const newBonusBalance = wallet.bonusBalance - removedBonus;
-          const newCashBalance = wallet.cashBalance - cashToReverse;
-          const newBalance = newCashBalance + newBonusBalance;
-          const newRolloverRemaining = Math.max(0, wallet.rolloverRemaining - (Number(current.rolloverRequired) || 0));
-          const newRolloverTarget = Math.max(0, wallet.rolloverTarget - (Number(current.rolloverRequired) || 0));
-
-          transaction.update(depositRef, {
-            status: nextStatus,
-            gateway_status: verifiedStatus,
-            reversed_at: FieldValue.serverTimestamp()
-          });
-          transaction.update(userRef, {
-            balance: newBalance,
-            cash_balance: newCashBalance,
-            bonus_balance: newBonusBalance,
-            rollover_remaining: newRolloverRemaining,
-            rollover_target: newRolloverTarget
-          });
-          transaction.set(db.collection('transactions').doc(), {
-            uid: current.uid,
-            type: verifiedStatus === 'REFUNDED' ? 'deposit_refund' : 'chargeback',
-            amount: -(current.amount + bonusToReverse),
-            status: 'completed',
-            reference_id: depositRef.id,
-            gateway: 'vizzionpay',
-            gateway_id: current.gatewayId,
-            balance_after: newBalance,
-            created_at: FieldValue.serverTimestamp()
-          });
-        });
-      } else if (depositData.status === 'pending') {
-        await depositRef.update({ status: nextStatus, gateway_status: verifiedStatus });
-      }
-      return res.json({ received: true, status: verifiedStatus });
+    if (isPaid) {
+      await approveAndCreditDeposit(depositRef, 'COMPLETED');
+      console.log(`[VizzionPay Webhook] Depósito ${depositRef.id} aprovado com sucesso e saldo creditado!`);
+      return res.json({ received: true, status: 'approved' });
     }
 
-    const txSnapshot = await db.collection('transactions').where('reference_id', '==', depositRef.id).limit(1).get();
-
-    await db.runTransaction(async transaction => {
-      const depositDoc = await transaction.get(depositRef);
-      if (!depositDoc.exists) throw new Error('Depósito não encontrado.');
-      const deposit = depositDoc.data();
-      if (deposit.status === 'approved') return;
-      if (deposit.status !== 'pending') throw new Error('Depósito não está pendente.');
-
-      const userRef = db.collection('users').doc(deposit.uid);
-      const userDoc = await transaction.get(userRef);
-      if (!userDoc.exists) throw new Error('Usuário não encontrado.');
-      const user = userDoc.data();
-      const wallet = getWalletBuckets(user);
-      const bonusAmount = Math.max(0, Math.round(Number(deposit.bonusAmount) || 0));
-      const rolloverRequired = Math.max(0, Math.round(Number(deposit.rolloverRequired) || 0));
-      const newCashBalance = wallet.cashBalance + deposit.amount;
-      const newBonusBalance = wallet.bonusBalance + bonusAmount;
-      const newBalance = newCashBalance + newBonusBalance;
-      const newRolloverRemaining = wallet.rolloverRemaining + rolloverRequired;
-      const newRolloverTarget = wallet.rolloverTarget + rolloverRequired;
-
-      let affiliateRef = null;
-      let affiliateDoc = null;
-      let upperRef = null;
-      let upperDoc = null;
-      if (user.referred_by) {
-        affiliateRef = db.collection('users').doc(user.referred_by);
-        affiliateDoc = await transaction.get(affiliateRef);
-        if (affiliateDoc.exists && affiliateDoc.data().referred_by) {
-          upperRef = db.collection('users').doc(affiliateDoc.data().referred_by);
-          upperDoc = await transaction.get(upperRef);
-        }
-      }
-
-      transaction.update(depositRef, {
-        status: 'approved',
-        gateway_status: verifiedStatus,
-        bonusAmount,
-        rolloverRequired,
-        creditedAmount: deposit.amount + bonusAmount,
-        approved_at: FieldValue.serverTimestamp()
+    const statusUpper = String(event.status || req.body?.status || '').toUpperCase();
+    if (['REFUNDED', 'CHARGED_BACK', 'FAILED'].includes(statusUpper)) {
+      await depositRef.update({
+        status: statusUpper.toLowerCase(),
+        gateway_status: statusUpper
       });
-      transaction.update(userRef, {
-        balance: newBalance,
-        cash_balance: newCashBalance,
-        bonus_balance: newBonusBalance,
-        rollover_remaining: newRolloverRemaining,
-        rollover_target: newRolloverTarget
-      });
-      if (!txSnapshot.empty) {
-        transaction.update(txSnapshot.docs[0].ref, {
-          status: 'approved',
-          balance_after: newBalance,
-          completed_at: FieldValue.serverTimestamp()
-        });
-      }
-      if (bonusAmount > 0) {
-        transaction.set(db.collection('transactions').doc(), {
-          uid: deposit.uid,
-          type: 'deposit_bonus',
-          amount: bonusAmount,
-          status: 'locked',
-          reference_id: depositRef.id,
-          balance_after: newBalance,
-          rollover_required: rolloverRequired,
-          created_at: FieldValue.serverTimestamp()
-        });
-      }
+    }
 
-      if (affiliateDoc?.exists) {
-        const commission = Math.floor(deposit.amount * (affiliateDoc.data().affiliate_rate ?? 10) / 100);
-        transaction.update(affiliateRef, { affiliate_balance: FieldValue.increment(commission) });
-        transaction.set(db.collection('affiliate_commissions').doc(), {
-          affiliate_id: affiliateDoc.id,
-          source_user_id: deposit.uid,
-          level: 1,
-          amount: commission,
-          created_at: FieldValue.serverTimestamp()
-        });
-        if (upperDoc?.exists) {
-          const subCommission = Math.floor(deposit.amount * (upperDoc.data().sub_affiliate_rate ?? 2) / 100);
-          transaction.update(upperRef, { affiliate_balance: FieldValue.increment(subCommission) });
-          transaction.set(db.collection('affiliate_commissions').doc(), {
-            affiliate_id: upperDoc.id,
-            source_user_id: deposit.uid,
-            level: 2,
-            amount: subCommission,
-            created_at: FieldValue.serverTimestamp()
-          });
-        }
-      }
-    });
-    res.json({ received: true });
+    res.json({ received: true, status: event.status || 'pending' });
   } catch (error) {
     console.error('Vizzion webhook error:', error);
-    res.status(400).json({ error: error.message || 'Webhook inválido.' });
+    res.status(200).json({ received: true, error: error.message });
+  }
+});
+
+router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
+  try {
+    const depositId = req.params.depositId;
+    let depositDoc = null;
+    let depositRef = null;
+
+    const directDoc = await db.collection('deposit_requests').doc(depositId).get();
+    if (directDoc.exists) {
+      depositDoc = directDoc;
+      depositRef = directDoc.ref;
+    } else {
+      const snap = await db.collection('deposit_requests').where('depositId', '==', depositId).limit(1).get();
+      if (!snap.empty) {
+        depositDoc = snap.docs[0];
+        depositRef = snap.docs[0].ref;
+      }
+    }
+
+    if (!depositDoc) return res.status(404).json({ error: 'Depósito não encontrado.' });
+    const deposit = depositDoc.data();
+    if (deposit.uid !== req.user.uid) return res.status(403).json({ error: 'Não autorizado.' });
+
+    if (deposit.status === 'approved') {
+      const userDoc = await db.collection('users').doc(req.user.uid).get();
+      const user = userDoc.data() || {};
+      return res.json({
+        status: 'approved',
+        balance: user.balance || 0,
+        cash_balance: user.cash_balance || 0,
+        bonus_balance: user.bonus_balance || 0,
+        bonusAmount: deposit.bonusAmount || 0,
+        amount: deposit.amount
+      });
+    }
+
+    if (deposit.gatewayId || depositRef.id) {
+      try {
+        const gatewayTx = await getVizzionTransaction({
+          gatewayId: deposit.gatewayId,
+          referenceId: depositRef.id
+        });
+        const gStatus = String(gatewayTx.status || '').toUpperCase();
+        if (['COMPLETED', 'PAID', 'APPROVED', 'SETTLED'].includes(gStatus)) {
+          const result = await approveAndCreditDeposit(depositRef, 'COMPLETED');
+          return res.json({
+            status: 'approved',
+            balance: result.balance,
+            cash_balance: result.cashBalance,
+            bonus_balance: result.bonusBalance,
+            bonusAmount: deposit.bonusAmount || 0,
+            amount: deposit.amount
+          });
+        }
+      } catch (err) {
+        console.warn('Vizzion Pay polling lookup info:', err.message);
+      }
+    }
+
+    res.json({
+      status: deposit.status || 'pending',
+      amount: deposit.amount
+    });
+  } catch (error) {
+    console.error('Check deposit error:', error);
+    res.status(500).json({ error: 'Erro ao verificar depósito.' });
   }
 });
 

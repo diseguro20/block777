@@ -418,6 +418,19 @@ app.get('/api/wallet/history', auth, (req, res) => {
   const rolloverProgress = wallet.rolloverTarget > 0 ? Math.max(0, Math.min(100, Math.round((1 - wallet.rolloverRemaining / wallet.rolloverTarget) * 100))) : 100;
   res.json({ balance: wallet.balance, cashBalance: wallet.cashBalance, bonusBalance: wallet.bonusBalance, rolloverRemaining: wallet.rolloverRemaining, rolloverTarget: wallet.rolloverTarget, rolloverProgress, withdrawalsLocked: wallet.rolloverRemaining > 0, promotion, transactions: store.transactions.filter(tx => tx.uid === req.currentUser.id).slice(0, 50) });
 });
+app.get('/api/wallet/check-deposit/:depositId', auth, (req, res) => {
+  const deposit = store.deposits.find(d => (d.id === req.params.depositId || d.depositId === req.params.depositId) && d.uid === req.currentUser.id);
+  if (!deposit) return res.status(404).json({ error: 'Depósito não encontrado.' });
+  const user = store.users.find(u => u.id === req.currentUser.id);
+  res.json({
+    status: deposit.status,
+    balance: user?.balance || 0,
+    cash_balance: user?.cash_balance || 0,
+    bonus_balance: user?.bonus_balance || 0,
+    bonusAmount: deposit.bonusAmount || 0,
+    amount: deposit.amount
+  });
+});
 app.get('/api/wallet/gateway/status', auth, (req, res) => res.json({
   provider: vizzionPayStatus.provider,
   configured: vizzionPayStatus.configured,
