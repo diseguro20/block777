@@ -441,8 +441,44 @@ app.get('/api/affiliate/stats', auth, (req, res) => {
   const direct = store.users.filter(user => user.referred_by === req.currentUser.id);
   const directIds = new Set(direct.map(user => user.id));
   const level2 = store.users.filter(user => directIds.has(user.referred_by));
+  const allReferred = [...direct, ...level2];
   const commissions = store.commissions.filter(item => item.affiliate_id === req.currentUser.id);
-  res.json({ ref_code: req.currentUser.ref_code, referralLink: `${req.protocol}://${req.get('host')}/?ref=${req.currentUser.ref_code}`, level1Count: direct.length, level2Count: level2.length, totalReferred: direct.length + level2.length, totalCommissions: commissions.reduce((sum, item) => sum + item.amount, 0), affiliateBalance: req.currentUser.affiliate_balance || 0, commissions: commissions.slice(0, 20), rates: { level1: req.currentUser.affiliate_rate ?? store.settings.level1Rate, level2: req.currentUser.sub_affiliate_rate ?? store.settings.level2Rate } });
+
+  let totalDeposited = 0;
+  const leads = allReferred.map(u => {
+    const isLevel1 = u.referred_by === req.currentUser.id;
+    const userDeposits = store.deposits.filter(d => d.uid === u.id && d.status === 'approved');
+    const leadDeposited = userDeposits.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+    totalDeposited += leadDeposited;
+    return {
+      id: u.id,
+      username: u.username,
+      email: u.email,
+      phone: u.phone || null,
+      level: isLevel1 ? 1 : 2,
+      totalDeposited: leadDeposited,
+      created_at: u.created_at
+    };
+  });
+
+  leads.sort((a, b) => (b.totalDeposited || 0) - (a.totalDeposited || 0));
+
+  res.json({
+    ref_code: req.currentUser.ref_code,
+    referralLink: `${req.protocol}://${req.get('host')}/?ref=${req.currentUser.ref_code}`,
+    level1Count: direct.length,
+    level2Count: level2.length,
+    totalReferred: direct.length + level2.length,
+    totalCommissions: commissions.reduce((sum, item) => sum + item.amount, 0),
+    totalDeposited,
+    affiliateBalance: req.currentUser.affiliate_balance || 0,
+    commissions: commissions.slice(0, 20),
+    rates: {
+      level1: req.currentUser.affiliate_rate ?? store.settings.level1Rate,
+      level2: req.currentUser.sub_affiliate_rate ?? store.settings.level2Rate
+    },
+    leads: leads.slice(0, 50)
+  });
 });
 app.post('/api/affiliate/redeem', auth, (req, res) => {
   const redeemed = req.currentUser.affiliate_balance || 0;
@@ -594,19 +630,24 @@ app.get('/api/manager/dashboard', auth, manager, (req, res) => {
   const summary = localManagerSummary(req.currentUser);
   const currentPeriod = managerPeriod();
   const currentGames = store.bets.filter(bet => bet.manager_id === req.currentUser.id && bet.status === 'completed' && bet.manager_period === currentPeriod);
+  const myPlayerIds = new Set(store.users.filter(u => u.manager_id === req.currentUser.id).map(u => u.id));
+  const managerDeposits = store.deposits.filter(d => myPlayerIds.has(d.uid) && d.status === 'approved');
+  const totalDeposited = managerDeposits.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+
   res.json({
     manager: { id: req.currentUser.id, username: req.currentUser.username, email: req.currentUser.email, code: req.currentUser.manager_code, rate: summary.rate, referralLink: `${req.protocol}://${req.get('host')}/?manager=${req.currentUser.manager_code}` },
     currentPeriod,
     current: {
       totalBets: currentGames.reduce((total, bet) => total + (bet.amount || 0), 0),
       totalPayouts: currentGames.reduce((total, bet) => total + (bet.payout || 0), 0),
+      totalDeposited,
       ggr: currentGames.reduce((total, bet) => total + (bet.manager_ggr || 0), 0),
       platformFee: currentGames.reduce((total, bet) => total + (bet.manager_platform_fee || 0), 0),
       games: currentGames.length,
       wins: currentGames.filter(bet => bet.payout > 0).length,
       losses: currentGames.filter(bet => !bet.payout).length
     },
-    allTime: { totalBets: summary.totalBets, totalPayouts: summary.totalPayouts, ggr: summary.ggr, platformFee: summary.feeAccrued, totalPaid: summary.totalPaid, outstanding: summary.outstanding, games: summary.games },
+    allTime: { totalBets: summary.totalBets, totalPayouts: summary.totalPayouts, totalDeposited, ggr: summary.ggr, platformFee: summary.feeAccrued, totalPaid: summary.totalPaid, outstanding: summary.outstanding, games: summary.games },
     players: summary.players,
     recentGames: store.bets.filter(bet => bet.manager_id === req.currentUser.id && bet.status === 'completed').slice(-20).reverse(),
     payments: store.managerPayments.filter(payment => payment.manager_id === req.currentUser.id).slice(0, 20)
@@ -615,7 +656,23 @@ app.get('/api/manager/dashboard', auth, manager, (req, res) => {
 app.get('/api/manager/players', auth, manager, (req, res) => {
   const players = store.users.filter(user => user.manager_id === req.currentUser.id).map(user => {
     const games = store.bets.filter(bet => bet.uid === user.id && bet.status === 'completed');
-    return { id: user.id, username: user.username, email: user.email, status: user.status, isInfluencer: Number(user.is_influencer) === 1, demoAccount: Boolean(user.demo_account), games: games.length, totalBets: games.reduce((total, bet) => total + (bet.amount || 0), 0), totalPayouts: games.reduce((total, bet) => total + (bet.payout || 0), 0), ggr: games.reduce((total, bet) => total + (bet.manager_ggr || 0), 0) };
+    const userDeposits = store.deposits.filter(d => d.uid === user.id && d.status === 'approved');
+    const totalDeposited = userDeposits.reduce((sum, d) => sum + (Number(d.amount) || 0), 0);
+    return {
+      id: user.id,
+      username: user.username,
+      email: user.email,
+      phone: user.phone || null,
+      status: user.status,
+      isInfluencer: Number(user.is_influencer) === 1,
+      demoAccount: Boolean(user.demo_account),
+      games: games.length,
+      totalBets: games.reduce((total, bet) => total + (bet.amount || 0), 0),
+      totalPayouts: games.reduce((total, bet) => total + (bet.payout || 0), 0),
+      totalDeposited,
+      ggr: games.reduce((total, bet) => total + (bet.manager_ggr || 0), 0),
+      created_at: user.created_at
+    };
   });
   res.json({ players });
 });

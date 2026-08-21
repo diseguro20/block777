@@ -24,9 +24,10 @@
 
     <section class="manager-metrics">
       <article><small>JOGADORES</small><strong id="metric-players">0</strong><span>vinculados ao seu código</span></article>
+      <article class="metric-highlight"><small>TOTAL DEPOSITADO</small><strong id="metric-deposits">R$ 0,00</strong><span>depósitos dos seus leads</span></article>
       <article><small>TOTAL APOSTADO</small><strong id="metric-bets">R$ 0,00</strong><span>competência atual</span></article>
       <article><small>PRÊMIOS PAGOS</small><strong id="metric-payouts">R$ 0,00</strong><span>competência atual</span></article>
-      <article class="metric-highlight"><small>GGR</small><strong id="metric-ggr">R$ 0,00</strong><span>apostado menos prêmios</span></article>
+      <article><small>GGR</small><strong id="metric-ggr">R$ 0,00</strong><span>apostado menos prêmios</span></article>
       <article><small>TAXA DA PLATAFORMA</small><strong id="metric-fee">R$ 0,00</strong><span>calculada sobre o GGR</span></article>
       <article class="metric-due"><small>SALDO A PAGAR</small><strong id="metric-due">R$ 0,00</strong><span>acumulado menos pagamentos</span></article>
     </section>
@@ -34,7 +35,7 @@
     <section class="manager-grid">
       <article class="manager-panel manager-players-panel">
         <div class="panel-title"><div><small>REDE DO GERENTE</small><h3>Jogadores vinculados</h3></div><div class="manager-panel-actions"><button onclick="manager.loadPlayers()">Atualizar</button><button class="btn btn-primary" onclick="manager.openDemoModal()">Criar conta demo</button></div></div>
-        <div class="table-wrap"><table class="manager-table responsive-table"><thead><tr><th>Jogador</th><th>Partidas</th><th>Apostado</th><th>Prêmios</th><th>GGR</th><th>Modo</th><th>Status</th><th>Ação</th></tr></thead><tbody id="manager-players-table"></tbody></table></div>
+        <div class="table-wrap"><table class="manager-table responsive-table"><thead><tr><th>Jogador / WhatsApp</th><th>Depositado</th><th>Partidas</th><th>Apostado</th><th>Prêmios</th><th>GGR</th><th>Modo</th><th>Status</th><th>Ação</th></tr></thead><tbody id="manager-players-table"></tbody></table></div>
       </article>
       <article class="manager-panel">
         <div class="panel-title"><div><small>AUDITORIA</small><h3>Últimas partidas</h3></div></div>
@@ -55,7 +56,7 @@
   <div class="modal" id="manager-demo-modal"><form class="modal-card" id="manager-demo-form"><button class="modal-close" type="button" onclick="app.closeModal('manager-demo-modal')">×</button><small>CONTA DE DEMONSTRAÇÃO</small><h3>Criar influencer demo</h3><p>O saldo é virtual, o jogo usa modo facilitado e saques ou depósitos ficam bloqueados.</p><label>Nome de usuário</label><input id="demo-username" minlength="3" maxlength="40" required><label>E-mail</label><input id="demo-email" type="email" required><label>Senha</label><input id="demo-password" type="password" minlength="6" required><label>Saldo virtual inicial (R$)</label><input id="demo-balance" type="number" min="100" max="10000" step="10" value="500" required><button class="btn btn-primary btn-wide" id="demo-submit" type="submit">Criar conta demo</button></form></div>
 
   <div class="toast-container" id="toast-container"></div>
-  <script src="/js/app.js?v=20260815-1"></script>
-  <script src="/js/manager.js?v=20260810-1"></script>
+  <script src="/js/app.js?v=20260821-2"></script>
+  <script src="/js/manager.js?v=20260821-1"></script>
 </body>
 </html>

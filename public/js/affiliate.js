@@ -78,11 +78,38 @@ const affiliate = {
     document.getElementById('stat-level1').textContent = data.level1Count;
     document.getElementById('stat-level2').textContent = data.level2Count;
     document.getElementById('stat-total').textContent = data.totalReferred;
+    const depEl = document.getElementById('stat-deposited');
+    if (depEl) depEl.textContent = app.formatBRL(data.totalDeposited || 0);
     document.getElementById('stat-commissions').textContent = app.formatBRL(data.totalCommissions);
     document.getElementById('stat-balance').textContent = app.formatBRL(data.affiliateBalance);
     document.getElementById('nav-balance').textContent = app.formatBRL(data.affiliateBalance);
     document.getElementById('rate-level1').textContent = `${data.rates.level1}% por depósito`;
     document.getElementById('rate-level2').textContent = `${data.rates.level2}% por depósito`;
+
+    const leadsBody = document.getElementById('affiliate-leads-history');
+    if (leadsBody) {
+      const leads = data.leads || [];
+      leadsBody.innerHTML = leads.length
+        ? leads.map((lead) => {
+            const rawPhone = String(lead.phone || lead.email || '').replace(/\D/g, '');
+            const hasPhone = rawPhone.length >= 10 && rawPhone.length <= 13;
+            const waNumber = hasPhone ? (rawPhone.startsWith('55') ? rawPhone : '55' + rawPhone) : '';
+            const waLink = waNumber ? `<a href="https://wa.me/${waNumber}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:4px;color:#25d366;font-weight:600;font-size:11px;background:rgba(37,211,102,0.1);padding:3px 8px;border-radius:4px;text-decoration:none">💬 WhatsApp</a>` : '<span style="color:var(--color-text-muted);font-size:11px">—</span>';
+            const depHighlight = Number(lead.totalDeposited || 0) > 0 ? 'style="color:#60e49c;font-weight:700"' : '';
+
+            return `<tr>
+              <td>
+                <b>${this.escape(lead.username)}</b><br>
+                <small style="color:var(--color-text-muted)">${this.escape(lead.phone || lead.email)}</small>
+              </td>
+              <td><span class="badge ${lead.level === 1 ? 'badge-success' : ''}">Nível ${lead.level}</span></td>
+              <td ${depHighlight}><b>${app.formatBRL(lead.totalDeposited || 0)}</b></td>
+              <td>${app.formatDate(lead.created_at)}</td>
+              <td>${waLink}</td>
+            </tr>`;
+          }).join('')
+        : '<tr><td colspan="5" class="empty-state">Nenhum indicado cadastrado ainda. Compartilhe seu link para começar.</td></tr>';
+    }
 
     const body = document.getElementById('commission-history');
     body.innerHTML = data.commissions.length
@@ -94,6 +121,10 @@ const affiliate = {
       sessionStorage.removeItem('affiliate-auth-message');
       app.showToast(authMessage);
     }
+  },
+
+  escape(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
   },
 
   async copyReferralLink() {

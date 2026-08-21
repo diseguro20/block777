@@ -38,6 +38,19 @@ router.get('/dashboard', async (req, res) => {
       .sort((a, b) => toMillis(b.completed_at || b.created_at) - toMillis(a.completed_at || a.created_at))
       .slice(0, 20);
 
+    const playerIds = playersSnapshot.docs.map(doc => doc.id);
+    let totalDeposited = 0;
+    if (playerIds.length > 0) {
+      const depositsPromises = playerIds.map(uid => db.collection('deposit_requests').where('uid', '==', uid).get());
+      const depositsSnapshots = await Promise.all(depositsPromises);
+      depositsSnapshots.forEach(snap => {
+        snap.docs.forEach(doc => {
+          const d = doc.data();
+          if (d.status === 'approved') totalDeposited += Number(d.amount || 0);
+        });
+      });
+    }
+
     res.json({
       manager: {
         id: managerId,
@@ -51,6 +64,7 @@ router.get('/dashboard', async (req, res) => {
       current: {
         totalBets: Number(current.total_bets || 0),
         totalPayouts: Number(current.total_payouts || 0),
+        totalDeposited,
         ggr: Number(current.ggr || 0),
         platformFee: Number(current.platform_fee || 0),
         games: Number(current.games || 0),
@@ -60,6 +74,7 @@ router.get('/dashboard', async (req, res) => {
       allTime: {
         totalBets: sum(metrics, 'total_bets'),
         totalPayouts: sum(metrics, 'total_payouts'),
+        totalDeposited,
         ggr: sum(metrics, 'ggr'),
         platformFee: feeAccrued,
         totalPaid,
@@ -80,19 +95,29 @@ router.get('/players', async (req, res) => {
   try {
     const playersSnapshot = await db.collection('users').where('manager_id', '==', req.managerUser.id).get();
     const players = await Promise.all(playersSnapshot.docs.map(async playerDoc => {
-      const betsSnapshot = await db.collection('bets').where('uid', '==', playerDoc.id).get();
+      const pData = playerDoc.data();
+      const [betsSnapshot, depositsSnapshot] = await Promise.all([
+        db.collection('bets').where('uid', '==', playerDoc.id).get(),
+        db.collection('deposit_requests').where('uid', '==', playerDoc.id).get()
+      ]);
       const games = betsSnapshot.docs.map(doc => doc.data()).filter(item => item.status === 'completed');
+      const approvedDeposits = depositsSnapshot.docs.map(doc => doc.data()).filter(item => item.status === 'approved');
+      const totalDeposited = approvedDeposits.reduce((acc, cur) => acc + (Number(cur.amount) || 0), 0);
+
       return {
         id: playerDoc.id,
-        username: playerDoc.data().username,
-        email: playerDoc.data().email,
-        status: playerDoc.data().status,
-        isInfluencer: Number(playerDoc.data().is_influencer) === 1,
-        demoAccount: Boolean(playerDoc.data().demo_account),
+        username: pData.username,
+        email: pData.email,
+        phone: pData.phone || null,
+        status: pData.status,
+        isInfluencer: Number(pData.is_influencer) === 1,
+        demoAccount: Boolean(pData.demo_account),
         games: games.length,
         totalBets: sum(games, 'amount'),
         totalPayouts: sum(games, 'payout'),
-        ggr: sum(games, 'manager_ggr')
+        totalDeposited,
+        ggr: sum(games, 'manager_ggr'),
+        created_at: pData.created_at
       };
     }));
     res.json({ players });

@@ -47,6 +47,7 @@ const manager = {
     setText('manager-period', data.currentPeriod || '—');
     setText('manager-rate', `${Number(data.manager.rate || 0).toFixed(2)}%`);
     setText('metric-players', Number(data.players || 0).toLocaleString('pt-BR'));
+    setText('metric-deposits', app.formatBRL(data.current?.totalDeposited ?? data.allTime?.totalDeposited ?? 0));
     setText('metric-bets', app.formatBRL(data.current.totalBets || 0));
     setText('metric-payouts', app.formatBRL(data.current.totalPayouts || 0));
     setText('metric-ggr', app.formatBRL(data.current.ggr || 0));
@@ -60,7 +61,29 @@ const manager = {
   async loadPlayers() {
     const data = await app.fetchAPI('/api/manager/players');
     const body = document.getElementById('manager-players-table');
-    body.innerHTML = data.players.length ? data.players.map(player => `<tr><td data-label="Jogador"><b>${this.escape(player.username)}</b><br><small>${this.escape(player.email)}</small></td><td data-label="Partidas">${Number(player.games || 0).toLocaleString('pt-BR')}</td><td data-label="Apostado">${app.formatBRL(player.totalBets || 0)}</td><td data-label="Prêmios">${app.formatBRL(player.totalPayouts || 0)}</td><td data-label="GGR">${player.demoAccount ? 'Virtual' : app.formatBRL(player.ggr || 0)}</td><td data-label="Modo"><span class="badge ${player.isInfluencer ? 'badge-success' : ''}">${player.demoAccount ? 'Demo' : player.isInfluencer ? 'Influencer' : 'Normal'}</span></td><td data-label="Status"><span class="badge badge-${player.status === 'active' ? 'success' : 'danger'}">${player.status === 'active' ? 'Ativo' : 'Suspenso'}</span></td><td data-label="Ação"><button class="table-action" onclick="manager.toggleInfluencer('${player.id}',${!player.isInfluencer})">${player.isInfluencer ? 'Desativar demo' : 'Ativar demo'}</button></td></tr>`).join('') : '<tr><td colspan="8" class="empty-state">Nenhum jogador vinculado ainda.</td></tr>';
+    body.innerHTML = data.players.length ? data.players.map(player => {
+      const rawPhone = String(player.phone || player.email || '').replace(/\D/g, '');
+      const hasPhone = rawPhone.length >= 10 && rawPhone.length <= 13;
+      const waNumber = hasPhone ? (rawPhone.startsWith('55') ? rawPhone : '55' + rawPhone) : '';
+      const waLink = waNumber ? `<a href="https://wa.me/${waNumber}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:4px;color:#25d366;font-weight:600;font-size:11px;background:rgba(37,211,102,0.1);padding:2px 6px;border-radius:4px;margin-top:3px;text-decoration:none">💬 WhatsApp</a>` : '';
+      const depHighlight = Number(player.totalDeposited || 0) > 0 ? 'style="color:#60e49c;font-weight:700"' : '';
+
+      return `<tr>
+        <td data-label="Jogador">
+          <b>${this.escape(player.username)}</b><br>
+          <small style="color:var(--color-text-muted)">${this.escape(player.phone || player.email)}</small>
+          ${waLink}
+        </td>
+        <td data-label="Depositado" ${depHighlight}><b>${app.formatBRL(player.totalDeposited || 0)}</b></td>
+        <td data-label="Partidas">${Number(player.games || 0).toLocaleString('pt-BR')}</td>
+        <td data-label="Apostado">${app.formatBRL(player.totalBets || 0)}</td>
+        <td data-label="Prêmios">${app.formatBRL(player.totalPayouts || 0)}</td>
+        <td data-label="GGR">${player.demoAccount ? 'Virtual' : app.formatBRL(player.ggr || 0)}</td>
+        <td data-label="Modo"><span class="badge ${player.isInfluencer ? 'badge-success' : ''}">${player.demoAccount ? 'Demo' : player.isInfluencer ? 'Influencer' : 'Normal'}</span></td>
+        <td data-label="Status"><span class="badge badge-${player.status === 'active' ? 'success' : 'danger'}">${player.status === 'active' ? 'Ativo' : 'Suspenso'}</span></td>
+        <td data-label="Ação"><button class="table-action" onclick="manager.toggleInfluencer('${player.id}',${!player.isInfluencer})">${player.isInfluencer ? 'Desativar demo' : 'Ativar demo'}</button></td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="9" class="empty-state">Nenhum jogador vinculado ainda.</td></tr>';
   },
 
   async toggleInfluencer(playerId, enabled) {

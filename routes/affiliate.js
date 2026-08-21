@@ -40,6 +40,32 @@ router.get('/stats', authenticateToken, async (req, res) => {
       })
       .slice(0, 20);
 
+    const level1Docs = level1Query.docs;
+    const level2Docs = level2Query.docs;
+    const allReferredDocs = [...level1Docs, ...level2Docs];
+
+    let totalDeposited = 0;
+    const leads = await Promise.all(allReferredDocs.map(async doc => {
+      const d = doc.data();
+      const isLevel1 = d.referred_by === uid;
+      const depSnap = await db.collection('deposit_requests').where('uid', '==', doc.id).get();
+      const approved = depSnap.docs.map(x => x.data()).filter(x => x.status === 'approved');
+      const leadDeposited = approved.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+      totalDeposited += leadDeposited;
+
+      return {
+        id: doc.id,
+        username: d.username,
+        email: d.email,
+        phone: d.phone || null,
+        level: isLevel1 ? 1 : 2,
+        totalDeposited: leadDeposited,
+        created_at: d.created_at
+      };
+    }));
+
+    leads.sort((a, b) => (b.totalDeposited || 0) - (a.totalDeposited || 0));
+
     res.json({
       ref_code,
       referralLink,
@@ -47,12 +73,14 @@ router.get('/stats', authenticateToken, async (req, res) => {
       level1Count,
       level2Count,
       totalCommissions,
+      totalDeposited,
       affiliateBalance: userData.affiliate_balance || 0,
       rates: {
         level1: userData.affiliate_rate ?? 10,
         level2: userData.sub_affiliate_rate ?? 2
       },
-      commissions
+      commissions,
+      leads: leads.slice(0, 50)
     });
   } catch (error) {
     console.error('Affiliate stats error:', error);
