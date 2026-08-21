@@ -17,23 +17,24 @@ const wallet = {
   updatePromoPreview() {
     const input = document.getElementById('dep-amount-input');
     if (!input) return;
-    const amount = Math.max(0, Number(input.value) || 0);
-    const eligible = this.promotion.promoEnabled && amount * 100 >= this.promotion.bonusMinDeposit;
-    const bonus = eligible ? amount * this.promotion.bonusPercent / 100 : 0;
+    const rawVal = Number(input.value);
+    const amount = Number.isFinite(rawVal) && rawVal > 0 ? rawVal : 20;
+    const safeAmount = Math.max(20, amount);
+    const percent = Number(this.promotion?.bonusPercent) || 100;
+    const bonus = safeAmount * (percent / 100);
+    const total = safeAmount + bonus;
+
     const depositValue = document.getElementById('promo-deposit-value');
     const totalValue = document.getElementById('promo-total-value');
     const detail = document.getElementById('promo-bonus-detail');
     const badge = document.getElementById('deposit-promo-badge');
     const button = document.getElementById('deposit-promo-button');
-    if (depositValue) depositValue.textContent = app.formatBRL(amount * 100);
-    if (totalValue) totalValue.textContent = app.formatBRL((amount + bonus) * 100);
-    if (detail) detail.textContent = eligible
-      ? `${app.formatBRL(bonus * 100)} em bônus adicionados automaticamente após a confirmação do PIX.`
-      : `Deposite pelo menos ${app.formatBRL(this.promotion.bonusMinDeposit)} para ativar o bônus.`;
-    if (badge) badge.textContent = `${this.promotion.bonusPercent}% DE BÔNUS`;
-    if (button) button.textContent = eligible
-      ? `Gerar PIX e ativar ${this.promotion.bonusPercent}%`
-      : 'Gerar PIX';
+
+    if (depositValue) depositValue.textContent = app.formatBRL(safeAmount * 100);
+    if (totalValue) totalValue.textContent = app.formatBRL(total * 100);
+    if (detail) detail.textContent = `${app.formatBRL(bonus * 100)} em bônus adicionados automaticamente após a confirmação do PIX (${app.formatBRL(safeAmount * 100)} viram ${app.formatBRL(total * 100)} para jogar).`;
+    if (badge) badge.textContent = `${percent}% DE BÔNUS`;
+    if (button) button.textContent = `Gerar PIX e ativar ${percent}% (${app.formatBRL(total * 100)} para jogar)`;
   },
   async loadWallet() {
     try {
