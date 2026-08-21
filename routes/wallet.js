@@ -445,11 +445,71 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
 router.get('/history', authenticateToken, async (req, res) => {
   try {
     const uid = req.user.uid;
-    const [snapshot, userDoc, settingsDoc] = await Promise.all([
+    const [snapshot, userDoc, settingsDoc, approvedDepsSnap] = await Promise.all([
       db.collection('transactions').where('uid', '==', uid).get(),
       db.collection('users').doc(uid).get(),
-      getPromotionSettings()
+      getPromotionSettings(),
+      db.collection('deposit_requests').where('uid', '==', uid).where('status', '==', 'approved').get()
     ]);
+
+    const user = userDoc.exists ? userDoc.data() : {};
+    let wallet = getWalletBuckets(user);
+    const promotion = normalizePromotionSettings(settingsDoc || {});
+
+    // Sincronização automática do rollover para usuários com depósitos aprovados
+    if (!approvedDepsSnap.empty && !user.demo_account) {
+      let totalDeposited = 0;
+      let totalBonus = 0;
+      let totalRolloverTarget = 0;
+      const promoEnabled = promotion.promoEnabled !== false;
+      const bonusMinDeposit = Number(promotion.bonusMinDeposit) || 2000;
+      const bonusPercent = Number(promotion.bonusPercent) || 100;
+      const depositMultiplier = promotion.depositRolloverMultiplier != null ? Number(promotion.depositRolloverMultiplier) : 1;
+      const bonusMultiplier = promotion.rolloverMultiplier != null ? Number(promotion.rolloverMultiplier) : 10;
+
+      approvedDepsSnap.docs.forEach(doc => {
+        const dep = doc.data();
+        const depAmount = Number(dep.amount) || 0;
+        totalDeposited += depAmount;
+        const isEligible = promoEnabled && depAmount >= bonusMinDeposit;
+        const bAmount = dep.bonusAmount != null && Number(dep.bonusAmount) > 0
+          ? Number(dep.bonusAmount)
+          : (isEligible ? Math.floor(depAmount * bonusPercent / 100) : 0);
+        totalBonus += bAmount;
+        const depRollover = Math.ceil(depAmount * depositMultiplier);
+        const bonRollover = Math.ceil(bAmount * bonusMultiplier);
+        totalRolloverTarget += (depRollover + bonRollover);
+      });
+
+      if (user.rollover_target == null || user.rollover_target === 0 || (user.rollover_remaining === 0 && (user.balance || 0) > 0 && !user.rollover_completed_at)) {
+        const betsSnap = await db.collection('bets').where('uid', '==', uid).where('status', '==', 'completed').get();
+        const totalWagered = betsSnap.docs.reduce((sum, b) => sum + (Number(b.data().amount) || 0), 0);
+        const rolloverRemaining = Math.max(0, totalRolloverTarget - totalWagered);
+        const balance = Math.round(Number(user.balance) || 0);
+
+        let bonusBalance = 0;
+        let cashBalance = balance;
+        if (rolloverRemaining > 0 && balance > 0) {
+          bonusBalance = Math.min(balance, totalBonus);
+          cashBalance = balance - bonusBalance;
+        }
+
+        if (rolloverRemaining !== user.rollover_remaining || totalRolloverTarget !== user.rollover_target) {
+          try {
+            await userDoc.ref.update({
+              rollover_remaining: rolloverRemaining,
+              rollover_target: totalRolloverTarget,
+              cash_balance: cashBalance,
+              bonus_balance: bonusBalance
+            });
+          } catch (e) {}
+          wallet.rolloverRemaining = rolloverRemaining;
+          wallet.rolloverTarget = totalRolloverTarget;
+          wallet.cashBalance = cashBalance;
+          wallet.bonusBalance = bonusBalance;
+        }
+      }
+    }
 
     const history = snapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
@@ -459,8 +519,6 @@ router.get('/history', authenticateToken, async (req, res) => {
         return bTime - aTime;
       })
       .slice(0, 50);
-    const wallet = getWalletBuckets(userDoc.exists ? userDoc.data() : {});
-    const promotion = normalizePromotionSettings(settingsDoc || {});
     const progress = wallet.rolloverTarget > 0
       ? Math.max(0, Math.min(100, Math.round((1 - wallet.rolloverRemaining / wallet.rolloverTarget) * 100)))
       : 100;

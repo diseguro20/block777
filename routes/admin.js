@@ -505,12 +505,7 @@ router.put('/settings/difficulty', async (req, res) => {
 
 router.post('/recalculate-rollovers', async (req, res) => {
   try {
-    const [settingsDoc, usersSnap, depositsSnap, betsSnap] = await Promise.all([
-      db.collection('settings').doc('global').get(),
-      db.collection('users').get(),
-      db.collection('deposit_requests').get(),
-      db.collection('bets').get()
-    ]);
+    const settingsDoc = await db.collection('settings').doc('global').get();
     const settings = settingsDoc.exists ? settingsDoc.data() : {};
     const depositMultiplier = settings.depositRolloverMultiplier != null ? Number(settings.depositRolloverMultiplier) : 1;
     const bonusMultiplier = settings.rolloverMultiplier != null ? Number(settings.rolloverMultiplier) : 10;
@@ -518,40 +513,28 @@ router.post('/recalculate-rollovers', async (req, res) => {
     const bonusPercent = Number(settings.bonusPercent) || 100;
     const promoEnabled = settings.promoEnabled !== false;
 
-    const depositsByUser = new Map();
-    depositsSnap.docs.forEach(doc => {
-      const d = doc.data();
-      if (d.status === 'approved' && d.uid) {
-        if (!depositsByUser.has(d.uid)) depositsByUser.set(d.uid, []);
-        depositsByUser.get(d.uid).push({ id: doc.id, ...d });
-      }
-    });
-
-    const betsByUser = new Map();
-    betsSnap.docs.forEach(doc => {
-      const b = doc.data();
-      if (b.status === 'completed' && b.uid) {
-        if (!betsByUser.has(b.uid)) betsByUser.set(b.uid, []);
-        betsByUser.get(b.uid).push({ id: doc.id, ...b });
-      }
-    });
-
+    const usersSnap = await db.collection('users').get();
     const updatedUsers = [];
-    const batch = db.batch();
 
     for (const userDoc of usersSnap.docs) {
       const user = userDoc.data();
       const uid = userDoc.id;
-      const userDeposits = depositsByUser.get(uid) || [];
-      const userBets = betsByUser.get(uid) || [];
+      if (user.role === 'admin' || user.demo_account) continue;
 
-      if (userDeposits.length === 0) continue;
+      let depsSnap;
+      try {
+        depsSnap = await db.collection('deposit_requests').where('uid', '==', uid).where('status', '==', 'approved').get();
+      } catch (e) {
+        continue;
+      }
+      if (depsSnap.empty) continue;
 
       let totalDeposited = 0;
       let totalBonus = 0;
       let totalRolloverTarget = 0;
 
-      userDeposits.forEach(dep => {
+      depsSnap.docs.forEach(doc => {
+        const dep = doc.data();
         const depAmount = Number(dep.amount) || 0;
         totalDeposited += depAmount;
 
@@ -566,7 +549,12 @@ router.post('/recalculate-rollovers', async (req, res) => {
         totalRolloverTarget += (depRollover + bonRollover);
       });
 
-      const totalWagered = userBets.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+      let totalWagered = 0;
+      try {
+        const betsSnap = await db.collection('bets').where('uid', '==', uid).where('status', '==', 'completed').get();
+        totalWagered = betsSnap.docs.reduce((sum, b) => sum + (Number(b.data().amount) || 0), 0);
+      } catch (e) {}
+
       const rolloverRemaining = Math.max(0, totalRolloverTarget - totalWagered);
       const balance = Math.round(Number(user.balance) || 0);
 
@@ -577,12 +565,14 @@ router.post('/recalculate-rollovers', async (req, res) => {
         cashBalance = balance - bonusBalance;
       }
 
-      batch.update(userDoc.ref, {
-        rollover_remaining: rolloverRemaining,
-        rollover_target: totalRolloverTarget,
-        cash_balance: cashBalance,
-        bonus_balance: bonusBalance
-      });
+      try {
+        await userDoc.ref.update({
+          rollover_remaining: rolloverRemaining,
+          rollover_target: totalRolloverTarget,
+          cash_balance: cashBalance,
+          bonus_balance: bonusBalance
+        });
+      } catch (e) {}
 
       updatedUsers.push({
         id: uid,
@@ -596,10 +586,6 @@ router.post('/recalculate-rollovers', async (req, res) => {
         cash_balance: cashBalance,
         bonus_balance: bonusBalance
       });
-    }
-
-    if (updatedUsers.length > 0) {
-      await batch.commit();
     }
 
     res.json({ success: true, updatedCount: updatedUsers.length, users: updatedUsers });
