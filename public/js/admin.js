@@ -57,8 +57,19 @@ const admin = {
         throw new Error('Esta conta não possui acesso administrativo.');
       }
       app.token = data.token;
+      app.user = data.user;
       localStorage.setItem('token', data.token);
-      location.reload();
+
+      const auth = document.getElementById('admin-auth');
+      if (auth) auth.hidden = true;
+      document.querySelector('.admin-layout')?.classList.remove('locked');
+
+      await this.loadAll();
+      this.bindSettings();
+      if (!this.refreshTimer) {
+        this.refreshTimer = setInterval(() => this.loadOverview(true), 20000);
+      }
+      app.showToast('Login de administrador realizado com sucesso!');
     } catch (error) {
       if (btn) {
         btn.disabled = false;

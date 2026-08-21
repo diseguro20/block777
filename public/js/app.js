@@ -103,14 +103,24 @@ const app = {
     if (login) login.onsubmit = async (event) => {
       event.preventDefault();
       const form = new FormData(login);
+      const btn = login.querySelector('button[type="submit"]');
+      if (btn) { btn.disabled = true; btn.textContent = 'Entrando...'; }
       try {
-        const data = await this.fetchAPI('/api/auth/login', { method: 'POST', body: JSON.stringify(Object.fromEntries(form)) });
+        const payload = Object.fromEntries(form);
+        const data = await this.fetchAPI('/api/auth/login', { method: 'POST', body: JSON.stringify(payload) });
         this.setSession(data);
-      } catch (_) {}
+        this.showToast('Login realizado com sucesso!');
+      } catch (e) {
+        this.showToast(e.message || 'Falha ao entrar.');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Entrar'; }
+      }
     };
     if (register) register.onsubmit = async (event) => {
       event.preventDefault();
       const payload = Object.fromEntries(new FormData(register));
+      const btn = register.querySelector('button[type="submit"]');
+      if (btn) { btn.disabled = true; btn.textContent = 'Criando conta...'; }
       payload.referred_by = localStorage.getItem('ref') || null;
       payload.manager_code = localStorage.getItem('manager_code') || null;
       if (payload.phone) {
@@ -120,7 +130,11 @@ const app = {
         const data = await this.fetchAPI('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
         this.setSession(data);
         this.showToast('Conta criada com sucesso! Bem-vindo ao Blockerino!');
-      } catch (_) {}
+      } catch (e) {
+        this.showToast(e.message || 'Falha ao criar conta.');
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Criar minha conta'; }
+      }
     };
   },
 

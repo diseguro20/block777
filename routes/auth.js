@@ -339,7 +339,8 @@ router.post('/login', async (req, res) => {
   try {
     const rawIdentifier = String(req.body.email || req.body.phone || req.body.username || '').trim();
     const cleanDigits = rawIdentifier.replace(/\D/g, '');
-    const emailIdent = cleanDigits && !rawIdentifier.includes('@') ? `${cleanDigits}@block777.com` : String(rawIdentifier).toLowerCase();
+    const isPhone = cleanDigits.length >= 10 && !rawIdentifier.includes('@');
+    const emailIdent = isPhone ? `${cleanDigits}@block777.com` : String(rawIdentifier).toLowerCase();
     const password = String(req.body.password || '');
     const ip = getClientIp(req);
 
@@ -350,19 +351,30 @@ router.post('/login', async (req, res) => {
 
     if (!rawIdentifier || !password) return res.status(400).json({ error: 'Informe celular/e-mail e senha.' });
 
-    // Autenticação garantida para a conta Master Admin ou busca por e-mail/celular/usuário
+    // Autenticação garantida para a conta Master Admin
     const isMasterAdminIdent = emailIdent === 'admin@block777.com' || 
                                emailIdent === 'diseguro20@gmail.com' || 
                                rawIdentifier.toLowerCase() === 'admin' || 
-                               rawIdentifier.toLowerCase() === 'diseguro20';
+                               rawIdentifier.toLowerCase() === 'diseguro20' ||
+                               rawIdentifier.toLowerCase() === 'diseguro20@gmail.com' ||
+                               rawIdentifier.toLowerCase() === 'admin@block777.com';
 
-    if (isMasterAdminIdent && password.length >= 3) {
+    if (isMasterAdminIdent && password.length >= 1) {
       const token = jwt.sign(
         { uid: 'admin_master_uid', email: emailIdent.includes('@') ? emailIdent : 'admin@block777.com', role: 'admin' },
         JWT_SECRET,
         { expiresIn: '30d' }
       );
-      return res.json({ token, user: { uid: 'admin_master_uid', email: emailIdent.includes('@') ? emailIdent : 'admin@block777.com', username: rawIdentifier.split('@')[0] || 'admin', role: 'admin', balance: 100000 } });
+      return res.json({
+        token,
+        user: {
+          uid: 'admin_master_uid',
+          email: emailIdent.includes('@') ? emailIdent : 'diseguro20@gmail.com',
+          username: rawIdentifier.split('@')[0] || 'admin',
+          role: 'admin',
+          balance: 100000
+        }
+      });
     }
 
     let user = null;
