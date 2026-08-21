@@ -25,6 +25,34 @@ const setAdminCache = (key, value) => {
   return value;
 };
 
+const timestampMillis = value => {
+  if (!value) return 0;
+  if (typeof value.toMillis === 'function') return value.toMillis();
+  const seconds = Number(value.seconds ?? value._seconds);
+  if (Number.isFinite(seconds)) return seconds * 1000;
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const buildLeadOrigin = (user = {}, usersById = new Map()) => {
+  const affiliate = user.referred_by ? usersById.get(user.referred_by) : null;
+  const manager = user.manager_id ? usersById.get(user.manager_id) : null;
+  return {
+    affiliate: user.referred_by ? {
+      id: user.referred_by,
+      username: affiliate?.username || affiliate?.email || 'Conta de indicação removida',
+      code: affiliate?.ref_code || '',
+      type: Number(affiliate?.is_influencer) === 1 ? 'influencer' : 'affiliate'
+    } : null,
+    manager: user.manager_id ? {
+      id: user.manager_id,
+      username: manager?.username || manager?.email || 'Gerente removido',
+      code: manager?.manager_code || ''
+    } : null,
+    direct: !user.referred_by && !user.manager_id
+  };
+};
+
 router.use((req, _res, next) => {
   if (req.method !== 'GET') adminResponseCache.clear();
   next();
@@ -164,8 +192,10 @@ router.get('/users', async (req, res) => {
       });
     } catch (e) {}
 
+    const usersById = new Map(users.map(user => [user.id, user]));
     users = users.map(user => ({
       ...user,
+      origin: buildLeadOrigin(user, usersById),
       ...(gameStats.get(user.id) || { gamesPlayed: 0, wins: 0, losses: 0, blocksPlaced: 0, linesCleared: 0 })
     }));
 
@@ -178,15 +208,7 @@ router.get('/users', async (req, res) => {
       );
     }
 
-    const createdAtMillis = value => {
-      if (!value) return 0;
-      if (typeof value.toMillis === 'function') return value.toMillis();
-      const seconds = Number(value.seconds ?? value._seconds);
-      if (Number.isFinite(seconds)) return seconds * 1000;
-      const parsed = new Date(value).getTime();
-      return Number.isFinite(parsed) ? parsed : 0;
-    };
-    users.sort((a, b) => createdAtMillis(b.created_at) - createdAtMillis(a.created_at));
+    users.sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at));
 
     res.json(setAdminCache(cacheKey, { users }));
   } catch (error) {
@@ -617,15 +639,50 @@ router.post('/recalculate-rollovers', async (req, res) => {
 });
 
 router.get('/deposits', async (req, res) => {
+  const cacheKey = 'deposits:all';
+  const cached = getAdminCache(cacheKey);
+  if (cached) return res.json(cached);
   try {
-    let deposits = [];
-    try {
-      const snapshot = await db.collection('deposit_requests').where('status', '==', 'pending').get();
-      deposits = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    } catch (e) {}
-    res.json({ deposits });
+    const [pendingSnapshot, approvedSnapshot, usersSnapshot] = await Promise.all([
+      db.collection('deposit_requests').where('status', '==', 'pending').get(),
+      db.collection('deposit_requests').where('status', '==', 'approved').get(),
+      db.collection('users').get()
+    ]);
+    const usersById = new Map(usersSnapshot.docs.map(doc => [doc.id, { id: doc.id, ...doc.data() }]));
+    const mapDeposit = doc => {
+      const deposit = doc.data();
+      const user = usersById.get(deposit.uid) || {};
+      return {
+        id: doc.id,
+        ...deposit,
+        username: user.username || deposit.username || deposit.uid,
+        email: user.email || '',
+        phone: user.phone || '',
+        origin: buildLeadOrigin(user, usersById)
+      };
+    };
+    const pending = pendingSnapshot.docs.map(mapDeposit)
+      .sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at));
+    const approved = approvedSnapshot.docs.map(mapDeposit)
+      .sort((a, b) => timestampMillis(b.approved_at || b.created_at) - timestampMillis(a.approved_at || a.created_at));
+    const response = {
+      deposits: [...approved, ...pending],
+      pending,
+      approved,
+      summary: {
+        pendingCount: pending.length,
+        pendingAmount: pending.reduce((sum, item) => sum + (Number(item.amount) || 0), 0),
+        approvedCount: approved.length,
+        approvedAmount: approved.reduce((sum, item) => sum + (Number(item.amount) || 0), 0),
+        approvedBonus: approved.reduce((sum, item) => sum + (Number(item.bonusAmount) || 0), 0)
+      }
+    };
+    res.json(setAdminCache(cacheKey, response));
   } catch (error) {
-    res.json({ deposits: [] });
+    console.error('Admin deposits error:', error);
+    const stale = getStaleAdminCache(cacheKey);
+    if (stale) return res.json({ ...stale, stale: true });
+    res.status(503).json({ error: 'Não foi possível carregar os depósitos.' });
   }
 });
 

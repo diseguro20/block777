@@ -229,12 +229,12 @@ const admin = {
   async loadUsers(search = '') {
     const body = document.getElementById('users-table');
     if (!body) return;
-    body.innerHTML = '<tr><td colspan="11" class="empty-state">Carregando leads...</td></tr>';
+    body.innerHTML = '<tr><td colspan="12" class="empty-state">Carregando leads...</td></tr>';
     let data;
     try {
       data = await app.fetchAPI(`/api/admin/users?search=${encodeURIComponent(search)}`);
     } catch (error) {
-      body.innerHTML = `<tr><td colspan="11" class="empty-state">${this.escape(error.message || 'Não foi possível carregar os leads.')}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="12" class="empty-state">${this.escape(error.message || 'Não foi possível carregar os leads.')}</td></tr>`;
       return;
     }
     const createdAtMillis = value => {
@@ -258,6 +258,7 @@ const admin = {
             ${waUrl ? `<a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="whatsapp-btn" title="Chamar no WhatsApp"><svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor"><path d="M12.031 6.172c-3.181 0-5.767 2.586-5.768 5.766-.001 1.298.38 2.27 1.019 3.287l-.582 2.128 2.182-.573c.978.58 1.911.928 3.145.929 3.178 0 5.767-2.587 5.768-5.766.001-3.187-2.575-5.771-5.764-5.771zm3.392 8.244c-.144.405-.837.774-1.17.824-.312.045-.698.056-1.144-.086-.282-.09-.643-.223-1.109-.425-1.951-.844-3.218-2.83-3.315-2.961-.098-.13-1.077-1.434-1.077-2.735 0-1.302.684-1.942.927-2.203.243-.261.532-.326.709-.326.178 0 .355.002.511.009.167.007.391-.063.612.468.228.548.777 1.896.845 2.034.068.138.114.3.023.479-.091.178-.137.29-.273.45-.136.16-.286.357-.409.479-.136.136-.279.284-.12.558.159.274.708 1.168 1.521 1.892 1.047.933 1.929 1.222 2.203 1.358.274.137.433.114.593-.069.16-.183.684-.799.866-1.073.183-.274.366-.228.616-.137.251.091 1.589.749 1.863.886.274.137.457.205.525.32.068.114.068.662-.076 1.067z"/></svg><span>WhatsApp</span></a>` : ''}
           </div>
         </td>
+        <td data-label="Origem do cadastro">${this.renderOrigin(user.origin)}</td>
         <td data-label="Saldo" class="mono">${app.formatBRL(user.balance)}</td>
         <td data-label="Bônus" class="mono positive">${app.formatBRL(user.bonus_balance || 0)}</td>
         <td data-label="Rollover" class="mono">${app.formatBRL(user.rollover_remaining || 0)}</td>
@@ -276,7 +277,7 @@ const admin = {
           ${user.role === 'admin' ? '' : `<button class="table-action" style="color:#ff5555;border-color:rgba(255,85,85,0.4)" onclick="admin.banUser('${user.id}','${this.escape(user.username)}')">🚫 Ban IP</button>`}
         </td>
       </tr>`;
-    }).join('') : '<tr><td colspan="11" class="empty-state">Nenhum jogador encontrado.</td></tr>';
+    }).join('') : '<tr><td colspan="12" class="empty-state">Nenhum jogador encontrado.</td></tr>';
   },
 
   openCommissionModal(id, username, level1, level2) {
@@ -489,6 +490,20 @@ const admin = {
     } catch (_) {}
   },
 
+  renderOrigin(origin = {}) {
+    const parts = [];
+    if (origin.affiliate) {
+      const label = origin.affiliate.type === 'influencer' ? 'Influenciador' : 'Afiliado';
+      const code = origin.affiliate.code ? ` · ${this.escape(origin.affiliate.code)}` : '';
+      parts.push(`<span class="origin-line origin-affiliate"><small>${label}</small><b>${this.escape(origin.affiliate.username)}</b><em>${code}</em></span>`);
+    }
+    if (origin.manager) {
+      const code = origin.manager.code ? ` · ${this.escape(origin.manager.code)}` : '';
+      parts.push(`<span class="origin-line origin-manager"><small>Gerente</small><b>${this.escape(origin.manager.username)}</b><em>${code}</em></span>`);
+    }
+    return parts.length ? `<span class="origin-stack">${parts.join('')}</span>` : '<span class="origin-direct">Direto</span>';
+  },
+
   escape(value) {
     return String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
   },
@@ -528,18 +543,50 @@ const admin = {
   },
 
   async loadDeposits() {
-    const { deposits } = await app.fetchAPI('/api/admin/deposits');
-    const body = document.getElementById('deposits-table');
-    if (!body) return;
-    body.innerHTML = deposits.length ? deposits.map(item => `<tr>
-      <td data-label="Jogador">${this.escape(item.username || item.uid)}</td>
-      <td data-label="Depósito" class="mono positive">${app.formatBRL(item.amount)}</td>
-      <td data-label="Bônus" class="mono positive">${app.formatBRL(item.bonusAmount || 0)}</td>
-      <td data-label="Total" class="mono">${app.formatBRL(Number(item.amount || 0) + Number(item.bonusAmount || 0))}</td>
-      <td data-label="Gateway"><span class="badge">${this.escape(item.gateway || 'manual')}</span></td>
-      <td data-label="Data">${app.formatDate(item.created_at)}</td>
-      <td data-label="Ações" class="actions"><button class="approve" onclick="admin.resolveDeposit('${item.id}','approve')">Aprovar</button><button onclick="admin.resolveDeposit('${item.id}','reject')">Recusar</button></td>
-    </tr>`).join('') : '<tr><td colspan="7" class="empty-state">Nenhum depósito pendente.</td></tr>';
+    const data = await app.fetchAPI('/api/admin/deposits');
+    const pending = data.pending || [];
+    const approved = data.approved || [];
+    const summary = data.summary || {};
+    const pendingBody = document.getElementById('deposits-table');
+    const approvedBody = document.getElementById('approved-deposits-table');
+
+    const setText = (id, value) => {
+      const element = document.getElementById(id);
+      if (element) element.textContent = value;
+    };
+    setText('deposit-approved-count', Number(summary.approvedCount || approved.length).toLocaleString('pt-BR'));
+    setText('deposit-approved-amount', `${app.formatBRL(summary.approvedAmount || 0)} recebidos`);
+    setText('deposit-approved-bonus', app.formatBRL(summary.approvedBonus || 0));
+    setText('deposit-pending-count', Number(summary.pendingCount || pending.length).toLocaleString('pt-BR'));
+    setText('deposit-pending-amount', `${app.formatBRL(summary.pendingAmount || 0)} aguardando pagamento`);
+
+    if (approvedBody) {
+      approvedBody.innerHTML = approved.length ? approved.map(item => `<tr>
+        <td data-label="Jogador"><div class="user-cell"><b>${this.escape(item.username || item.uid)}</b><span>${this.escape(item.email || '')}</span></div></td>
+        <td data-label="Origem">${this.renderOrigin(item.origin)}</td>
+        <td data-label="Depósito" class="mono positive">${app.formatBRL(item.amount)}</td>
+        <td data-label="Bônus" class="mono positive">${app.formatBRL(item.bonusAmount || 0)}</td>
+        <td data-label="Total creditado" class="mono">${app.formatBRL(Number(item.creditedAmount || 0) || (Number(item.amount || 0) + Number(item.bonusAmount || 0)))}</td>
+        <td data-label="Gateway"><span class="badge">${this.escape(item.gateway || 'manual')}</span></td>
+        <td data-label="Gerado em">${app.formatDate(item.created_at)}</td>
+        <td data-label="Aprovado em">${app.formatDate(item.approved_at || item.created_at)}</td>
+        <td data-label="Status"><span class="badge badge-success">Aprovado</span></td>
+      </tr>`).join('') : '<tr><td colspan="9" class="empty-state">Nenhum depósito aprovado.</td></tr>';
+    }
+
+    if (pendingBody) {
+      pendingBody.innerHTML = pending.length ? pending.map(item => `<tr>
+        <td data-label="Jogador"><div class="user-cell"><b>${this.escape(item.username || item.uid)}</b><span>${this.escape(item.email || '')}</span></div></td>
+        <td data-label="Origem">${this.renderOrigin(item.origin)}</td>
+        <td data-label="Depósito" class="mono positive">${app.formatBRL(item.amount)}</td>
+        <td data-label="Bônus previsto" class="mono positive">${app.formatBRL(item.bonusAmount || 0)}</td>
+        <td data-label="Total previsto" class="mono">${app.formatBRL(Number(item.amount || 0) + Number(item.bonusAmount || 0))}</td>
+        <td data-label="Gateway"><span class="badge">${this.escape(item.gateway || 'manual')}</span></td>
+        <td data-label="Gerado em">${app.formatDate(item.created_at)}</td>
+        <td data-label="Status"><span class="badge badge-pending">Pendente</span></td>
+        <td data-label="Ações" class="actions"><button class="approve" onclick="admin.resolveDeposit('${item.id}','approve')">Aprovar</button><button onclick="admin.resolveDeposit('${item.id}','reject')">Recusar</button></td>
+      </tr>`).join('') : '<tr><td colspan="9" class="empty-state">Nenhum depósito pendente.</td></tr>';
+    }
   },
 
   async resolveDeposit(id, action) {

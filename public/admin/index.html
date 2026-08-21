@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#070b0b">
   <title>Blockerino Control — Admin</title>
   <link rel="stylesheet" href="/css/style.css?v=20260729-9">
-  <link rel="stylesheet" href="/css/admin.css?v=20260808-1">
+  <link rel="stylesheet" href="/css/admin.css?v=20260821-2">
   <link rel="stylesheet" href="/css/manager-admin.css?v=20260808-1">
 </head>
 <body class="admin-body">
@@ -70,7 +70,7 @@
       <section class="admin-view" id="view-players">
         <div class="admin-section-head"><div><small>BASE DE USUÁRIOS</small><h3>Jogadores e desempenho</h3></div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="admin.loadUsers(document.getElementById('search-users').value)">Atualizar leads</button><input id="search-users" placeholder="Buscar nome, celular ou e-mail" oninput="admin.scheduleUserSearch(this.value)"></div></div>
         <article class="panel table-wrap">
-          <table class="responsive-table"><thead><tr><th>Jogador / WhatsApp</th><th>Saldo</th><th>Bônus</th><th>Rollover</th><th>Partidas</th><th>V / D</th><th>Blocos</th><th>Linhas</th><th>Status</th><th>Influencer</th><th>Ação</th></tr></thead><tbody id="users-table"></tbody></table>
+          <table class="responsive-table"><thead><tr><th>Jogador / WhatsApp</th><th>Origem do cadastro</th><th>Saldo</th><th>Bônus</th><th>Rollover</th><th>Partidas</th><th>V / D</th><th>Blocos</th><th>Linhas</th><th>Status</th><th>Influencer</th><th>Ação</th></tr></thead><tbody id="users-table"></tbody></table>
         </article>
       </section>
 
@@ -96,14 +96,23 @@
 
       <section class="admin-view" id="view-finance">
         <div class="finance-grid">
+          <div class="metrics admin-stats deposit-stats">
+            <article class="metric"><span>PIX APROVADOS</span><strong id="deposit-approved-count">0</strong><small id="deposit-approved-amount">R$ 0,00 recebidos</small></article>
+            <article class="metric"><span>BÔNUS CREDITADO</span><strong id="deposit-approved-bonus">R$ 0,00</strong><small>nos depósitos aprovados</small></article>
+            <article class="metric"><span>PIX PENDENTES</span><strong id="deposit-pending-count">0</strong><small id="deposit-pending-amount">R$ 0,00 aguardando pagamento</small></article>
+          </div>
           <article class="panel gateway-panel">
             <div class="panel-title"><div><small>GATEWAY PIX</small><h3>Vizzion Pay</h3></div><span class="badge" id="gateway-status">Verificando</span></div>
             <p id="gateway-description">Consultando a conexão do gateway.</p>
             <div class="gateway-details"><span>Depósitos automáticos via PIX</span><span>Confirmação e crédito por webhook</span><span>Comissões de afiliados automáticas</span></div>
           </article>
           <article class="panel">
-            <div class="panel-title"><div><small>PIX ENTRADA</small><h3>Depósitos pendentes</h3></div></div>
-            <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Depósito</th><th>Bônus</th><th>Total</th><th>Gateway</th><th>Data</th><th>Ações</th></tr></thead><tbody id="deposits-table"></tbody></table></div>
+            <div class="panel-title"><div><small>PIX CONFIRMADO</small><h3>Depósitos aprovados</h3></div><button class="btn btn-ghost" onclick="admin.loadDeposits()">Atualizar</button></div>
+            <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Origem</th><th>Depósito</th><th>Bônus</th><th>Total creditado</th><th>Gateway</th><th>Gerado em</th><th>Aprovado em</th><th>Status</th></tr></thead><tbody id="approved-deposits-table"></tbody></table></div>
+          </article>
+          <article class="panel">
+            <div class="panel-title"><div><small>AGUARDANDO PAGAMENTO</small><h3>Depósitos pendentes</h3></div></div>
+            <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Origem</th><th>Depósito</th><th>Bônus previsto</th><th>Total previsto</th><th>Gateway</th><th>Gerado em</th><th>Status</th><th>Ações</th></tr></thead><tbody id="deposits-table"></tbody></table></div>
           </article>
           <article class="panel">
             <div class="panel-title"><div><small>PIX SAÍDA</small><h3>Saques pendentes</h3></div></div>
@@ -156,6 +165,6 @@
   <div class="modal" id="manager-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('manager-modal')">×</button><small>CONFIGURAÇÃO DO GERENTE</small><h3 id="manager-modal-name">Gerente</h3><p style="color:var(--color-text-muted);font-size:13px;margin:0 0 14px">Configure a taxa GGR e o código do gerente (atualizado em tempo real no painel dele).</p><label>Taxa de GGR da plataforma (%)</label><input id="manager-rate-input" type="number" min="0" max="100" step="0.01"><label>Código do link</label><input id="manager-code-input" minlength="4" maxlength="20"><label>Status</label><select id="manager-status-select"><option value="active">Ativo</option><option value="suspended">Suspenso</option></select><button class="btn btn-primary btn-wide" type="button" onclick="admin.saveManager()">Salvar gerente</button><hr class="modal-divider"><small>BAIXA DE PAGAMENTO</small><label>Valor recebido em R$</label><input id="manager-payment-input" type="number" min="0.01" step="0.01"><label>Descrição</label><input id="manager-payment-desc" placeholder="Pagamento de GGR"><button class="btn btn-ghost btn-wide" type="button" onclick="admin.registerManagerPayment()">Registrar pagamento</button></div></div>
   <div class="toast-container" id="toast-container"></div>
   <script src="/js/app.js?v=20260821-2"></script>
-  <script src="/js/admin.js?v=20260821-4"></script>
+  <script src="/js/admin.js?v=20260821-5"></script>
 </body>
 </html>
