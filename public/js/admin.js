@@ -213,9 +213,59 @@ const admin = {
         <td data-label="Linhas" class="mono">${Number(user.linesCleared || 0).toLocaleString('pt-BR')}</td>
         <td data-label="Status"><button class="badge badge-${user.status === 'active' ? 'success' : 'danger'}" onclick="admin.toggleStatus('${user.id}','${user.status}')">${user.status === 'active' ? 'Ativo' : 'Suspenso'}</button></td>
         <td data-label="Influencer"><button class="badge ${user.is_influencer ? 'badge-success' : ''}" onclick="admin.toggleInfluencer('${user.id}',${Boolean(user.is_influencer)})">${user.is_influencer ? 'Ativo' : 'Padrão'}</button></td>
-        <td data-label="Ação" class="actions"><button class="table-action" onclick="admin.openBalanceModal('${user.id}','${this.escape(user.username)}')">Saldo</button>${user.role === 'admin' ? '' : user.role === 'manager' ? `<button class="table-action" onclick="admin.showView('managers')">Gerente</button>` : `<button class="table-action" onclick="admin.activateManager('${user.id}','${this.escape(user.username)}')">Tornar gerente</button>`}${user.role === 'admin' ? '' : `<button class="table-action" style="color:#ff5555;border-color:rgba(255,85,85,0.4)" onclick="admin.banUser('${user.id}','${this.escape(user.username)}')">🚫 Ban IP</button>`}</td>
+        <td data-label="Ação" class="actions">
+          <button class="table-action" style="color:#60e49c;border-color:rgba(96,228,156,0.4)" title="Entrar na conta do usuário" onclick="admin.impersonateUser('${user.id}','${this.escape(user.username)}')">👤 Entrar</button>
+          <button class="table-action" title="Trocar senha do usuário" onclick="admin.openPasswordModal('${user.id}','${this.escape(user.username)}')">🔑 Senha</button>
+          <button class="table-action" onclick="admin.openBalanceModal('${user.id}','${this.escape(user.username)}')">Saldo</button>
+          ${user.role === 'admin' ? '' : user.role === 'manager' ? `<button class="table-action" onclick="admin.showView('managers')">Gerente</button>` : `<button class="table-action" onclick="admin.activateManager('${user.id}','${this.escape(user.username)}')">Tornar gerente</button>`}
+          ${user.role === 'admin' ? '' : `<button class="table-action" style="color:#ff5555;border-color:rgba(255,85,85,0.4)" onclick="admin.banUser('${user.id}','${this.escape(user.username)}')">🚫 Ban IP</button>`}
+        </td>
       </tr>`;
     }).join('') : '<tr><td colspan="11" class="empty-state">Nenhum jogador encontrado.</td></tr>';
+  },
+
+  async impersonateUser(id, username) {
+    try {
+      const data = await app.fetchAPI(`/api/admin/users/${encodeURIComponent(id)}/impersonate`, {
+        method: 'POST'
+      });
+      if (data && data.token) {
+        app.showToast(`Abrindo conta de ${username}...`);
+        window.open(`/?impersonate_token=${encodeURIComponent(data.token)}`, '_blank');
+      }
+    } catch (error) {
+      app.showToast(error.message || 'Não foi possível entrar na conta.');
+    }
+  },
+
+  openPasswordModal(id, username) {
+    this.selectedPasswordUserId = id;
+    this.selectedPasswordUsername = username;
+    const nameEl = document.getElementById('password-modal-user');
+    if (nameEl) nameEl.textContent = username;
+    const passInput = document.getElementById('user-new-password');
+    if (passInput) passInput.value = '';
+    const modal = document.getElementById('password-modal');
+    if (modal) modal.classList.add('active');
+  },
+
+  async confirmPasswordChange() {
+    if (!this.selectedPasswordUserId) return;
+    const passInput = document.getElementById('user-new-password');
+    const newPassword = passInput ? passInput.value.trim() : '';
+    if (!newPassword || newPassword.length < 4) {
+      return app.showToast('A nova senha deve ter no mínimo 4 caracteres.');
+    }
+    try {
+      await app.fetchAPI(`/api/admin/users/${encodeURIComponent(this.selectedPasswordUserId)}/password`, {
+        method: 'PUT',
+        body: JSON.stringify({ newPassword })
+      });
+      app.closeModal('password-modal');
+      app.showToast(`Senha de ${this.selectedPasswordUsername || 'usuário'} alterada com sucesso!`);
+    } catch (error) {
+      app.showToast(error.message || 'Erro ao alterar senha.');
+    }
   },
 
   async activateManager(id, name) {

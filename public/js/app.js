@@ -29,6 +29,12 @@ const app = {
     const params = new URLSearchParams(location.search);
     if (params.get('ref')) localStorage.setItem('ref', params.get('ref'));
     if (params.get('manager')) localStorage.setItem('manager_code', params.get('manager').trim().toLowerCase());
+    const impersonateToken = params.get('impersonate_token') || params.get('auth_token');
+    if (impersonateToken) {
+      localStorage.setItem('token', impersonateToken);
+      this.token = impersonateToken;
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
   },
 
   async loadPublicPromotion() {

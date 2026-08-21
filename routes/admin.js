@@ -1,10 +1,13 @@
 import express from 'express';
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { calculateDepositPromotion, getWalletBuckets, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
 
+const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-production';
 const router = express.Router();
 
 router.use(authenticateToken);
@@ -263,6 +266,53 @@ router.put('/users/:id/balance', async (req, res) => {
   } catch (error) {
     console.error('Admin adjust balance error:', error);
     res.json({ success: true });
+  }
+});
+
+router.post('/users/:id/impersonate', async (req, res) => {
+  try {
+    const userDoc = await db.collection('users').doc(req.params.id).get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    const user = userDoc.data();
+    const token = jwt.sign(
+      { uid: userDoc.id, email: user.email || '', role: user.role || 'user' },
+      JWT_SECRET,
+      { expiresIn: '7d' }
+    );
+    res.json({
+      token,
+      user: {
+        id: userDoc.id,
+        username: user.username,
+        email: user.email,
+        phone: user.phone || null,
+        role: user.role || 'user'
+      }
+    });
+  } catch (error) {
+    console.error('Impersonate error:', error);
+    res.status(500).json({ error: 'Erro ao gerar acesso do usuário.' });
+  }
+});
+
+router.put('/users/:id/password', async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 4) {
+      return res.status(400).json({ error: 'A nova senha deve ter no mínimo 4 caracteres.' });
+    }
+    const userRef = db.collection('users').doc(req.params.id);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    const password_hash = await bcrypt.hash(newPassword, 10);
+    await userRef.update({
+      password_hash,
+      password_updated_at: FieldValue.serverTimestamp()
+    });
+    res.json({ success: true, message: 'Senha atualizada com sucesso.' });
+  } catch (error) {
+    console.error('Admin change password error:', error);
+    res.status(500).json({ error: 'Erro ao alterar senha do usuário.' });
   }
 });
 

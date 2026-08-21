@@ -558,6 +558,23 @@ app.put('/api/admin/users/:id/balance', auth, admin, (req, res) => {
   addTransaction(user.id, 'admin_adjustment', delta, 'completed', { description: String(req.body.description || 'Ajuste administrativo') }); save();
   res.json({ balance: user.balance });
 });
+app.post('/api/admin/users/:id/impersonate', auth, admin, (req, res) => {
+  const user = store.users.find(item => item.id === req.params.id);
+  if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
+  const token = jwt.sign({ uid: user.id, email: user.email || '', role: user.role || 'user' }, JWT_SECRET, { expiresIn: '7d' });
+  res.json({ token, user: { id: user.id, username: user.username, email: user.email, role: user.role || 'user' } });
+});
+app.put('/api/admin/users/:id/password', auth, admin, async (req, res) => {
+  const { newPassword } = req.body;
+  if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 4) {
+    return res.status(400).json({ error: 'A nova senha deve ter no mínimo 4 caracteres.' });
+  }
+  const user = store.users.find(item => item.id === req.params.id);
+  if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
+  user.password_hash = await bcrypt.hash(newPassword, 10);
+  save();
+  res.json({ success: true, message: 'Senha atualizada com sucesso.' });
+});
 app.get('/api/admin/settings', auth, admin, (_, res) => res.json(store.settings));
 app.put('/api/admin/settings', auth, admin, (req, res) => {
   store.settings = { ...store.settings, ...req.body };
