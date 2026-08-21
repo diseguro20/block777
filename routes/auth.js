@@ -2,6 +2,8 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, normalizeGgrRate } from '../lib/ggr.js';
@@ -9,8 +11,9 @@ import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, normalizeGgrRate } from '..
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
 
-// Cache em memória compartilhado para resiliência de autenticação e proteção contra limites de cota
+// Cache e persistência local (/tmp) para resiliência total contra limites de cota do Firestore
 const resilientUserRegistry = new Map();
+const TMP_USERS_FILE = path.join(process.env.TMPDIR || '/tmp', 'blockerino_users_store.json');
 
 function cacheUser(user, id) {
   if (!user) return;
@@ -25,7 +28,37 @@ function cacheUser(user, id) {
   if (user.manager_code) resilientUserRegistry.set(String(user.manager_code).toLowerCase().trim(), userData);
 }
 
+function loadTmpUsers() {
+  try {
+    if (fs.existsSync(TMP_USERS_FILE)) {
+      const data = JSON.parse(fs.readFileSync(TMP_USERS_FILE, 'utf8'));
+      if (Array.isArray(data)) {
+        data.forEach(u => cacheUser(u, u.id || u.uid));
+      }
+    }
+  } catch (e) {}
+}
+
+function persistTmpUser(user, id) {
+  try {
+    cacheUser(user, id);
+    let list = [];
+    try {
+      if (fs.existsSync(TMP_USERS_FILE)) {
+        list = JSON.parse(fs.readFileSync(TMP_USERS_FILE, 'utf8')) || [];
+      }
+    } catch (e) {}
+    const uid = id || user.id || user.uid || 'user_' + Date.now();
+    const existingIdx = list.findIndex(u => (u.id && u.id === uid) || (u.email && u.email === user.email) || (u.phone && u.phone === user.phone));
+    const uData = { ...user, uid, id: uid };
+    if (existingIdx >= 0) list[existingIdx] = uData;
+    else list.push(uData);
+    fs.writeFileSync(TMP_USERS_FILE, JSON.stringify(list));
+  } catch (e) {}
+}
+
 function findCachedUser(identifier, cleanDigits) {
+  loadTmpUsers();
   if (!identifier) return null;
   const lower = String(identifier).toLowerCase().trim();
   if (resilientUserRegistry.has(lower)) return resilientUserRegistry.get(lower);
@@ -202,7 +235,7 @@ router.post('/register', async (req, res) => {
       } catch (e2) {}
     }
 
-    cacheUser(newUser, docId);
+    persistTmpUser(newUser, docId);
     
     const token = jwt.sign(
       { uid: docId, email: newUser.email, role: newUser.role },
@@ -289,7 +322,7 @@ router.post('/register-manager', async (req, res) => {
       } catch (e2) {}
     }
 
-    cacheUser(newManager, docId);
+    persistTmpUser(newManager, docId);
 
     const token = jwt.sign({ uid: docId, email, role: 'manager' }, JWT_SECRET, { expiresIn: '30d' });
     res.status(201).json({
