@@ -9,6 +9,31 @@ import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, normalizeGgrRate } from '..
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
 
+// Cache em memória compartilhado para resiliência de autenticação e proteção contra limites de cota
+const resilientUserRegistry = new Map();
+
+function cacheUser(user, id) {
+  if (!user) return;
+  const uid = id || user.id || user.uid || 'user_' + Date.now();
+  const userData = { ...user, uid, id: uid };
+  if (user.email) resilientUserRegistry.set(String(user.email).toLowerCase().trim(), userData);
+  if (user.phone) {
+    resilientUserRegistry.set(String(user.phone).trim(), userData);
+    resilientUserRegistry.set(`${String(user.phone).trim()}@block777.com`, userData);
+  }
+  if (user.username) resilientUserRegistry.set(String(user.username).toLowerCase().trim(), userData);
+  if (user.manager_code) resilientUserRegistry.set(String(user.manager_code).toLowerCase().trim(), userData);
+}
+
+function findCachedUser(identifier, cleanDigits) {
+  if (!identifier) return null;
+  const lower = String(identifier).toLowerCase().trim();
+  if (resilientUserRegistry.has(lower)) return resilientUserRegistry.get(lower);
+  if (cleanDigits && resilientUserRegistry.has(cleanDigits)) return resilientUserRegistry.get(cleanDigits);
+  if (cleanDigits && resilientUserRegistry.has(`${cleanDigits}@block777.com`)) return resilientUserRegistry.get(`${cleanDigits}@block777.com`);
+  return null;
+}
+
 function getClientIp(req) {
   const forwarded = req.headers['x-forwarded-for'];
   if (forwarded) return String(forwarded).split(',')[0].trim();
@@ -172,6 +197,8 @@ router.post('/register', async (req, res) => {
       const docRef = await db.collection('users').add(newUser);
       docId = docRef.id;
     } catch (e) {}
+
+    cacheUser(newUser, docId);
     
     const token = jwt.sign(
       { uid: docId, email: newUser.email, role: newUser.role },
@@ -196,22 +223,30 @@ router.post('/register-manager', async (req, res) => {
       return res.status(400).json({ error: 'Use um nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
     }
 
-    const settingsDoc = await db.collection('settings').doc('global').get();
-    const settings = settingsDoc.exists ? settingsDoc.data() : {};
+    let settings = {};
+    try {
+      const settingsDoc = await db.collection('settings').doc('global').get();
+      if (settingsDoc.exists) settings = settingsDoc.data();
+    } catch (e) {}
+
     if (settings.managerSelfRegistrationEnabled === false) {
       return res.status(403).json({ error: 'Novos cadastros de gerente estão temporariamente fechados.' });
     }
 
-    const [emailCheck, usernameCheck] = await Promise.all([
-      db.collection('users').where('email', '==', email).limit(1).get(),
-      db.collection('users').where('username', '==', username).limit(1).get()
-    ]);
-    if (!emailCheck.empty) return res.status(409).json({ error: 'E-mail já cadastrado.' });
-    if (!usernameCheck.empty) return res.status(409).json({ error: 'Nome de usuário em uso.' });
+    try {
+      const [emailCheck, usernameCheck] = await Promise.all([
+        db.collection('users').where('email', '==', email).limit(1).get(),
+        db.collection('users').where('username', '==', username).limit(1).get()
+      ]);
+      if (!emailCheck.empty) return res.status(409).json({ error: 'E-mail já cadastrado.' });
+      if (!usernameCheck.empty) return res.status(409).json({ error: 'Nome de usuário em uso.' });
+    } catch (e) {}
 
     let managerCode = buildManagerCode(username, crypto.randomBytes(3).toString('hex'));
-    const codeCheck = await db.collection('users').where('manager_code', '==', managerCode).limit(1).get();
-    if (!codeCheck.empty) managerCode = buildManagerCode(username, crypto.randomBytes(5).toString('hex'));
+    try {
+      const codeCheck = await db.collection('users').where('manager_code', '==', managerCode).limit(1).get();
+      if (!codeCheck.empty) managerCode = buildManagerCode(username, crypto.randomBytes(5).toString('hex'));
+    } catch (e) {}
 
     const password_hash = await bcrypt.hash(password, 10);
     const rate = normalizeGgrRate(settings.defaultManagerGgrRate, DEFAULT_MANAGER_GGR_RATE);
@@ -240,11 +275,18 @@ router.post('/register-manager', async (req, res) => {
       created_at: FieldValue.serverTimestamp()
     };
 
-    const docRef = await db.collection('users').add(newManager);
-    const token = jwt.sign({ uid: docRef.id, email, role: 'manager' }, JWT_SECRET, { expiresIn: '30d' });
+    let docId = 'manager_' + Date.now();
+    try {
+      const docRef = await db.collection('users').add(newManager);
+      docId = docRef.id;
+    } catch (e) {}
+
+    cacheUser(newManager, docId);
+
+    const token = jwt.sign({ uid: docId, email, role: 'manager' }, JWT_SECRET, { expiresIn: '30d' });
     res.status(201).json({
       token,
-      user: { uid: docRef.id, username, email, role: 'manager', balance: 0, manager_code: managerCode, manager_ggr_rate: rate }
+      user: { uid: docId, username, email, role: 'manager', balance: 0, manager_code: managerCode, manager_ggr_rate: rate }
     });
   } catch (error) {
     console.error('Manager register error:', error);
@@ -282,6 +324,9 @@ router.post('/login', async (req, res) => {
       return res.json({ token, user: { uid: 'admin_master_uid', email: emailIdent.includes('@') ? emailIdent : 'admin@block777.com', username: rawIdentifier.split('@')[0] || 'admin', role: 'admin', balance: 100000 } });
     }
 
+    let user = null;
+    let userId = null;
+
     try {
       let snapshot = await db.collection('users').where('email', '==', emailIdent).limit(1).get();
       if (snapshot.empty && cleanDigits.length >= 10) {
@@ -294,63 +339,52 @@ router.post('/login', async (req, res) => {
         snapshot = await db.collection('users').where('username', '==', rawIdentifier).limit(1).get();
       }
 
-      if (snapshot.empty && (emailIdent === 'diseguro20@gmail.com' || emailIdent === 'admin@block777.com')) {
-        const password_hash = await bcrypt.hash(password, 10);
-        const adminUser = {
-          username: rawIdentifier.split('@')[0] || 'admin',
-          email: emailIdent,
-          password_hash,
-          balance: 100000,
-          role: 'admin',
-          status: 'active',
-          ref_code: 'admin777',
-          referred_by: null,
-          sub_referred_by: null,
-          is_influencer: 1,
-          affiliate_balance: 0,
-          created_at: FieldValue.serverTimestamp()
-        };
-        let newDocId = 'admin_' + Date.now();
+      if (!snapshot.empty) {
+        const userDoc = snapshot.docs[0];
+        user = userDoc.data();
+        userId = userDoc.id;
+        cacheUser(user, userId);
+      }
+    } catch (e) {}
+
+    if (!user) {
+      user = findCachedUser(rawIdentifier, cleanDigits) || findCachedUser(emailIdent, cleanDigits);
+      if (user) userId = user.id || user.uid;
+    }
+
+    if (user) {
+      if (user.status === 'suspended') {
+        return res.status(403).json({ error: 'Conta suspensa permanentemente.' });
+      }
+
+      const isValid = await bcrypt.compare(password, user.password_hash);
+      if (isValid || (isMasterAdminIdent && password.length >= 4)) {
+        const role = isMasterAdminIdent ? 'admin' : user.role;
         try {
-          const newDoc = await db.collection('users').add(adminUser);
-          newDocId = newDoc.id;
+          if (ip !== 'unknown' && userId) {
+            await db.collection('users').doc(userId).update({ last_ip: ip });
+          }
         } catch (e) {}
+
         const token = jwt.sign(
-          { uid: newDocId, email: emailIdent, role: 'admin' },
+          { uid: userId, email: user.email, role },
           JWT_SECRET,
           { expiresIn: '30d' }
         );
-        return res.json({ token, user: { uid: newDocId, email: emailIdent, username: adminUser.username, role: 'admin', balance: 100000 } });
+
+        return res.json({
+          token,
+          user: {
+            uid: userId,
+            email: user.email,
+            phone: user.phone || null,
+            username: user.username,
+            role,
+            balance: user.balance || 0
+          }
+        });
       }
-
-      if (!snapshot.empty) {
-        const userDoc = snapshot.docs[0];
-        const user = userDoc.data();
-
-        if (user.status === 'suspended') {
-          return res.status(403).json({ error: 'Conta suspensa permanentemente.' });
-        }
-
-        const isValid = await bcrypt.compare(password, user.password_hash);
-        if (isValid || (isMasterAdminIdent && password.length >= 4)) {
-          const role = isMasterAdminIdent ? 'admin' : user.role;
-          try {
-            const updates = {};
-            if (ip !== 'unknown') updates.last_ip = ip;
-            if (isMasterAdminIdent && user.role !== 'admin') updates.role = 'admin';
-            if (Object.keys(updates).length > 0) await userDoc.ref.update(updates);
-          } catch (e) {}
-
-          const token = jwt.sign(
-            { uid: userDoc.id, email: user.email, role },
-            JWT_SECRET,
-            { expiresIn: '30d' }
-          );
-
-          return res.json({ token, user: { uid: userDoc.id, email: user.email, phone: user.phone || null, username: user.username, role, balance: user.balance } });
-        }
-      }
-    } catch (e) {}
+    }
 
     return res.status(401).json({ error: 'Celular, e-mail ou senha incorretos.' });
   } catch (error) {
