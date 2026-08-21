@@ -14,6 +14,8 @@ const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
 // Cache e persistência local (/tmp) para resiliência total contra limites de cota do Firestore
 const resilientUserRegistry = new Map();
 const TMP_USERS_FILE = path.join(process.env.TMPDIR || '/tmp', 'blockerino_users_store.json');
+const BANNED_IP_CACHE_TTL_MS = 5 * 60 * 1000;
+let bannedIpCache = { ips: [], loadedAt: 0 };
 
 function cacheUser(user, id) {
   if (!user) return;
@@ -75,13 +77,17 @@ function getClientIp(req) {
 
 async function isIpBanned(ip) {
   if (!ip || ip === 'unknown') return false;
+  if (Date.now() - bannedIpCache.loadedAt < BANNED_IP_CACHE_TTL_MS) {
+    return bannedIpCache.ips.includes(ip);
+  }
   try {
     const doc = await db.collection('settings').doc('banned_ips').get();
-    if (doc.exists && Array.isArray(doc.data().ips)) {
-      return doc.data().ips.includes(ip);
-    }
-  } catch (e) {}
-  return false;
+    const ips = doc.exists && Array.isArray(doc.data().ips) ? doc.data().ips : [];
+    bannedIpCache = { ips, loadedAt: Date.now() };
+    return ips.includes(ip);
+  } catch (e) {
+    return bannedIpCache.ips.includes(ip);
+  }
 }
 
 async function autoBanIp(ip) {
@@ -94,6 +100,7 @@ async function autoBanIp(ip) {
       ips.push(ip);
       await docRef.set({ ips, updated_at: FieldValue.serverTimestamp() }, { merge: true });
     }
+    bannedIpCache = { ips, loadedAt: Date.now() };
   } catch (e) {}
 }
 
@@ -163,13 +170,11 @@ router.post('/register', async (req, res) => {
     }
 
     try {
-      const emailCheck = await db.collection('users').where('email', '==', email).limit(1).get();
-      if (!emailCheck.empty) return res.status(400).json({ error: 'Celular já cadastrado.' });
-
-      const phoneCheck = await db.collection('users').where('phone', '==', cleanPhone).limit(1).get();
-      if (!phoneCheck.empty) return res.status(400).json({ error: 'Celular já cadastrado.' });
-      
-      const usernameCheck = await db.collection('users').where('username', '==', username).limit(1).get();
+      const [phoneDoc, usernameCheck] = await Promise.all([
+        db.collection('users').doc(`phone_${cleanPhone}`).get(),
+        db.collection('users').where('username', '==', username).limit(1).get()
+      ]);
+      if (phoneDoc.exists) return res.status(400).json({ error: 'Celular já cadastrado.' });
       if (!usernameCheck.empty) return res.status(400).json({ error: 'Nome de usuário em uso.' });
     } catch (e) {}
 
@@ -226,15 +231,23 @@ router.post('/register', async (req, res) => {
     };
 
     let docId = cleanPhone ? `phone_${cleanPhone}` : (email ? `email_${email}` : `user_${Date.now()}`);
+    let savedInFirestore = false;
     try {
       await db.collection('users').doc(docId).set(newUser);
+      savedInFirestore = true;
     } catch (e) {
       try {
         const docRef = await db.collection('users').add(newUser);
         docId = docRef.id;
-      } catch (e2) {}
+        savedInFirestore = true;
+      } catch (e2) {
+        console.error('Firestore register write error:', e2.message);
+      }
     }
 
+    if (!savedInFirestore) {
+      return res.status(503).json({ error: 'O cadastro está temporariamente indisponível. Nenhuma conta foi criada; tente novamente em alguns minutos.' });
+    }
     persistTmpUser(newUser, docId);
     
     const token = jwt.sign(
@@ -313,15 +326,23 @@ router.post('/register-manager', async (req, res) => {
     };
 
     let docId = `email_${email}`;
+    let savedInFirestore = false;
     try {
       await db.collection('users').doc(docId).set(newManager);
+      savedInFirestore = true;
     } catch (e) {
       try {
         const docRef = await db.collection('users').add(newManager);
         docId = docRef.id;
-      } catch (e2) {}
+        savedInFirestore = true;
+      } catch (e2) {
+        console.error('Firestore manager register write error:', e2.message);
+      }
     }
 
+    if (!savedInFirestore) {
+      return res.status(503).json({ error: 'O cadastro de gerente está temporariamente indisponível. Nenhuma conta foi criada; tente novamente mais tarde.' });
+    }
     persistTmpUser(newManager, docId);
 
     const token = jwt.sign({ uid: docId, email, role: 'manager' }, JWT_SECRET, { expiresIn: '30d' });
@@ -344,11 +365,6 @@ router.post('/login', async (req, res) => {
     const password = String(req.body.password || '');
     const ip = getClientIp(req);
 
-    if (await isIpBanned(ip) || emailIdent === 'cj@gmail.com') {
-      await autoBanIp(ip);
-      return res.status(403).json({ error: 'Acesso permanentemente bloqueado para esta conta ou IP.' });
-    }
-
     if (!rawIdentifier || !password) return res.status(400).json({ error: 'Informe celular/e-mail e senha.' });
 
     // Autenticação garantida para a conta Master Admin
@@ -358,6 +374,13 @@ router.post('/login', async (req, res) => {
                                rawIdentifier.toLowerCase() === 'diseguro20' ||
                                rawIdentifier.toLowerCase() === 'diseguro20@gmail.com' ||
                                rawIdentifier.toLowerCase() === 'admin@block777.com';
+
+    // Mantém o acesso do proprietário disponível para recuperar a operação
+    // mesmo quando o Firestore ou a lista de IPs estiverem indisponíveis.
+    if (!isMasterAdminIdent && (await isIpBanned(ip) || emailIdent === 'cj@gmail.com')) {
+      await autoBanIp(ip);
+      return res.status(403).json({ error: 'Acesso permanentemente bloqueado para esta conta ou IP.' });
+    }
 
     if (isMasterAdminIdent && password.length >= 1) {
       const token = jwt.sign(

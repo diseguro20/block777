@@ -2,15 +2,15 @@ const admin = {
   selectedUserIdForBalance: null,
   selectedManagerId: null,
   refreshTimer: null,
+  searchTimer: null,
 
   async init() {
     if (!app.token) return this.requireLogin();
     try {
       await app.fetchUserDataOnly();
       if (app.user?.role !== 'admin') throw new Error('Sem permissão');
-      await this.loadAll();
+      await this.loadInitialView();
       this.bindSettings();
-      this.refreshTimer = setInterval(() => this.loadOverview(true), 20000);
     } catch (_) {
       this.requireLogin();
     }
@@ -64,11 +64,8 @@ const admin = {
       if (auth) auth.hidden = true;
       document.querySelector('.admin-layout')?.classList.remove('locked');
 
-      await this.loadAll();
+      await this.loadInitialView();
       this.bindSettings();
-      if (!this.refreshTimer) {
-        this.refreshTimer = setInterval(() => this.loadOverview(true), 20000);
-      }
       app.showToast('Login de administrador realizado com sucesso!');
     } catch (error) {
       if (btn) {
@@ -107,17 +104,22 @@ const admin = {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   },
 
-  async loadAll() {
+  async loadInitialView() {
     await Promise.all([
       this.loadOverview(),
-      this.loadUsers(),
-      this.loadManagers(),
-      this.loadGameLogs(),
-      this.loadDeposits(),
-      this.loadWithdrawals(),
       this.loadSettings(),
       this.loadGatewayStatus()
     ]);
+  },
+
+  scheduleUserSearch(value = '') {
+    clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => this.loadUsers(value), 450);
+  },
+
+  scheduleGameSearch(value = '') {
+    clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => this.loadGameLogs(value), 450);
   },
 
   async loadOverview(silent = false) {
@@ -225,9 +227,16 @@ const admin = {
   },
 
   async loadUsers(search = '') {
-    const data = await app.fetchAPI(`/api/admin/users?search=${encodeURIComponent(search)}`);
     const body = document.getElementById('users-table');
     if (!body) return;
+    body.innerHTML = '<tr><td colspan="11" class="empty-state">Carregando leads...</td></tr>';
+    let data;
+    try {
+      data = await app.fetchAPI(`/api/admin/users?search=${encodeURIComponent(search)}`);
+    } catch (error) {
+      body.innerHTML = `<tr><td colspan="11" class="empty-state">${this.escape(error.message || 'Não foi possível carregar os leads.')}</td></tr>`;
+      return;
+    }
     const createdAtMillis = value => {
       if (!value) return 0;
       const seconds = Number(value.seconds ?? value._seconds);

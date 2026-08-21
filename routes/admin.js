@@ -13,7 +13,27 @@ const router = express.Router();
 router.use(authenticateToken);
 router.use(requireAdmin);
 
+const ADMIN_CACHE_TTL_MS = 2 * 60 * 1000;
+const adminResponseCache = new Map();
+const getAdminCache = key => {
+  const entry = adminResponseCache.get(key);
+  return entry && Date.now() - entry.savedAt < ADMIN_CACHE_TTL_MS ? entry.value : null;
+};
+const getStaleAdminCache = key => adminResponseCache.get(key)?.value || null;
+const setAdminCache = (key, value) => {
+  adminResponseCache.set(key, { value, savedAt: Date.now() });
+  return value;
+};
+
+router.use((req, _res, next) => {
+  if (req.method !== 'GET') adminResponseCache.clear();
+  next();
+});
+
 router.get('/stats', async (req, res) => {
+  const cacheKey = 'stats';
+  const cached = getAdminCache(cacheKey);
+  if (cached) return res.json(cached);
   try {
     let totalUsers = 1;
     let totalBets = 0;
@@ -62,14 +82,17 @@ router.get('/stats', async (req, res) => {
       const withdrawalsSnapshot = await db.collection('withdrawal_requests').where('status', '==', 'pending').get();
       pendingWithdrawals = withdrawalsSnapshot.size || 0;
     } catch (e) {
-      console.warn('Firestore fallback para admin stats:', e.message);
+      console.warn('Firestore indisponível para admin stats:', e.message);
+      throw e;
     }
     
     const houseProfit = totalBets - totalPayouts;
-    res.json({ totalUsers, totalBets, totalPayouts, houseProfit, pendingDeposits, pendingWithdrawals, totalGames, wins, losses, blocksPlaced, linesCleared, totalBonusGranted, lockedBonus, activeRolloverUsers });
+    res.json(setAdminCache(cacheKey, { totalUsers, totalBets, totalPayouts, houseProfit, pendingDeposits, pendingWithdrawals, totalGames, wins, losses, blocksPlaced, linesCleared, totalBonusGranted, lockedBonus, activeRolloverUsers }));
   } catch (error) {
     console.error('Admin stats error:', error);
-    res.json({ totalUsers: 1, totalBets: 0, totalPayouts: 0, houseProfit: 0, pendingDeposits: 0, pendingWithdrawals: 0, totalGames: 0, wins: 0, losses: 0, blocksPlaced: 0, linesCleared: 0, totalBonusGranted: 0, lockedBonus: 0, activeRolloverUsers: 0 });
+    const stale = getStaleAdminCache(cacheKey);
+    if (stale) return res.json({ ...stale, stale: true });
+    res.status(503).json({ error: 'O banco atingiu o limite temporário de consultas. Aguarde a liberação da cota e atualize o painel.' });
   }
 });
 
@@ -87,8 +110,11 @@ async function autoBanIp(ip) {
 }
 
 router.get('/users', async (req, res) => {
+  const search = String(req.query.search || '').trim().toLowerCase();
+  const cacheKey = `users:${search}`;
+  const cached = getAdminCache(cacheKey);
+  if (cached) return res.json(cached);
   try {
-    const search = req.query.search?.toLowerCase();
     let users = [];
 
     try {
@@ -118,18 +144,8 @@ router.get('/users', async (req, res) => {
         users.push({ id: doc.id, ...data });
       });
     } catch (e) {
-      console.warn('Firestore fallback para admin users:', e.message);
-      users = [
-        {
-          id: 'admin_master_uid',
-          username: 'admin',
-          email: 'admin@block777.com',
-          balance: 100000,
-          role: 'admin',
-          status: 'active',
-          is_influencer: 1
-        }
-      ];
+      console.warn('Firestore indisponível para admin users:', e.message);
+      throw e;
     }
 
     const gameStats = new Map();
@@ -172,28 +188,21 @@ router.get('/users', async (req, res) => {
     };
     users.sort((a, b) => createdAtMillis(b.created_at) - createdAtMillis(a.created_at));
 
-    res.json({ users });
+    res.json(setAdminCache(cacheKey, { users }));
   } catch (error) {
     console.error('Admin users error:', error);
-    res.json({
-      users: [
-        {
-          id: 'admin_master_uid',
-          username: 'admin',
-          email: 'admin@block777.com',
-          balance: 100000,
-          role: 'admin',
-          status: 'active',
-          is_influencer: 1
-        }
-      ]
-    });
+    const stale = getStaleAdminCache(cacheKey);
+    if (stale) return res.json({ ...stale, stale: true });
+    res.status(503).json({ error: 'Não foi possível consultar os leads porque a cota do banco está temporariamente esgotada.' });
   }
 });
 
 router.get('/game-logs', async (req, res) => {
+  const search = String(req.query.search || '').trim().toLowerCase();
+  const cacheKey = `game-logs:${search}`;
+  const cached = getAdminCache(cacheKey);
+  if (cached) return res.json(cached);
   try {
-    const search = String(req.query.search || '').trim().toLowerCase();
     const [betsSnapshot, usersSnapshot] = await Promise.all([
       db.collection('bets').get(),
       db.collection('users').get()
@@ -210,9 +219,11 @@ router.get('/game-logs', async (req, res) => {
       .filter(bet => !search || String(bet.username).toLowerCase().includes(search) || String(bet.email).toLowerCase().includes(search) || String(bet.sessionId || '').toLowerCase().includes(search))
       .sort((a, b) => toMillis(b.completed_at || b.created_at) - toMillis(a.completed_at || a.created_at))
       .slice(0, 250);
-    res.json({ games });
+    res.json(setAdminCache(cacheKey, { games }));
   } catch (error) {
-    res.status(500).json({ error: 'Não foi possível carregar os registros das partidas.' });
+    const stale = getStaleAdminCache(cacheKey);
+    if (stale) return res.json({ ...stale, stale: true });
+    res.status(503).json({ error: 'Não foi possível carregar as partidas porque a cota do banco está temporariamente esgotada.' });
   }
 });
 
@@ -329,6 +340,9 @@ router.delete('/users/:id', async (req, res) => {
 });
 
 router.get('/managers', async (req, res) => {
+  const cacheKey = 'managers';
+  const cached = getAdminCache(cacheKey);
+  if (cached) return res.json(cached);
   try {
     const [usersSnapshot, metricsSnapshot, paymentsSnapshot, settingsDoc] = await Promise.all([
       db.collection('users').get(),
@@ -362,10 +376,12 @@ router.get('/managers', async (req, res) => {
         outstanding: Math.max(0, feeAccrued - totalPaid)
       };
     });
-    res.json({ managers, defaultRate, currentPeriod: managerPeriod() });
+    res.json(setAdminCache(cacheKey, { managers, defaultRate, currentPeriod: managerPeriod() }));
   } catch (error) {
     console.error('Admin managers error:', error);
-    res.status(500).json({ error: 'Não foi possível carregar os gerentes.' });
+    const stale = getStaleAdminCache(cacheKey);
+    if (stale) return res.json({ ...stale, stale: true });
+    res.status(503).json({ error: 'Não foi possível carregar os gerentes porque a cota do banco está temporariamente esgotada.' });
   }
 });
 
