@@ -383,7 +383,7 @@ router.get('/settings', async (req, res) => {
       difficulty: 'balanced',
       minBet: 100,
       maxBet: 10000,
-      minDeposit: 500,
+      minDeposit: 2000,
       minWithdrawal: 1000,
       level1Rate: 10,
       level2Rate: 2,
@@ -400,7 +400,7 @@ router.get('/settings', async (req, res) => {
     } catch (e) {}
     res.json(settings);
   } catch (error) {
-    res.json({ difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, ...PROMOTION_DEFAULTS });
+    res.json({ difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 2000, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, ...PROMOTION_DEFAULTS });
   }
 });
 
@@ -410,7 +410,7 @@ router.put('/settings', async (req, res) => {
       difficulty: 'balanced',
       minBet: 100,
       maxBet: 10000,
-      minDeposit: 500,
+      minDeposit: 2000,
       minWithdrawal: 1000,
       level1Rate: 10,
       level2Rate: 2,

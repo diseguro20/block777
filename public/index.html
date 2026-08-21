@@ -156,10 +156,10 @@
           <div id="dep-content">
             <div class="deposit-promo"><span id="deposit-promo-badge">100% DE BÔNUS</span><h3>Deposite <b id="promo-deposit-value">R$ 20</b> e jogue com <strong id="promo-total-value">R$ 40</strong></h3><p id="promo-bonus-detail">R$ 20 em bônus adicionados automaticamente após a confirmação do PIX.</p></div>
             <div class="wallet-security-strip" aria-label="Segurança do depósito"><span>✓ PIX verificado</span><span>✓ HTTPS ativo</span><span>✓ Confirmação automática</span></div>
-            <label>Valor do depósito</label><div class="money-input"><span>R$</span><input id="dep-amount-input" type="number" min="5" value="20" oninput="wallet.updatePromoPreview()"></div>
+            <label>Valor do depósito</label><div class="money-input"><span>R$</span><input id="dep-amount-input" type="number" min="20" value="20" oninput="wallet.updatePromoPreview()"></div>
             <div class="quick-values"><button onclick="wallet.selectPreset(20)" class="active">R$ 20</button><button onclick="wallet.selectPreset(50)">R$ 50</button><button onclick="wallet.selectPreset(100)">R$ 100</button><button onclick="wallet.selectPreset(200)">R$ 200</button></div>
             <button class="btn btn-primary btn-wide pulse-cta" id="deposit-promo-button" onclick="wallet.requestDeposit()">Gerar PIX e ativar 100%</button>
-            <p class="deposit-legal" id="deposit-promo-legal">Oferta para depósitos a partir de R$ 20. Bônus de 100% sujeito a rollover de 10x sobre o bônus. Saques permanecem bloqueados enquanto houver requisito pendente. Valores depositados abaixo de R$ 20 não recebem bônus.</p>
+            <p class="deposit-legal" id="deposit-promo-legal">Depósito mínimo a partir de R$ 20 com 100% de bônus automático (R$ 20 viram R$ 40 para jogar). Bônus sujeito a rollover de 10x sobre o bônus antes de saques.</p>
             <div id="pix-result-container" class="pix-result"><img id="pix-qr-image" class="pix-qr" alt="QR Code PIX" hidden><label>Código PIX</label><textarea id="pix-code-display" readonly></textarea><button class="btn btn-ghost btn-wide" onclick="wallet.copyPixCode()">Copiar código</button></div>
           </div>
           <div id="with-content" hidden>
@@ -179,6 +179,6 @@
   <div class="modal" id="win-modal"><div class="modal-card result-card"><div class="result-icon">✓</div><small>RESGATE CONCLUÍDO</small><h3 id="win-modal-payout">R$ 0,00</h3><p>Multiplicador final: <b id="win-modal-mult">1.00x</b></p><button class="btn btn-primary btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="modal" id="gameover-modal"><div class="modal-card result-card"><div class="result-icon danger">×</div><small>FIM DE PARTIDA</small><h3>Sem movimentos</h3><p>A rodada foi encerrada. Revise sua estratégia e tente novamente.</p><button class="btn btn-primary btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/prism-grid.js?v=20260811-1"></script><script src="./js/app.js?v=20260819-4"></script><script src="./js/wallet.js?v=20260803-1"></script><script src="./js/game.js?v=20260819-4"></script>
+  <script src="./js/prism-grid.js?v=20260811-1"></script><script src="./js/app.js?v=20260821-1"></script><script src="./js/wallet.js?v=20260821-1"></script><script src="./js/game.js?v=20260821-1"></script>
 </body>
 </html>

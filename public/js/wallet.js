@@ -62,7 +62,7 @@ const wallet = {
   },
   async requestDeposit() {
     const amount = Number(document.getElementById('dep-amount-input').value);
-    if (amount < 5 || amount > 1000) return app.showToast('Deposite entre R$ 5 e R$ 1.000.');
+    if (amount < 20 || amount > 1000) return app.showToast('O depósito mínimo é de R$ 20.');
     try {
       const data = await app.fetchAPI('/api/wallet/deposit', {
         method: 'POST',

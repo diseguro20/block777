@@ -35,16 +35,16 @@ router.get('/promotion', async (req, res) => {
 router.post('/deposit', authenticateToken, async (req, res) => {
   try {
     const { amount } = req.body;
-    let minDeposit = 500;
+    let minDeposit = 2000;
     let settings = {};
     try {
       settings = await getPromotionSettings();
       if (settings) {
-        minDeposit = settings.minDeposit ?? minDeposit;
+        minDeposit = Math.max(2000, Number(settings.minDeposit) || 2000);
       }
     } catch (e) {}
     if (!amount || amount < minDeposit || amount > 100000) {
-      return res.status(400).json({ error: `O depósito deve ficar entre R$ ${(minDeposit / 100).toFixed(2)} e R$ 1.000,00.` });
+      return res.status(400).json({ error: `O depósito mínimo é de R$ ${(minDeposit / 100).toFixed(2).replace('.', ',')}.` });
     }
     const depositId = uuidv4();
     const promotion = calculateDepositPromotion(amount, settings);

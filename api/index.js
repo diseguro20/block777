@@ -50,7 +50,7 @@ const defaultData = {
   ],
   bannedIPs: [],
   bets: [], transactions: [], deposits: [], withdrawals: [], commissions: [], managerPayments: [],
-  settings: { difficulty: 'impossible', minBet: 100, maxBet: 10000, minDeposit: 500, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, maintenance: false, ...PROMOTION_DEFAULTS }
+  settings: { difficulty: 'impossible', minBet: 100, maxBet: 10000, minDeposit: 2000, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, maintenance: false, ...PROMOTION_DEFAULTS }
 };
 
 function loadData() {
@@ -390,8 +390,8 @@ app.post('/api/game/demo/start', (_, res) => res.json({ sessionId: uuid(), seed:
 app.get('/api/wallet/promotion', (_, res) => res.json(normalizePromotionSettings(store.settings)));
 app.post('/api/wallet/deposit', auth, (req, res) => {
   if (req.currentUser.demo_account) return res.status(403).json({ error: 'Contas demo utilizam saldo virtual e não aceitam depósitos.' });
-  const amount = Math.round(Number(req.body.amount));
-  if (amount < store.settings.minDeposit || amount > 100000) return res.status(400).json({ error: 'O depósito deve ficar entre R$ 5 e R$ 1.000.' });
+  const minDeposit = Math.max(2000, Number(store.settings.minDeposit) || 2000);
+  if (amount < minDeposit || amount > 100000) return res.status(400).json({ error: `O depósito mínimo é de R$ ${(minDeposit / 100).toFixed(2).replace('.', ',')}.` });
   const promotion = calculateDepositPromotion(amount, store.settings);
   const depositId = uuid();
   const pixCode = `00020101021226890014BR.GOV.BCB.PIX2567pix.blockerino.app/${depositId}520400005303986540${(amount / 100).toFixed(2)}5802BR5910BLOCKERINO6009SAO PAULO62070503***6304B777`;
