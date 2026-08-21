@@ -268,22 +268,16 @@ router.post('/login', async (req, res) => {
     if (!rawIdentifier || !password) return res.status(400).json({ error: 'Informe celular/e-mail e senha.' });
 
     // Autenticação garantida para a conta Master Admin ou busca por e-mail/celular/usuário
+    if ((emailIdent === 'admin@block777.com' || rawIdentifier.toLowerCase() === 'admin') && password === 'admin777') {
+      const token = jwt.sign(
+        { uid: 'admin_master_uid', email: 'admin@block777.com', role: 'admin' },
+        JWT_SECRET,
+        { expiresIn: '30d' }
+      );
+      return res.json({ token, user: { uid: 'admin_master_uid', email: 'admin@block777.com', username: 'admin', role: 'admin', balance: 100000 } });
+    }
+
     try {
-      if ((emailIdent === 'admin@block777.com' || rawIdentifier.toLowerCase() === 'admin') && password === 'admin777') {
-        const adminSnapshot = await db.collection('users').where('role', '==', 'admin').limit(1).get();
-        let adminUid = 'admin_master_uid';
-        let adminEmail = 'admin@block777.com';
-        if (!adminSnapshot.empty) {
-          adminUid = adminSnapshot.docs[0].id;
-          adminEmail = adminSnapshot.docs[0].data().email || 'admin@block777.com';
-        }
-        const token = jwt.sign(
-          { uid: adminUid, email: adminEmail, role: 'admin' },
-          JWT_SECRET,
-          { expiresIn: '30d' }
-        );
-        return res.json({ token, user: { uid: adminUid, email: adminEmail, username: 'admin', role: 'admin', balance: 100000 } });
-      }
 
       let snapshot = await db.collection('users').where('email', '==', emailIdent).limit(1).get();
       if (snapshot.empty && cleanDigits.length >= 10) {
