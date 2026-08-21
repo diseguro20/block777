@@ -43,26 +43,34 @@ async function ensureMasterAdmin() {
   try {
     const adminEmail = 'admin@block777.com';
     const snapshot = await db.collection('users').where('email', '==', adminEmail).limit(1).get();
-    if (!snapshot.empty) return snapshot.docs[0].id;
-    if (snapshot.empty) {
-      const password_hash = await bcrypt.hash('admin777', 10);
-      const adminUser = {
+    const password_hash = await bcrypt.hash('admin777', 10);
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      await doc.ref.set({
         username: 'admin',
         email: adminEmail,
         password_hash,
-        balance: 100000,
         role: 'admin',
-        status: 'active',
-        ref_code: 'admin777',
-        referred_by: null,
-        sub_referred_by: null,
-        is_influencer: 1,
-        affiliate_balance: 0,
-        created_at: FieldValue.serverTimestamp()
-      };
-      await db.collection('users').doc('admin_master_uid').set(adminUser);
-      return 'admin_master_uid';
+        status: 'active'
+      }, { merge: true });
+      return doc.id;
     }
+    const adminUser = {
+      username: 'admin',
+      email: adminEmail,
+      password_hash,
+      balance: 100000,
+      role: 'admin',
+      status: 'active',
+      ref_code: 'admin777',
+      referred_by: null,
+      sub_referred_by: null,
+      is_influencer: 1,
+      affiliate_balance: 0,
+      created_at: FieldValue.serverTimestamp()
+    };
+    await db.collection('users').doc('admin_master_uid').set(adminUser);
+    return 'admin_master_uid';
   } catch (e) {
     return 'admin_master_uid';
   }
