@@ -23,7 +23,7 @@ function getClientIp(req) {
   return req.headers['x-real-ip'] || req.connection?.remoteAddress || req.ip || 'unknown';
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const dataFile = process.env.BLOCKERINO_DATA_FILE || path.join(root, '.data', 'local-db.json');

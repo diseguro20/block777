@@ -7,7 +7,7 @@ import { requireAdmin } from '../middleware/admin.js';
 import { calculateDepositPromotion, getWalletBuckets, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'change-this-secret-in-production';
+const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
 const router = express.Router();
 
 router.use(authenticateToken);
