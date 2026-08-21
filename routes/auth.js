@@ -192,11 +192,15 @@ router.post('/register', async (req, res) => {
       created_at: FieldValue.serverTimestamp()
     };
 
-    let docId = 'user_' + Date.now();
+    let docId = cleanPhone ? `phone_${cleanPhone}` : (email ? `email_${email}` : `user_${Date.now()}`);
     try {
-      const docRef = await db.collection('users').add(newUser);
-      docId = docRef.id;
-    } catch (e) {}
+      await db.collection('users').doc(docId).set(newUser);
+    } catch (e) {
+      try {
+        const docRef = await db.collection('users').add(newUser);
+        docId = docRef.id;
+      } catch (e2) {}
+    }
 
     cacheUser(newUser, docId);
     
@@ -275,11 +279,15 @@ router.post('/register-manager', async (req, res) => {
       created_at: FieldValue.serverTimestamp()
     };
 
-    let docId = 'manager_' + Date.now();
+    let docId = `email_${email}`;
     try {
-      const docRef = await db.collection('users').add(newManager);
-      docId = docRef.id;
-    } catch (e) {}
+      await db.collection('users').doc(docId).set(newManager);
+    } catch (e) {
+      try {
+        const docRef = await db.collection('users').add(newManager);
+        docId = docRef.id;
+      } catch (e2) {}
+    }
 
     cacheUser(newManager, docId);
 
@@ -327,25 +335,46 @@ router.post('/login', async (req, res) => {
     let user = null;
     let userId = null;
 
-    try {
-      let snapshot = await db.collection('users').where('email', '==', emailIdent).limit(1).get();
-      if (snapshot.empty && cleanDigits.length >= 10) {
-        snapshot = await db.collection('users').where('phone', '==', cleanDigits).limit(1).get();
-      }
-      if (snapshot.empty && cleanDigits.length >= 10) {
-        snapshot = await db.collection('users').where('email', '==', `${cleanDigits}@block777.com`).limit(1).get();
-      }
-      if (snapshot.empty) {
-        snapshot = await db.collection('users').where('username', '==', rawIdentifier).limit(1).get();
-      }
+    // Busca direta por chaves de documento determinísticas (rápido e econômico em cotas)
+    const directDocKeys = [];
+    if (cleanDigits.length >= 10) directDocKeys.push(`phone_${cleanDigits}`);
+    if (emailIdent.includes('@')) directDocKeys.push(`email_${emailIdent}`);
+    directDocKeys.push(`email_${rawIdentifier.toLowerCase()}`);
+    directDocKeys.push(`user_${rawIdentifier.toLowerCase()}`);
 
-      if (!snapshot.empty) {
-        const userDoc = snapshot.docs[0];
-        user = userDoc.data();
-        userId = userDoc.id;
-        cacheUser(user, userId);
-      }
-    } catch (e) {}
+    for (const key of directDocKeys) {
+      try {
+        const docSnap = await db.collection('users').doc(key).get();
+        if (docSnap.exists) {
+          user = docSnap.data();
+          userId = docSnap.id;
+          cacheUser(user, userId);
+          break;
+        }
+      } catch (e) {}
+    }
+
+    if (!user) {
+      try {
+        let snapshot = await db.collection('users').where('email', '==', emailIdent).limit(1).get();
+        if (snapshot.empty && cleanDigits.length >= 10) {
+          snapshot = await db.collection('users').where('phone', '==', cleanDigits).limit(1).get();
+        }
+        if (snapshot.empty && cleanDigits.length >= 10) {
+          snapshot = await db.collection('users').where('email', '==', `${cleanDigits}@block777.com`).limit(1).get();
+        }
+        if (snapshot.empty) {
+          snapshot = await db.collection('users').where('username', '==', rawIdentifier).limit(1).get();
+        }
+
+        if (!snapshot.empty) {
+          const userDoc = snapshot.docs[0];
+          user = userDoc.data();
+          userId = userDoc.id;
+          cacheUser(user, userId);
+        }
+      } catch (e) {}
+    }
 
     if (!user) {
       user = findCachedUser(rawIdentifier, cleanDigits) || findCachedUser(emailIdent, cleanDigits);
