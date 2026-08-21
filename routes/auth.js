@@ -335,50 +335,45 @@ router.post('/login', async (req, res) => {
     let user = null;
     let userId = null;
 
-    // Busca direta por chaves de documento determinísticas (rápido e econômico em cotas)
-    const directDocKeys = [];
-    if (cleanDigits.length >= 10) directDocKeys.push(`phone_${cleanDigits}`);
-    if (emailIdent.includes('@')) directDocKeys.push(`email_${emailIdent}`);
-    directDocKeys.push(`email_${rawIdentifier.toLowerCase()}`);
-    directDocKeys.push(`user_${rawIdentifier.toLowerCase()}`);
+    // 1. Verificação instantânea em cache de memória (0ms de latência)
+    user = findCachedUser(rawIdentifier, cleanDigits) || findCachedUser(emailIdent, cleanDigits);
+    if (user) userId = user.id || user.uid;
 
-    for (const key of directDocKeys) {
-      try {
-        const docSnap = await db.collection('users').doc(key).get();
-        if (docSnap.exists) {
-          user = docSnap.data();
-          userId = docSnap.id;
-          cacheUser(user, userId);
-          break;
-        }
-      } catch (e) {}
-    }
-
+    // 2. Se não estiver no cache da instância, busca no Firestore com proteção de tempo limite
     if (!user) {
       try {
-        let snapshot = await db.collection('users').where('email', '==', emailIdent).limit(1).get();
-        if (snapshot.empty && cleanDigits.length >= 10) {
-          snapshot = await db.collection('users').where('phone', '==', cleanDigits).limit(1).get();
-        }
-        if (snapshot.empty && cleanDigits.length >= 10) {
-          snapshot = await db.collection('users').where('email', '==', `${cleanDigits}@block777.com`).limit(1).get();
-        }
-        if (snapshot.empty) {
-          snapshot = await db.collection('users').where('username', '==', rawIdentifier).limit(1).get();
-        }
+        const lookupPromise = (async () => {
+          const docKey = cleanDigits.length >= 10 ? `phone_${cleanDigits}` : (emailIdent.includes('@') ? `email_${emailIdent}` : `user_${rawIdentifier.toLowerCase()}`);
+          try {
+            const docSnap = await db.collection('users').doc(docKey).get();
+            if (docSnap.exists) return { user: docSnap.data(), id: docSnap.id };
+          } catch (e) {}
 
-        if (!snapshot.empty) {
-          const userDoc = snapshot.docs[0];
-          user = userDoc.data();
-          userId = userDoc.id;
+          try {
+            const snapshot = await db.collection('users').where('email', '==', emailIdent).limit(1).get();
+            if (!snapshot.empty) return { user: snapshot.docs[0].data(), id: snapshot.docs[0].id };
+          } catch (e) {}
+
+          if (cleanDigits.length >= 10) {
+            try {
+              const phoneSnap = await db.collection('users').where('phone', '==', cleanDigits).limit(1).get();
+              if (!phoneSnap.empty) return { user: phoneSnap.docs[0].data(), id: phoneSnap.docs[0].id };
+            } catch (e) {}
+          }
+          return null;
+        })();
+
+        const result = await Promise.race([
+          lookupPromise,
+          new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ]);
+
+        if (result) {
+          user = result.user;
+          userId = result.id;
           cacheUser(user, userId);
         }
       } catch (e) {}
-    }
-
-    if (!user) {
-      user = findCachedUser(rawIdentifier, cleanDigits) || findCachedUser(emailIdent, cleanDigits);
-      if (user) userId = user.id || user.uid;
     }
 
     if (user) {
