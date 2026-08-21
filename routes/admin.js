@@ -513,7 +513,12 @@ router.post('/recalculate-rollovers', async (req, res) => {
     const bonusPercent = Number(settings.bonusPercent) || 100;
     const promoEnabled = settings.promoEnabled !== false;
 
-    const usersSnap = await db.collection('users').get();
+    let usersSnap;
+    try {
+      usersSnap = await db.collection('users').where('balance', '>', 0).get();
+    } catch (e) {
+      usersSnap = await db.collection('users').limit(50).get();
+    }
     const updatedUsers = [];
 
     for (const userDoc of usersSnap.docs) {
