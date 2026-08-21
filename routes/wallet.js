@@ -8,6 +8,8 @@ import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings
 
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
+const PUBLIC_PROMOTION_CACHE_TTL_MS = 5 * 60 * 1000;
+let publicPromotionCache = { value: null, expiresAt: 0 };
 
 async function getPromotionSettings() {
   const settingsRef = db.collection('settings').doc('global');
@@ -24,12 +26,29 @@ async function getPromotionSettings() {
   return { ...settings, ...campaign };
 }
 
-router.get('/promotion', async (req, res) => {
-  try {
-    res.json(normalizePromotionSettings(await getPromotionSettings()));
-  } catch (_) {
-    res.json(normalizePromotionSettings({}));
+async function getPublicPromotionSettings() {
+  const now = Date.now();
+  if (publicPromotionCache.value && now < publicPromotionCache.expiresAt) {
+    return publicPromotionCache.value;
   }
+
+  try {
+    const promotion = normalizePromotionSettings(await getPromotionSettings());
+    publicPromotionCache = {
+      value: promotion,
+      expiresAt: now + PUBLIC_PROMOTION_CACHE_TTL_MS
+    };
+    return promotion;
+  } catch (error) {
+    if (publicPromotionCache.value) return publicPromotionCache.value;
+    return normalizePromotionSettings({});
+  }
+}
+
+router.get('/promotion', async (req, res) => {
+  res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=900');
+  res.set('X-Blockerino-Promotion-Cache', 'edge-v1');
+  res.json(await getPublicPromotionSettings());
 });
 
 router.post('/deposit', authenticateToken, async (req, res) => {
