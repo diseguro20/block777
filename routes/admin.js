@@ -503,6 +503,112 @@ router.put('/settings/difficulty', async (req, res) => {
   }
 });
 
+router.post('/recalculate-rollovers', async (req, res) => {
+  try {
+    const [settingsDoc, usersSnap, depositsSnap, betsSnap] = await Promise.all([
+      db.collection('settings').doc('global').get(),
+      db.collection('users').get(),
+      db.collection('deposit_requests').get(),
+      db.collection('bets').get()
+    ]);
+    const settings = settingsDoc.exists ? settingsDoc.data() : {};
+    const depositMultiplier = settings.depositRolloverMultiplier != null ? Number(settings.depositRolloverMultiplier) : 1;
+    const bonusMultiplier = settings.rolloverMultiplier != null ? Number(settings.rolloverMultiplier) : 10;
+    const bonusMinDeposit = Number(settings.bonusMinDeposit) || 2000;
+    const bonusPercent = Number(settings.bonusPercent) || 100;
+    const promoEnabled = settings.promoEnabled !== false;
+
+    const depositsByUser = new Map();
+    depositsSnap.docs.forEach(doc => {
+      const d = doc.data();
+      if (d.status === 'approved' && d.uid) {
+        if (!depositsByUser.has(d.uid)) depositsByUser.set(d.uid, []);
+        depositsByUser.get(d.uid).push({ id: doc.id, ...d });
+      }
+    });
+
+    const betsByUser = new Map();
+    betsSnap.docs.forEach(doc => {
+      const b = doc.data();
+      if (b.status === 'completed' && b.uid) {
+        if (!betsByUser.has(b.uid)) betsByUser.set(b.uid, []);
+        betsByUser.get(b.uid).push({ id: doc.id, ...b });
+      }
+    });
+
+    const updatedUsers = [];
+    const batch = db.batch();
+
+    for (const userDoc of usersSnap.docs) {
+      const user = userDoc.data();
+      const uid = userDoc.id;
+      const userDeposits = depositsByUser.get(uid) || [];
+      const userBets = betsByUser.get(uid) || [];
+
+      if (userDeposits.length === 0) continue;
+
+      let totalDeposited = 0;
+      let totalBonus = 0;
+      let totalRolloverTarget = 0;
+
+      userDeposits.forEach(dep => {
+        const depAmount = Number(dep.amount) || 0;
+        totalDeposited += depAmount;
+
+        const isEligible = promoEnabled && depAmount >= bonusMinDeposit;
+        const bAmount = dep.bonusAmount != null && Number(dep.bonusAmount) > 0
+          ? Number(dep.bonusAmount)
+          : (isEligible ? Math.floor(depAmount * bonusPercent / 100) : 0);
+        totalBonus += bAmount;
+
+        const depRollover = Math.ceil(depAmount * depositMultiplier);
+        const bonRollover = Math.ceil(bAmount * bonusMultiplier);
+        totalRolloverTarget += (depRollover + bonRollover);
+      });
+
+      const totalWagered = userBets.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+      const rolloverRemaining = Math.max(0, totalRolloverTarget - totalWagered);
+      const balance = Math.round(Number(user.balance) || 0);
+
+      let bonusBalance = 0;
+      let cashBalance = balance;
+      if (rolloverRemaining > 0 && balance > 0) {
+        bonusBalance = Math.min(balance, totalBonus);
+        cashBalance = balance - bonusBalance;
+      }
+
+      batch.update(userDoc.ref, {
+        rollover_remaining: rolloverRemaining,
+        rollover_target: totalRolloverTarget,
+        cash_balance: cashBalance,
+        bonus_balance: bonusBalance
+      });
+
+      updatedUsers.push({
+        id: uid,
+        username: user.username,
+        balance,
+        totalDeposited,
+        totalBonus,
+        totalWagered,
+        rollover_target: totalRolloverTarget,
+        rollover_remaining: rolloverRemaining,
+        cash_balance: cashBalance,
+        bonus_balance: bonusBalance
+      });
+    }
+
+    if (updatedUsers.length > 0) {
+      await batch.commit();
+    }
+
+    res.json({ success: true, updatedCount: updatedUsers.length, users: updatedUsers });
+  } catch (error) {
+    console.error('Recalculate rollovers error:', error);
+    res.status(500).json({ error: error.message || 'Erro ao recalcular rollovers.' });
+  }
+});
+
 router.get('/deposits', async (req, res) => {
   try {
     let deposits = [];

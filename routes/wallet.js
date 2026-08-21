@@ -127,13 +127,24 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
     if (!userDoc.exists) throw new Error('Usuário não encontrado.');
     const user = userDoc.data();
     const wallet = getWalletBuckets(user);
-    const bonusAmount = Math.max(0, Math.round(Number(deposit.bonusAmount) || 0));
-    const rolloverRequired = Math.max(0, Math.round(Number(deposit.rolloverRequired) || 0));
+
+    const settingsDoc = await transaction.get(db.collection('settings').doc('global'));
+    const settings = settingsDoc.exists ? settingsDoc.data() : {};
+    const calculatedPromo = calculateDepositPromotion(deposit.amount, settings);
+
+    const bonusAmount = (deposit.bonusAmount != null && Number(deposit.bonusAmount) > 0)
+      ? Number(deposit.bonusAmount)
+      : calculatedPromo.bonusAmount;
+
+    const rolloverRequired = (deposit.rolloverRequired != null && Number(deposit.rolloverRequired) > 0)
+      ? Number(deposit.rolloverRequired)
+      : calculatedPromo.rolloverRequired;
+
     const newCashBalance = wallet.cashBalance + deposit.amount;
     const newBonusBalance = wallet.bonusBalance + bonusAmount;
     const newBalance = newCashBalance + newBonusBalance;
     const newRolloverRemaining = wallet.rolloverRemaining + rolloverRequired;
-    const newRolloverTarget = wallet.rolloverTarget + rolloverRequired;
+    const newRolloverTarget = (wallet.rolloverTarget || wallet.rolloverRemaining) + rolloverRequired;
 
     let affiliateRef = null;
     let affiliateDoc = null;

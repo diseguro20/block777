@@ -68,7 +68,7 @@
       </section>
 
       <section class="admin-view" id="view-players">
-        <div class="admin-section-head"><div><small>BASE DE USUÁRIOS</small><h3>Jogadores e desempenho</h3></div><input id="search-users" placeholder="Buscar nome ou e-mail" oninput="admin.loadUsers(this.value)"></div>
+        <div class="admin-section-head"><div><small>BASE DE USUÁRIOS</small><h3>Jogadores e desempenho</h3></div><div style="display:flex;gap:8px;align-items:center"><button class="btn btn-ghost" style="font-size:12px;padding:6px 12px" onclick="admin.recalculateRollovers()">🔄 Ativar Rollovers</button><input id="search-users" placeholder="Buscar nome ou e-mail" oninput="admin.loadUsers(this.value)"></div></div>
         <article class="panel table-wrap">
           <table class="responsive-table"><thead><tr><th>Jogador / WhatsApp</th><th>Saldo</th><th>Bônus</th><th>Rollover</th><th>Partidas</th><th>V / D</th><th>Blocos</th><th>Linhas</th><th>Status</th><th>Influencer</th><th>Ação</th></tr></thead><tbody id="users-table"></tbody></table>
         </article>

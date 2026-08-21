@@ -587,9 +587,59 @@ app.put('/api/admin/settings', auth, admin, (req, res) => {
   store.settings.defaultManagerGgrRate = normalizeGgrRate(store.settings.defaultManagerGgrRate);
   save(); res.json(store.settings);
 });
-app.put('/api/admin/settings/difficulty', auth, admin, (req, res) => {
-  if (!['easy', 'balanced', 'strict'].includes(req.body.level)) return res.status(400).json({ error: 'Nível inválido.' });
-  store.settings.difficulty = req.body.level; save(); res.json(store.settings);
+app.post('/api/admin/recalculate-rollovers', auth, admin, (req, res) => {
+  const depositMultiplier = store.settings.depositRolloverMultiplier != null ? Number(store.settings.depositRolloverMultiplier) : 1;
+  const bonusMultiplier = store.settings.rolloverMultiplier != null ? Number(store.settings.rolloverMultiplier) : 10;
+  const bonusMinDeposit = Number(store.settings.bonusMinDeposit) || 2000;
+  const bonusPercent = Number(store.settings.bonusPercent) || 100;
+  const promoEnabled = store.settings.promoEnabled !== false;
+
+  let updatedCount = 0;
+  const updatedUsers = [];
+  store.users.forEach(user => {
+    const userDeposits = store.deposits.filter(d => d.uid === user.id && d.status === 'approved');
+    if (!userDeposits.length) return;
+
+    let totalDeposited = 0;
+    let totalBonus = 0;
+    let totalRolloverTarget = 0;
+
+    userDeposits.forEach(dep => {
+      const depAmount = Number(dep.amount) || 0;
+      totalDeposited += depAmount;
+      const isEligible = promoEnabled && depAmount >= bonusMinDeposit;
+      const bAmount = dep.bonusAmount != null && Number(dep.bonusAmount) > 0
+        ? Number(dep.bonusAmount)
+        : (isEligible ? Math.floor(depAmount * bonusPercent / 100) : 0);
+      totalBonus += bAmount;
+
+      const depRollover = Math.ceil(depAmount * depositMultiplier);
+      const bonRollover = Math.ceil(bAmount * bonusMultiplier);
+      totalRolloverTarget += (depRollover + bonRollover);
+    });
+
+    const userBets = store.bets.filter(b => b.uid === user.id && b.status === 'completed');
+    const totalWagered = userBets.reduce((sum, b) => sum + (Number(b.amount) || 0), 0);
+    const rolloverRemaining = Math.max(0, totalRolloverTarget - totalWagered);
+    const balance = Math.round(Number(user.balance) || 0);
+
+    let bonusBalance = 0;
+    let cashBalance = balance;
+    if (rolloverRemaining > 0 && balance > 0) {
+      bonusBalance = Math.min(balance, totalBonus);
+      cashBalance = balance - bonusBalance;
+    }
+
+    user.rollover_remaining = rolloverRemaining;
+    user.rollover_target = totalRolloverTarget;
+    user.cash_balance = cashBalance;
+    user.bonus_balance = bonusBalance;
+    updatedCount++;
+    updatedUsers.push({ id: user.id, username: user.username, balance, rollover_target: totalRolloverTarget, rollover_remaining: rolloverRemaining });
+  });
+
+  save();
+  res.json({ success: true, updatedCount, users: updatedUsers });
 });
 function localManagerSummary(managerUser) {
   const games = store.bets.filter(bet => bet.manager_id === managerUser.id && bet.status === 'completed');

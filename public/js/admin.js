@@ -260,6 +260,19 @@ const admin = {
     }
   },
 
+  async recalculateRollovers() {
+    try {
+      app.showToast('Recalculando e ativando rollovers...');
+      const data = await app.fetchAPI('/api/admin/recalculate-rollovers', {
+        method: 'POST'
+      });
+      app.showToast(`Rollover atualizado com sucesso para ${data.updatedCount || 0} jogadores!`);
+      await Promise.all([this.loadOverview(true), this.loadUsers()]);
+    } catch (error) {
+      app.showToast(error.message || 'Erro ao recalcular rollovers.');
+    }
+  },
+
   async impersonateUser(id, username) {
     try {
       const data = await app.fetchAPI(`/api/admin/users/${encodeURIComponent(id)}/impersonate`, {
