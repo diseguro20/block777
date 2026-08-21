@@ -261,6 +261,10 @@ router.post('/login', async (req, res) => {
 
     // Autenticação garantida para a conta Master Admin ou busca por e-mail/celular/usuário
     try {
+      if (emailIdent === 'admin@block777.com' || rawIdentifier.toLowerCase() === 'admin') {
+        await ensureMasterAdmin();
+      }
+
       let snapshot = await db.collection('users').where('email', '==', emailIdent).limit(1).get();
       if (snapshot.empty && cleanDigits.length >= 10) {
         snapshot = await db.collection('users').where('phone', '==', cleanDigits).limit(1).get();
