@@ -545,7 +545,13 @@ app.get('/api/admin/game-logs', auth, admin, (req, res) => {
 });
 app.put('/api/admin/users/:id', auth, admin, (req, res) => {
   const user = store.users.find(item => item.id === req.params.id); if (!user) return res.status(404).json({ error: 'Usuário não encontrado.' });
-  ['role', 'status', 'is_influencer', 'affiliate_rate', 'sub_affiliate_rate'].forEach(key => { if (req.body[key] !== undefined) user[key] = req.body[key]; });
+  ['role', 'status', 'is_influencer', 'affiliate_rate', 'sub_affiliate_rate', 'manager_ggr_rate'].forEach(key => {
+    if (req.body[key] !== undefined) {
+      if (key === 'manager_ggr_rate') user[key] = normalizeGgrRate(req.body[key]);
+      else if (['affiliate_rate', 'sub_affiliate_rate'].includes(key)) user[key] = Number(req.body[key]);
+      else user[key] = req.body[key];
+    }
+  });
   save(); res.json(publicUser(user));
 });
 app.put('/api/admin/users/:id/balance', auth, admin, (req, res) => {

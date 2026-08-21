@@ -226,8 +226,9 @@ router.put('/users/:id', async (req, res) => {
     }
     if (status !== undefined) updateData.status = status;
     if (is_influencer !== undefined) updateData.is_influencer = is_influencer;
-    if (affiliate_rate !== undefined) updateData.affiliate_rate = affiliate_rate;
-    if (sub_affiliate_rate !== undefined) updateData.sub_affiliate_rate = sub_affiliate_rate;
+    if (affiliate_rate !== undefined) updateData.affiliate_rate = Number(affiliate_rate);
+    if (sub_affiliate_rate !== undefined) updateData.sub_affiliate_rate = Number(sub_affiliate_rate);
+    if (req.body.manager_ggr_rate !== undefined) updateData.manager_ggr_rate = normalizeGgrRate(req.body.manager_ggr_rate);
 
     try {
       await db.collection('users').doc(req.params.id).update(updateData);
@@ -467,16 +468,18 @@ router.put('/settings', async (req, res) => {
       maintenance: false,
       defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE,
       managerSelfRegistrationEnabled: true,
+      depositRolloverMultiplier: 1,
       ...PROMOTION_DEFAULTS
     };
-    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance', 'promoEnabled', 'bonusPercent', 'bonusMinDeposit', 'rolloverMultiplier', 'defaultManagerGgrRate', 'managerSelfRegistrationEnabled'];
+    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance', 'promoEnabled', 'bonusPercent', 'bonusMinDeposit', 'rolloverMultiplier', 'depositRolloverMultiplier', 'defaultManagerGgrRate', 'managerSelfRegistrationEnabled'];
     const update = {};
     allowed.forEach(key => {
       if (req.body[key] !== undefined) update[key] = req.body[key];
     });
     if (update.bonusPercent !== undefined) update.bonusPercent = Math.max(0, Math.min(1000, Number(update.bonusPercent) || 0));
     if (update.bonusMinDeposit !== undefined) update.bonusMinDeposit = Math.max(100, Math.round(Number(update.bonusMinDeposit) || 0));
-    if (update.rolloverMultiplier !== undefined) update.rolloverMultiplier = Math.max(1, Math.min(100, Number(update.rolloverMultiplier) || 1));
+    if (update.rolloverMultiplier !== undefined) update.rolloverMultiplier = Math.max(0, Math.min(100, Number(update.rolloverMultiplier) || 0));
+    if (update.depositRolloverMultiplier !== undefined) update.depositRolloverMultiplier = Math.max(0, Math.min(100, Number(update.depositRolloverMultiplier) || 0));
     if (update.promoEnabled !== undefined) update.promoEnabled = Boolean(update.promoEnabled);
     if (update.managerSelfRegistrationEnabled !== undefined) update.managerSelfRegistrationEnabled = Boolean(update.managerSelfRegistrationEnabled);
     if (update.defaultManagerGgrRate !== undefined) update.defaultManagerGgrRate = normalizeGgrRate(update.defaultManagerGgrRate);

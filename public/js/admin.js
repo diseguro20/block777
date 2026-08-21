@@ -111,7 +111,8 @@ const admin = {
       'set-manager-ggr': data.defaultManagerGgrRate ?? 30,
       'set-bonus-percent': data.bonusPercent,
       'set-bonus-min': data.bonusMinDeposit / 100,
-      'set-rollover': data.rolloverMultiplier
+      'set-rollover': data.rolloverMultiplier,
+      'set-deposit-rollover': data.depositRolloverMultiplier ?? 1
     };
     Object.entries(fields).forEach(([id, value]) => {
       const element = document.getElementById(id);
@@ -141,6 +142,7 @@ const admin = {
         bonusPercent: Number(document.getElementById('set-bonus-percent').value),
         bonusMinDeposit: Math.round(Number(document.getElementById('set-bonus-min').value) * 100),
         rolloverMultiplier: Number(document.getElementById('set-rollover').value),
+        depositRolloverMultiplier: Number(document.getElementById('set-deposit-rollover').value),
         promoEnabled: document.getElementById('set-promo-enabled').checked,
         managerSelfRegistrationEnabled: document.getElementById('set-manager-signup-enabled').checked,
         maintenance: document.getElementById('set-maintenance').checked
@@ -215,6 +217,7 @@ const admin = {
         <td data-label="Influencer"><button class="badge ${user.is_influencer ? 'badge-success' : ''}" onclick="admin.toggleInfluencer('${user.id}',${Boolean(user.is_influencer)})">${user.is_influencer ? 'Ativo' : 'Padrão'}</button></td>
         <td data-label="Ação" class="actions">
           <button class="table-action" style="color:#60e49c;border-color:rgba(96,228,156,0.4)" title="Entrar na conta do usuário" onclick="admin.impersonateUser('${user.id}','${this.escape(user.username)}')">👤 Entrar</button>
+          <button class="table-action" style="color:#f7b731;border-color:rgba(247,183,49,0.4)" title="Editar comissão personalizada de influenciador/afiliado" onclick="admin.openCommissionModal('${user.id}','${this.escape(user.username)}',${user.affiliate_rate ?? 'null'},${user.sub_affiliate_rate ?? 'null'})">🤝 Comissão</button>
           <button class="table-action" title="Trocar senha do usuário" onclick="admin.openPasswordModal('${user.id}','${this.escape(user.username)}')">🔑 Senha</button>
           <button class="table-action" onclick="admin.openBalanceModal('${user.id}','${this.escape(user.username)}')">Saldo</button>
           ${user.role === 'admin' ? '' : user.role === 'manager' ? `<button class="table-action" onclick="admin.showView('managers')">Gerente</button>` : `<button class="table-action" onclick="admin.activateManager('${user.id}','${this.escape(user.username)}')">Tornar gerente</button>`}
@@ -222,6 +225,39 @@ const admin = {
         </td>
       </tr>`;
     }).join('') : '<tr><td colspan="11" class="empty-state">Nenhum jogador encontrado.</td></tr>';
+  },
+
+  openCommissionModal(id, username, level1, level2) {
+    this.selectedCommissionUserId = id;
+    this.selectedCommissionUsername = username;
+    const nameEl = document.getElementById('commission-modal-user');
+    if (nameEl) nameEl.textContent = username;
+    const l1Input = document.getElementById('comm-level1-input');
+    const l2Input = document.getElementById('comm-level2-input');
+    if (l1Input) l1Input.value = level1 != null ? level1 : 10;
+    if (l2Input) l2Input.value = level2 != null ? level2 : 2;
+    const modal = document.getElementById('commission-modal');
+    if (modal) modal.classList.add('active');
+  },
+
+  async saveCustomCommission() {
+    if (!this.selectedCommissionUserId) return;
+    const level1 = Number(document.getElementById('comm-level1-input').value);
+    const level2 = Number(document.getElementById('comm-level2-input').value);
+    try {
+      await app.fetchAPI(`/api/admin/users/${encodeURIComponent(this.selectedCommissionUserId)}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          affiliate_rate: level1,
+          sub_affiliate_rate: level2
+        })
+      });
+      app.closeModal('commission-modal');
+      app.showToast(`Comissão de ${this.selectedCommissionUsername || 'usuário'} atualizada para ${level1}% (Nível 1) e ${level2}% (Nível 2).`);
+      await this.loadUsers();
+    } catch (error) {
+      app.showToast(error.message || 'Erro ao salvar comissão.');
+    }
   },
 
   async impersonateUser(id, username) {
