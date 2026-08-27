@@ -3,6 +3,11 @@ const app = {
   user: null,
 
   init() {
+    this.syncViewport();
+    window.addEventListener('resize', () => this.syncViewport(), { passive: true });
+    window.addEventListener('orientationchange', () => window.setTimeout(() => this.syncViewport(), 120), { passive: true });
+    window.visualViewport?.addEventListener('resize', () => this.syncViewport(), { passive: true });
+    window.visualViewport?.addEventListener('scroll', () => this.syncViewport(), { passive: true });
     this.captureRef();
     this.bindForms();
     this.loadPublicPromotion();
@@ -23,6 +28,14 @@ const app = {
     document.getElementById('nav-actions').style.display = this.token ? '' : 'none';
     if (this.token) this.loadUserData();
     else this.showScreen('landing-screen');
+  },
+
+  syncViewport() {
+    const viewport = window.visualViewport;
+    const height = Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight);
+    const offsetTop = Math.round(viewport?.offsetTop || 0);
+    document.documentElement.style.setProperty('--app-height', `${height}px`);
+    document.documentElement.style.setProperty('--viewport-offset-top', `${offsetTop}px`);
   },
 
   captureRef() {
@@ -218,7 +231,10 @@ const app = {
     if (id === 'landing-screen' && window.game) setTimeout(() => game.initLandingDemo(), 50);
     if (id === 'game-screen' && window.game) setTimeout(() => game.init(), 20);
     if (id === 'wallet-screen' && window.wallet) wallet.loadWallet();
-    scrollTo({ top: 0, behavior: 'smooth' });
+    const behavior = id === 'game-screen' ? 'auto' : 'smooth';
+    window.scrollTo({ top: 0, left: 0, behavior });
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
   },
 
   goHome() { this.showScreen(this.token ? 'menu-screen' : 'landing-screen'); },

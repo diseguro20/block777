@@ -507,8 +507,9 @@ const game = {
   },
 
   setupEvents() {
-    const handleViewportResize = () => this.resizeCanvas();
+    const handleViewportResize = () => window.requestAnimationFrame(() => this.resizeCanvas());
     window.addEventListener('resize', handleViewportResize, { passive: true });
+    window.addEventListener('orientationchange', handleViewportResize, { passive: true });
     window.visualViewport?.addEventListener('resize', handleViewportResize, { passive: true });
 
     const getPos = (e) => {
@@ -520,7 +521,7 @@ const game = {
     };
 
     const handleStart = (e) => {
-      if (!this.isPlaying || !e.isPrimary) return;
+      if (!this.isPlaying || e.isPrimary === false) return;
       this.unlockAudio();
       const pos = getPos(e);
       const handAreaY = this.canvas.width;
@@ -534,7 +535,7 @@ const game = {
           this.dragX = pos.x;
           this.dragY = pos.y;
           this.dragLift = e.pointerType === 'touch' ? Math.min(76, this.canvas.width * 0.22) : 30;
-          this.canvas.setPointerCapture?.(e.pointerId);
+          try { this.canvas.setPointerCapture?.(e.pointerId); } catch (_) {}
           this.canvas.closest('.game-shell')?.classList.add('dragging');
           e.preventDefault();
           this.draw();
@@ -559,7 +560,7 @@ const game = {
       this.isDragging = false;
       this.tryPlacePiece();
       this.draggedPieceIndex = null;
-      this.canvas.releasePointerCapture?.(e.pointerId);
+      try { this.canvas.releasePointerCapture?.(e.pointerId); } catch (_) {}
       this.canvas.closest('.game-shell')?.classList.remove('dragging');
       this.draw();
     };
@@ -568,7 +569,7 @@ const game = {
       if (!this.isDragging) return;
       this.isDragging = false;
       this.draggedPieceIndex = null;
-      this.canvas.releasePointerCapture?.(e.pointerId);
+      try { this.canvas.releasePointerCapture?.(e.pointerId); } catch (_) {}
       this.canvas.closest('.game-shell')?.classList.remove('dragging');
       this.draw();
     };
@@ -585,12 +586,22 @@ const game = {
     const shell = this.canvas.closest('.game-shell');
     const playfield = this.canvas.closest('.game-playfield');
     const viewportHeight = window.visualViewport?.height || window.innerHeight;
-    const isMobile = window.matchMedia('(max-width: 580px)').matches;
-    const verticalReserve = viewportHeight <= 600 ? 315 : 350;
-    const heightBound = isMobile ? viewportHeight - verticalReserve : 620;
-    const minimumWidth = isMobile ? 210 : 260;
-    const availableWidth = Math.min(shell?.clientWidth || container.clientWidth, window.innerWidth - 16, 620);
-    const width = Math.max(minimumWidth, Math.min(availableWidth, heightBound));
+    const viewportWidth = window.visualViewport?.width || window.innerWidth;
+    const coarsePointer = window.matchMedia('(pointer: coarse)').matches;
+    const isMobile = coarsePointer || viewportWidth <= 760 || viewportHeight <= 700;
+    const landscapeCompact = isMobile && viewportWidth > viewportHeight && viewportHeight <= 700;
+    const isCompact = isMobile && (viewportHeight < 700 || landscapeCompact);
+    const headerHeight = document.querySelector('.game-head')?.getBoundingClientRect().height || 56;
+    const hudHeight = document.querySelector('.game-hud-bar')?.getBoundingClientRect().height || 67;
+    const comboHeight = document.querySelector('.combo-track')?.getBoundingClientRect().height || 22;
+    const helpHeight = isCompact ? 0 : (document.querySelector('.game-help')?.getBoundingClientRect().height || 30);
+    const outerSpace = landscapeCompact ? 10 : (isMobile ? 32 : 80);
+    const handHeight = 130;
+    const heightBound = viewportHeight - (landscapeCompact ? 0 : headerHeight) - hudHeight - comboHeight - helpHeight - handHeight - outerSpace;
+    const minimumWidth = isMobile ? 150 : 260;
+    const shellWidth = shell?.getBoundingClientRect().width || container.clientWidth || viewportWidth;
+    const availableWidth = Math.min(shellWidth, viewportWidth - (isMobile ? 16 : 40), 620);
+    const width = Math.floor(Math.max(minimumWidth, Math.min(availableWidth, Math.max(minimumWidth, heightBound))));
     if (playfield) playfield.style.maxWidth = `${width}px`;
     if (Math.abs(this.canvas.width - width) < 2 && Math.abs(this.canvas.height - (width + 130)) < 2) return;
     this.canvas.width = width;
