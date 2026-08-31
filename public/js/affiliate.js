@@ -103,14 +103,14 @@ const affiliate = {
             const depHighlight = Number(lead.totalDeposited || 0) > 0 ? 'style="color:#60e49c;font-weight:700"' : '';
 
             return `<tr>
-              <td>
+              <td data-label="Jogador">
                 <b>${this.escape(lead.username)}</b><br>
                 <small style="color:var(--color-text-muted)">${this.escape(lead.phone || lead.email)}</small>
               </td>
-              <td><span class="badge ${lead.level === 1 ? 'badge-success' : ''}">Nível ${lead.level}</span></td>
-              <td ${depHighlight}><b>${app.formatBRL(lead.totalDeposited || 0)}</b></td>
-              <td>${app.formatDate(lead.created_at)}</td>
-              <td>${waLink}</td>
+              <td data-label="Nível"><span class="badge ${lead.level === 1 ? 'badge-success' : ''}">Nível ${lead.level}</span></td>
+              <td data-label="Depositado" ${depHighlight}><b>${app.formatBRL(lead.totalDeposited || 0)}</b></td>
+              <td data-label="Cadastro">${app.formatDate(lead.created_at)}</td>
+              <td data-label="Ação">${waLink}</td>
             </tr>`;
           }).join('')
         : '<tr><td colspan="5" class="empty-state">Nenhum indicado cadastrado ainda. Compartilhe seu link para começar.</td></tr>';
@@ -118,7 +118,7 @@ const affiliate = {
 
     const body = document.getElementById('commission-history');
     body.innerHTML = data.commissions.length
-      ? data.commissions.map((item) => `<tr><td>${app.formatDate(item.created_at)}</td><td><span class="badge">Nível ${item.level}</span></td><td>${String(item.source_user_id).slice(0, 8)}…</td><td class="positive mono">+${app.formatBRL(item.amount)}</td></tr>`).join('')
+      ? data.commissions.map((item) => `<tr><td data-label="Data">${app.formatDate(item.created_at)}</td><td data-label="Nível"><span class="badge">Nível ${item.level}</span></td><td data-label="Origem">${String(item.source_user_id).slice(0, 8)}…</td><td data-label="Comissão" class="positive mono">+${app.formatBRL(item.amount)}</td></tr>`).join('')
       : '<tr><td colspan="4" class="empty-state">Compartilhe seu link para receber a primeira comissão.</td></tr>';
 
     const authMessage = sessionStorage.getItem('affiliate-auth-message');
