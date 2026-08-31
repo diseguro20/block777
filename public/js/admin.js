@@ -3,6 +3,7 @@ const admin = {
   selectedManagerId: null,
   refreshTimer: null,
   searchTimer: null,
+  withdrawals: [],
 
   async init() {
     if (!app.token) return this.requireLogin();
@@ -11,6 +12,7 @@ const admin = {
       if (app.user?.role !== 'admin') throw new Error('Sem permissão');
       await this.loadInitialView();
       this.bindSettings();
+      this.bindBranding();
     } catch (_) {
       this.requireLogin();
     }
@@ -66,6 +68,7 @@ const admin = {
 
       await this.loadInitialView();
       this.bindSettings();
+      this.bindBranding();
       app.showToast('Login de administrador realizado com sucesso!');
     } catch (error) {
       if (btn) {
@@ -169,6 +172,20 @@ const admin = {
     if (promoEnabled) promoEnabled.checked = Boolean(data.promoEnabled);
     const managerSignupEnabled = document.getElementById('set-manager-signup-enabled');
     if (managerSignupEnabled) managerSignupEnabled.checked = data.managerSelfRegistrationEnabled !== false;
+    const brandingFields = {
+      'set-brand-name': data.brandName || 'BLOCKERINO',
+      'set-brand-tagline': data.brandTagline || 'PLAY SMART',
+      'set-primary-color': data.primaryColor || '#c9ff43',
+      'set-secondary-color': data.secondaryColor || '#9dd51b',
+      'set-support-whatsapp': data.supportWhatsapp || '',
+      'set-support-email': data.supportEmail || '',
+      'set-logo-url': data.logoUrl || '',
+      'set-site-url': data.siteUrl || ''
+    };
+    Object.entries(brandingFields).forEach(([id, value]) => {
+      const element = document.getElementById(id);
+      if (element) element.value = value;
+    });
   },
 
   bindSettings() {
@@ -194,6 +211,31 @@ const admin = {
       };
       await app.fetchAPI('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });
       app.showToast('Configurações salvas.');
+    };
+  },
+
+  bindBranding() {
+    const form = document.getElementById('branding-form');
+    if (!form || form.dataset.bound === 'true') return;
+    form.dataset.bound = 'true';
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const payload = {
+        brandName: document.getElementById('set-brand-name').value,
+        brandTagline: document.getElementById('set-brand-tagline').value,
+        primaryColor: document.getElementById('set-primary-color').value,
+        secondaryColor: document.getElementById('set-secondary-color').value,
+        supportWhatsapp: document.getElementById('set-support-whatsapp').value,
+        supportEmail: document.getElementById('set-support-email').value,
+        logoUrl: document.getElementById('set-logo-url').value,
+        siteUrl: document.getElementById('set-site-url').value
+      };
+      try {
+        await app.fetchAPI('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });
+        app.showToast('Identidade white-label salva. Recarregue as páginas abertas para visualizar.');
+      } catch (error) {
+        app.showToast(error.message || 'Não foi possível salvar a identidade.');
+      }
     };
   },
 
@@ -597,22 +639,69 @@ const admin = {
   },
 
   async loadWithdrawals() {
-    const { withdrawals } = await app.fetchAPI('/api/admin/withdrawals');
-    const body = document.getElementById('withdrawals-table');
-    if (!body) return;
-    body.innerHTML = withdrawals.length ? withdrawals.map(item => `<tr>
-      <td data-label="Jogador">${this.escape(item.username || item.uid)}</td>
-      <td data-label="Valor" class="mono">${app.formatBRL(item.amount)}</td>
+    try {
+      const { withdrawals = [], summary = {} } = await app.fetchAPI('/api/admin/withdrawals');
+      this.withdrawals = withdrawals;
+      ['pending', 'approved', 'rejected'].forEach(status => {
+        const values = summary[status] || { count: 0, amount: 0 };
+        const count = document.getElementById(`withdrawal-${status}-count`);
+        const amount = document.getElementById(`withdrawal-${status}-amount`);
+        if (count) count.textContent = Number(values.count || 0).toLocaleString('pt-BR');
+        if (amount) amount.textContent = `${app.formatBRL(values.amount || 0)} ${status === 'pending' ? 'aguardando' : status === 'approved' ? 'aprovados' : 'devolvidos'}`;
+      });
+      this.renderWithdrawals();
+    } catch (error) {
+      app.showToast(error.message || 'Não foi possível carregar os saques.');
+    }
+  },
+
+  renderWithdrawals() {
+    const pendingBody = document.getElementById('withdrawals-table');
+    const historyBody = document.getElementById('withdrawals-history-table');
+    const pending = this.withdrawals.filter(item => item.status === 'pending');
+    const filter = document.getElementById('withdrawal-status-filter')?.value || 'all';
+    const history = this.withdrawals.filter(item => item.status !== 'pending' && (filter === 'all' || item.status === filter));
+
+    if (pendingBody) pendingBody.innerHTML = pending.length ? pending.map(item => `<tr>
+      <td data-label="Jogador"><div class="user-cell"><b>${this.escape(item.username || item.uid)}</b><span>${this.escape(item.email || item.phone || '')}</span></div></td>
+      <td data-label="Origem">${this.renderOrigin(item.origin)}</td>
+      <td data-label="Valor" class="mono positive">${app.formatBRL(item.amount)}</td>
       <td data-label="Chave PIX" class="pix-key-cell">${this.escape(item.pix_key || '-')}</td>
-      <td data-label="Ações" class="actions"><button class="approve" onclick="admin.resolveWithdrawal('${item.id}','approve')">Pago</button><button onclick="admin.resolveWithdrawal('${item.id}','reject')">Recusar</button></td>
-    </tr>`).join('') : '<tr><td colspan="4" class="empty-state">Nenhum saque pendente.</td></tr>';
+      <td data-label="Solicitado em">${app.formatDate(item.created_at)}</td>
+      <td data-label="Ações" class="actions"><button class="approve" onclick="admin.resolveWithdrawal('${item.id}','approve')">Confirmar pagamento</button><button onclick="admin.resolveWithdrawal('${item.id}','reject')">Recusar e devolver</button></td>
+    </tr>`).join('') : '<tr><td colspan="6" class="empty-state">Nenhum saque pendente.</td></tr>';
+
+    if (historyBody) historyBody.innerHTML = history.length ? history.map(item => {
+      const approved = item.status === 'approved';
+      const detail = approved ? (item.admin_note || 'Pagamento confirmado') : (item.rejection_reason || 'Saldo devolvido');
+      return `<tr>
+        <td data-label="Jogador"><div class="user-cell"><b>${this.escape(item.username || item.uid)}</b><span>${this.escape(item.email || item.phone || '')}</span></div></td>
+        <td data-label="Origem">${this.renderOrigin(item.origin)}</td>
+        <td data-label="Valor" class="mono">${app.formatBRL(item.amount)}</td>
+        <td data-label="Chave PIX" class="pix-key-cell">${this.escape(item.pix_key || '-')}</td>
+        <td data-label="Solicitado em">${app.formatDate(item.created_at)}</td>
+        <td data-label="Processado em">${app.formatDate(item.processed_at || item.approved_at || item.rejected_at)}</td>
+        <td data-label="Status / motivo"><span class="badge ${approved ? 'badge-success' : 'badge-danger'}">${approved ? 'Pago' : 'Recusado'}</span><small class="withdrawal-detail">${this.escape(detail)}</small></td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="7" class="empty-state">Nenhum saque processado neste filtro.</td></tr>';
   },
 
   async resolveWithdrawal(id, action) {
-    await app.fetchAPI(`/api/admin/withdrawals/${id}/${action}`, { method: 'PUT' });
-    app.showToast(action === 'approve' ? 'Saque marcado como pago.' : 'Saque recusado e saldo devolvido.');
-    this.loadWithdrawals();
-    this.loadOverview();
+    const isApproval = action === 'approve';
+    if (isApproval && !confirm('Confirma que o PIX deste saque já foi pago ao jogador? Esta ação não envia o PIX automaticamente.')) return;
+    let reason = '';
+    if (!isApproval) {
+      reason = prompt('Informe o motivo da recusa. O valor será devolvido automaticamente ao saldo do jogador:', 'Dados PIX inválidos') || '';
+      if (!reason.trim()) return;
+      if (!confirm('Recusar este saque e devolver o valor ao saldo do jogador?')) return;
+    }
+    try {
+      await app.fetchAPI(`/api/admin/withdrawals/${id}/${action}`, { method: 'PUT', body: JSON.stringify(isApproval ? { note: 'PIX confirmado pelo administrador' } : { reason }) });
+      app.showToast(isApproval ? 'Pagamento confirmado e registrado no histórico.' : 'Saque recusado e saldo devolvido uma única vez.');
+      await Promise.all([this.loadWithdrawals(), this.loadOverview()]);
+    } catch (error) {
+      app.showToast(error.message || 'Não foi possível processar o saque.');
+    }
   },
 
   async banUser(id, name) {

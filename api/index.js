@@ -11,6 +11,7 @@ import { v4 as uuid } from 'uuid';
 import { vizzionPayStatus } from '../lib/vizzionpay.js';
 import { allocatePromotionalBet, allocatePromotionalPayout, calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { buildManagerCode, calculateGgrEntry, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
+import { BRANDING_DEFAULTS, normalizeBranding } from '../lib/branding.js';
 
 const app = express();
 app.use(cors());
@@ -50,7 +51,7 @@ const defaultData = {
   ],
   bannedIPs: [],
   bets: [], transactions: [], deposits: [], withdrawals: [], commissions: [], managerPayments: [],
-  settings: { difficulty: 'impossible', minBet: 100, maxBet: 10000, minDeposit: 2000, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, maintenance: false, ...PROMOTION_DEFAULTS }
+  settings: { difficulty: 'impossible', minBet: 100, maxBet: 10000, minDeposit: 2000, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, maintenance: false, ...BRANDING_DEFAULTS, ...PROMOTION_DEFAULTS }
 };
 
 function loadData() {
@@ -158,6 +159,16 @@ if (useFirebase) {
   app.use('/api/affiliate', mountFirebaseRouter(3));
   app.use('/api/admin', mountFirebaseRouter(4));
   app.use('/api/manager', mountFirebaseRouter(7));
+  app.get('/api/branding', async (_req, res) => {
+    try {
+      const modules = await firebaseModulesPromise;
+      const doc = await modules[5].db.collection('settings').doc('global').get();
+      res.set('Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=120');
+      res.json(normalizeBranding(doc.exists ? doc.data() : {}));
+    } catch (_) {
+      res.json(BRANDING_DEFAULTS);
+    }
+  });
   app.get('/api/dashboard', async (req, res, next) => {
     try {
       const modules = await firebaseModulesPromise;
@@ -425,6 +436,7 @@ app.post('/api/game/end', auth, (req, res) => {
 });
 app.post('/api/game/demo/start', (_, res) => res.json({ sessionId: uuid(), seed: crypto.createHash('sha256').update(crypto.randomBytes(32)).digest('hex'), difficulty: 'easy' }));
 
+app.get('/api/branding', (_, res) => res.json(normalizeBranding(store.settings)));
 app.get('/api/wallet/promotion', (_, res) => res.json(normalizePromotionSettings(store.settings)));
 app.post('/api/wallet/deposit', auth, (req, res) => {
   if (req.currentUser.demo_account) return res.status(403).json({ error: 'Contas demo utilizam saldo virtual e não aceitam depósitos.' });
@@ -623,6 +635,7 @@ app.get('/api/admin/settings', auth, admin, (_, res) => res.json(store.settings)
 app.put('/api/admin/settings', auth, admin, (req, res) => {
   store.settings = { ...store.settings, ...req.body };
   store.settings.defaultManagerGgrRate = normalizeGgrRate(store.settings.defaultManagerGgrRate);
+  Object.assign(store.settings, normalizeBranding(store.settings));
   save(); res.json(store.settings);
 });
 app.post('/api/admin/recalculate-rollovers', auth, admin, (req, res) => {
@@ -816,7 +829,32 @@ app.post('/api/manager/demo-accounts', auth, manager, async (req, res) => {
   res.status(201).json({ id: user.id, username, email, demoBalance, isInfluencer: true, demoAccount: true });
 });
 app.get('/api/admin/deposits', auth, admin, (_, res) => res.json({ deposits: store.deposits.filter(item => item.status === 'pending') }));
-app.get('/api/admin/withdrawals', auth, admin, (_, res) => res.json({ withdrawals: store.withdrawals.filter(item => item.status === 'pending').map(item => ({ ...item, pix_key: item.pixKey })) }));
+app.get('/api/admin/withdrawals', auth, admin, (_, res) => {
+  const withdrawals = store.withdrawals.map(item => {
+    const user = store.users.find(candidate => candidate.id === item.uid) || {};
+    const affiliate = store.users.find(candidate => candidate.id === user.referred_by);
+    const managerUser = store.users.find(candidate => candidate.id === user.manager_id);
+    return {
+      ...item,
+      pix_key: item.pixKey || item.pix_key || '',
+      username: user.username || item.username || item.uid,
+      email: user.email || '',
+      phone: user.phone || '',
+      origin: {
+        affiliate: affiliate ? { id: affiliate.id, username: affiliate.username || affiliate.email, code: affiliate.ref_code || '', type: Number(affiliate.is_influencer) === 1 ? 'influencer' : 'affiliate' } : null,
+        manager: managerUser ? { id: managerUser.id, username: managerUser.username || managerUser.email, code: managerUser.manager_code || '' } : null,
+        direct: !affiliate && !managerUser
+      }
+    };
+  }).sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+  const summary = withdrawals.reduce((acc, item) => {
+    const status = ['approved', 'rejected'].includes(item.status) ? item.status : 'pending';
+    acc[status].count++;
+    acc[status].amount += Number(item.amount) || 0;
+    return acc;
+  }, { pending: { count: 0, amount: 0 }, approved: { count: 0, amount: 0 }, rejected: { count: 0, amount: 0 } });
+  res.json({ withdrawals, summary });
+});
 
 function updateTx(referenceId, status) {
   const tx = store.transactions.find(item => item.reference_id === referenceId); if (tx) tx.status = status;
@@ -850,13 +888,25 @@ app.put('/api/admin/deposits/:id/:action', auth, admin, (req, res) => {
 });
 app.put('/api/admin/withdrawals/:id/:action', auth, admin, (req, res) => {
   const withdrawal = store.withdrawals.find(item => item.id === req.params.id); if (!withdrawal || withdrawal.status !== 'pending') return res.status(404).json({ error: 'Saque pendente não encontrado.' });
-  const approved = req.params.action === 'approve'; withdrawal.status = approved ? 'approved' : 'rejected'; updateTx(withdrawal.id, withdrawal.status);
+  const approved = req.params.action === 'approve';
+  withdrawal.status = approved ? 'approved' : 'rejected';
+  withdrawal.processed_at = now();
+  withdrawal.processed_by = req.currentUser.id;
+  if (approved) {
+    withdrawal.approved_at = withdrawal.processed_at;
+    withdrawal.admin_note = String(req.body.note || '').trim().slice(0, 240);
+  } else {
+    withdrawal.rejected_at = withdrawal.processed_at;
+    withdrawal.rejection_reason = String(req.body.reason || 'Recusado pelo administrador').trim().slice(0, 240);
+  }
+  updateTx(withdrawal.id, withdrawal.status);
   if (!approved) {
     const user = store.users.find(item => item.id === withdrawal.uid);
     if (user) {
       const wallet = getWalletBuckets(user);
       user.balance = wallet.balance + withdrawal.amount;
       user.cash_balance = wallet.cashBalance + withdrawal.amount;
+      addTransaction(user.id, 'withdraw_refund', withdrawal.amount, 'completed', { reference_id: withdrawal.id, description: 'Estorno de saque recusado' });
     }
   }
   save(); res.json({ success: true });

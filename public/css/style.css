@@ -79,6 +79,11 @@ button,a,input,textarea,select{-webkit-tap-highlight-color:transparent}
   .game-hud-stat{padding-top:6px;padding-bottom:6px}
 }
 
+.custom-brand-logo{width:auto;max-width:150px;height:34px;object-fit:contain;display:block}.brand-mark[hidden]{display:none!important}
+.whatsapp-conversion{position:relative;z-index:2;max-width:1180px;margin:0 auto 26px;padding:28px 30px;border:1px solid #45652b;border-radius:16px;background:radial-gradient(circle at 90% 0,#c9ff4324,transparent 42%),linear-gradient(110deg,#121d16,#0b1210);display:flex;align-items:center;justify-content:space-between;gap:32px}.whatsapp-conversion small{font:600 8px var(--mono);letter-spacing:.16em;color:var(--lime)}.whatsapp-conversion h2{max-width:720px;margin:8px 0;font-size:clamp(24px,3vw,38px);letter-spacing:-.05em;line-height:1.08}.whatsapp-conversion h2 em{color:var(--lime);font-style:normal}.whatsapp-conversion p{margin:0;color:var(--muted);font-size:12px}.whatsapp-conversion [hidden]{display:none!important}
+@media(max-width:900px){.whatsapp-conversion{margin:0 18px 22px;align-items:flex-start;flex-direction:column}.whatsapp-conversion .btn{width:100%}}
+@media(max-width:580px){.whatsapp-conversion{margin:0 12px 18px;padding:22px 18px;border-radius:13px}.whatsapp-conversion h2{font-size:25px}.whatsapp-conversion p{line-height:1.6}}
+
 @media(max-height:700px) and (max-width:1100px){
   body.game-active{height:var(--app-height,100dvh);min-height:var(--app-height,100dvh);overflow:hidden}
   body.game-active .topbar{display:none}

@@ -12,7 +12,7 @@
 <body class="admin-body">
   <div class="admin-layout">
     <aside class="admin-sidebar">
-      <a class="brand" href="/"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO</span></a>
+      <a class="brand" href="/"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span data-brand-name>BLOCKERINO</span></a>
       <nav class="side-nav">
         <button class="active" data-view="overview" onclick="admin.showView('overview',this)"><b>⌂</b><span>Visão geral</span></button>
         <button data-view="players" onclick="admin.showView('players',this)"><b>◎</b><span>Jogadores</span></button>
@@ -115,8 +115,18 @@
             <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Origem</th><th>Depósito</th><th>Bônus previsto</th><th>Total previsto</th><th>Gateway</th><th>Gerado em</th><th>Status</th><th>Ações</th></tr></thead><tbody id="deposits-table"></tbody></table></div>
           </article>
           <article class="panel">
-            <div class="panel-title"><div><small>PIX SAÍDA</small><h3>Saques pendentes</h3></div></div>
-            <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Valor</th><th>Chave PIX</th><th>Ações</th></tr></thead><tbody id="withdrawals-table"></tbody></table></div>
+            <div class="panel-title"><div><small>CONTROLE DE SAÍDAS</small><h3>Central de saques</h3></div><button class="btn btn-ghost" onclick="admin.loadWithdrawals()">Atualizar</button></div>
+            <div class="metrics admin-stats withdrawal-stats">
+              <article class="metric"><span>PENDENTES</span><strong id="withdrawal-pending-count">0</strong><small id="withdrawal-pending-amount">R$ 0,00 aguardando</small></article>
+              <article class="metric"><span>PAGOS</span><strong id="withdrawal-approved-count">0</strong><small id="withdrawal-approved-amount">R$ 0,00 aprovados</small></article>
+              <article class="metric"><span>RECUSADOS</span><strong id="withdrawal-rejected-count">0</strong><small id="withdrawal-rejected-amount">R$ 0,00 devolvidos</small></article>
+            </div>
+            <div class="withdrawal-guidance"><b>Fluxo manual seguro</b><span>Faça o PIX fora da plataforma e só depois clique em “Confirmar pagamento”. Recusar devolve o saldo ao jogador automaticamente.</span></div>
+            <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Origem</th><th>Valor</th><th>Chave PIX</th><th>Solicitado em</th><th>Ações</th></tr></thead><tbody id="withdrawals-table"></tbody></table></div>
+          </article>
+          <article class="panel">
+            <div class="panel-title"><div><small>TRILHA DE AUDITORIA</small><h3>Histórico de saques</h3></div><select id="withdrawal-status-filter" onchange="admin.renderWithdrawals()"><option value="all">Todos</option><option value="approved">Aprovados</option><option value="rejected">Recusados</option></select></div>
+            <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Origem</th><th>Valor</th><th>Chave PIX</th><th>Solicitado em</th><th>Processado em</th><th>Status / motivo</th></tr></thead><tbody id="withdrawals-history-table"></tbody></table></div>
           </article>
         </div>
       </section>
@@ -142,6 +152,21 @@
             <button class="btn btn-primary" type="submit">Salvar configurações</button>
           </form>
         </article>
+        <article class="panel settings-panel white-label-panel">
+          <div class="panel-title"><div><small>WHITE LABEL</small><h3>Marca e canais comerciais</h3></div><span class="badge">Configuração global</span></div>
+          <p class="settings-intro">Personalize nome, identidade visual, domínio e atendimento. As alterações são aplicadas na landing page e nos painéis.</p>
+          <form id="branding-form" class="settings-grid">
+            <label>Nome da marca<input id="set-brand-name" maxlength="40" placeholder="BLOCKERINO"></label>
+            <label>Slogan curto<input id="set-brand-tagline" maxlength="80" placeholder="PLAY SMART"></label>
+            <label>Cor principal<input id="set-primary-color" type="color" value="#c9ff43"></label>
+            <label>Cor secundária<input id="set-secondary-color" type="color" value="#9dd51b"></label>
+            <label>WhatsApp de suporte<input id="set-support-whatsapp" inputmode="numeric" placeholder="5511999999999"></label>
+            <label>E-mail de suporte<input id="set-support-email" type="email" placeholder="suporte@suaempresa.com"></label>
+            <label class="wide-field">URL do logotipo<input id="set-logo-url" type="url" placeholder="https://seudominio.com/logo.png"></label>
+            <label class="wide-field">URL oficial da plataforma<input id="set-site-url" type="url" placeholder="https://seudominio.com"></label>
+            <button class="btn btn-primary" type="submit">Salvar identidade white-label</button>
+          </form>
+        </article>
       </section>
     </main>
 
@@ -164,7 +189,8 @@
   <div class="modal" id="commission-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('commission-modal')">×</button><small>COMISSÃO DE AFILIADO / INFLUENCIADOR</small><h3 id="commission-modal-user">Jogador</h3><p style="color:var(--color-text-muted);font-size:13px;margin:0 0 14px">Configure a porcentagem de comissão deste influenciador sobre os depósitos dos indicados (atualizado em tempo real no painel dele).</p><label>Comissão Nível 1 - Indicação Direta (%)</label><input id="comm-level1-input" type="number" min="0" max="100" step="0.5" placeholder="Padrão global: 10%"><label>Comissão Nível 2 - Sub-afiliados (%)</label><input id="comm-level2-input" type="number" min="0" max="100" step="0.5" placeholder="Padrão global: 2%"><button class="btn btn-primary btn-wide" type="button" onclick="admin.saveCustomCommission()">Salvar comissão</button></div></div>
   <div class="modal" id="manager-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('manager-modal')">×</button><small>CONFIGURAÇÃO DO GERENTE</small><h3 id="manager-modal-name">Gerente</h3><p style="color:var(--color-text-muted);font-size:13px;margin:0 0 14px">Configure a taxa GGR e o código do gerente (atualizado em tempo real no painel dele).</p><label>Taxa de GGR da plataforma (%)</label><input id="manager-rate-input" type="number" min="0" max="100" step="0.01"><label>Código do link</label><input id="manager-code-input" minlength="4" maxlength="20"><label>Status</label><select id="manager-status-select"><option value="active">Ativo</option><option value="suspended">Suspenso</option></select><button class="btn btn-primary btn-wide" type="button" onclick="admin.saveManager()">Salvar gerente</button><hr class="modal-divider"><small>BAIXA DE PAGAMENTO</small><label>Valor recebido em R$</label><input id="manager-payment-input" type="number" min="0.01" step="0.01"><label>Descrição</label><input id="manager-payment-desc" placeholder="Pagamento de GGR"><button class="btn btn-ghost btn-wide" type="button" onclick="admin.registerManagerPayment()">Registrar pagamento</button></div></div>
   <div class="toast-container" id="toast-container"></div>
+  <script src="/js/branding.js?v=20260831-1"></script>
   <script src="/js/app.js?v=20260821-2"></script>
-  <script src="/js/admin.js?v=20260821-5"></script>
+  <script src="/js/admin.js?v=20260831-1"></script>
 </body>
 </html>

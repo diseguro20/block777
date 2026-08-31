@@ -6,6 +6,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
 import { calculateDepositPromotion, getWalletBuckets, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
+import { BRANDING_DEFAULTS, normalizeBranding } from '../lib/branding.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
 const router = express.Router();
@@ -479,6 +480,7 @@ router.get('/settings', async (req, res) => {
       maintenance: false,
       defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE,
       managerSelfRegistrationEnabled: true,
+      ...BRANDING_DEFAULTS,
       ...PROMOTION_DEFAULTS
     };
     try {
@@ -509,7 +511,8 @@ router.put('/settings', async (req, res) => {
       depositRolloverMultiplier: 1,
       ...PROMOTION_DEFAULTS
     };
-    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance', 'promoEnabled', 'bonusPercent', 'bonusMinDeposit', 'rolloverMultiplier', 'depositRolloverMultiplier', 'defaultManagerGgrRate', 'managerSelfRegistrationEnabled'];
+    const brandingKeys = Object.keys(BRANDING_DEFAULTS);
+    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance', 'promoEnabled', 'bonusPercent', 'bonusMinDeposit', 'rolloverMultiplier', 'depositRolloverMultiplier', 'defaultManagerGgrRate', 'managerSelfRegistrationEnabled', ...brandingKeys];
     const update = {};
     allowed.forEach(key => {
       if (req.body[key] !== undefined) update[key] = req.body[key];
@@ -521,6 +524,11 @@ router.put('/settings', async (req, res) => {
     if (update.promoEnabled !== undefined) update.promoEnabled = Boolean(update.promoEnabled);
     if (update.managerSelfRegistrationEnabled !== undefined) update.managerSelfRegistrationEnabled = Boolean(update.managerSelfRegistrationEnabled);
     if (update.defaultManagerGgrRate !== undefined) update.defaultManagerGgrRate = normalizeGgrRate(update.defaultManagerGgrRate);
+    if (brandingKeys.some(key => update[key] !== undefined)) {
+      const currentDoc = await db.collection('settings').doc('global').get();
+      const currentBranding = currentDoc.exists ? currentDoc.data() : {};
+      Object.assign(update, normalizeBranding({ ...BRANDING_DEFAULTS, ...currentBranding, ...update }));
+    }
     await db.collection('settings').doc('global').set(update, { merge: true });
     const saved = await db.collection('settings').doc('global').get();
     res.json({ ...defaults, ...saved.data() });
@@ -779,29 +787,65 @@ router.put('/deposits/:id/reject', async (req, res) => {
 });
 
 router.get('/withdrawals', async (req, res) => {
+  const cacheKey = 'withdrawals';
+  const cached = getAdminCache(cacheKey);
+  if (cached) return res.json(cached);
   try {
-    let withdrawals = [];
-    try {
-      const snapshot = await db.collection('withdrawal_requests').where('status', '==', 'pending').get();
-      withdrawals = snapshot.docs.map(doc => {
-        const data = doc.data();
-        return { id: doc.id, ...data, pix_key: data.pixKey || data.pix_key || '' };
-      });
-    } catch (e) {}
-    res.json({ withdrawals });
+    const [snapshot, usersSnapshot] = await Promise.all([
+      db.collection('withdrawal_requests').get(),
+      db.collection('users').get()
+    ]);
+    const usersById = new Map(usersSnapshot.docs.map(doc => [doc.id, { id: doc.id, ...doc.data() }]));
+    const withdrawals = snapshot.docs.map(doc => {
+      const data = doc.data();
+      const user = usersById.get(data.uid) || {};
+      return {
+        id: doc.id,
+        ...data,
+        status: ['approved', 'rejected'].includes(data.status) ? data.status : 'pending',
+        pix_key: data.pixKey || data.pix_key || '',
+        username: user.username || data.username || data.uid,
+        email: user.email || '',
+        phone: user.phone || '',
+        origin: buildLeadOrigin(user, usersById)
+      };
+    }).sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at));
+    const summary = withdrawals.reduce((acc, item) => {
+      const status = item.status;
+      acc[status].count++;
+      acc[status].amount += Number(item.amount) || 0;
+      return acc;
+    }, {
+      pending: { count: 0, amount: 0 },
+      approved: { count: 0, amount: 0 },
+      rejected: { count: 0, amount: 0 }
+    });
+    res.json(setAdminCache(cacheKey, { withdrawals, summary }));
   } catch (error) {
-    res.json({ withdrawals: [] });
+    console.error('Admin withdrawals error:', error);
+    res.status(503).json({ error: 'Não foi possível consultar os saques agora.' });
   }
 });
 
 router.put('/withdrawals/:id/approve', async (req, res) => {
   try {
-    try {
-      await db.collection('withdrawal_requests').doc(req.params.id).update({ status: 'approved' });
-    } catch (e) {}
-    res.json({ success: true });
+    const withdrawalRef = db.collection('withdrawal_requests').doc(req.params.id);
+    await db.runTransaction(async transaction => {
+      const withdrawalDoc = await transaction.get(withdrawalRef);
+      if (!withdrawalDoc.exists || withdrawalDoc.data().status !== 'pending') throw new Error('Saque pendente não encontrado ou já processado.');
+      const txSnapshot = await transaction.get(db.collection('transactions').where('reference_id', '==', withdrawalRef.id).limit(1));
+      transaction.update(withdrawalRef, {
+        status: 'approved',
+        approved_at: FieldValue.serverTimestamp(),
+        processed_at: FieldValue.serverTimestamp(),
+        processed_by: req.user.uid,
+        admin_note: String(req.body.note || '').trim().slice(0, 240)
+      });
+      txSnapshot.docs.forEach(doc => transaction.update(doc.ref, { status: 'approved', processed_at: FieldValue.serverTimestamp() }));
+    });
+    res.json({ success: true, status: 'approved' });
   } catch (error) {
-    res.json({ success: true });
+    res.status(400).json({ error: error.message || 'Não foi possível aprovar o saque.' });
   }
 });
 
@@ -815,14 +859,33 @@ router.put('/withdrawals/:id/reject', async (req, res) => {
       const userRef = db.collection('users').doc(withdrawal.uid);
       const userDoc = await transaction.get(userRef);
       if (!userDoc.exists) throw new Error('Usuário não encontrado');
+      const txSnapshot = await transaction.get(db.collection('transactions').where('reference_id', '==', withdrawalRef.id).limit(1));
       const wallet = getWalletBuckets(userDoc.data());
-      transaction.update(withdrawalRef, { status: 'rejected', rejected_at: FieldValue.serverTimestamp() });
+      transaction.update(withdrawalRef, {
+        status: 'rejected',
+        rejected_at: FieldValue.serverTimestamp(),
+        processed_at: FieldValue.serverTimestamp(),
+        processed_by: req.user.uid,
+        rejection_reason: String(req.body.reason || 'Recusado pelo administrador').trim().slice(0, 240)
+      });
       transaction.update(userRef, {
         balance: wallet.balance + withdrawal.amount,
         cash_balance: wallet.cashBalance + withdrawal.amount
       });
+      txSnapshot.docs.forEach(doc => transaction.update(doc.ref, { status: 'rejected', processed_at: FieldValue.serverTimestamp() }));
+      const refundRef = db.collection('transactions').doc();
+      transaction.set(refundRef, {
+        uid: withdrawal.uid,
+        type: 'withdraw_refund',
+        amount: Number(withdrawal.amount) || 0,
+        balance_after: wallet.balance + (Number(withdrawal.amount) || 0),
+        status: 'completed',
+        reference_id: withdrawalRef.id,
+        description: 'Estorno de saque recusado',
+        created_at: FieldValue.serverTimestamp()
+      });
     });
-    res.json({ success: true });
+    res.json({ success: true, status: 'rejected' });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
