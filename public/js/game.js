@@ -1,10 +1,10 @@
 const BLOCK_COLORS = [
-  '#E8432F',
-  '#F7B731',
-  '#2D8B4E',
-  '#E87F24',
-  '#E84393',
-  '#8B5E3C'
+  '#28C9FF',
+  '#FFD029',
+  '#4DDF78',
+  '#805CFF',
+  '#FF4F8E',
+  '#FF7D38'
 ];
 
 const ALL_SHAPES = [
@@ -619,9 +619,51 @@ const game = {
       this.multiplier = 1.0;
       this.updateHud();
       document.getElementById('prep-modal').classList.add('active');
+      this.updatePrepReward();
     } else {
       this.startDemoGame();
     }
+  },
+
+  formatEntry(value) {
+    return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  },
+
+  selectArenaBet(value, button) {
+    const input = document.getElementById('arena-bet-input');
+    if (input) input.value = value;
+    button?.parentElement?.querySelectorAll('button').forEach(item => item.classList.toggle('active', item === button));
+    this.updateArenaBet();
+  },
+
+  updateArenaBet() {
+    const value = Number(document.getElementById('arena-bet-input')?.value || 0);
+    const label = document.getElementById('arena-return-value');
+    if (label) label.textContent = this.formatEntry(Math.max(0, value));
+  },
+
+  startFromArena() {
+    const value = Number(document.getElementById('arena-bet-input')?.value || 0);
+    const prepInput = document.getElementById('bet-input-val');
+    if (prepInput) prepInput.value = value;
+    this.mode = 'real';
+    this.gameMode = 'classic';
+    this.gridSize = 8;
+    this.startRealGame();
+  },
+
+  selectPrepBet(value, button) {
+    const input = document.getElementById('bet-input-val');
+    if (input) input.value = value;
+    this.betAmount = Math.round(value * 100);
+    button?.parentElement?.querySelectorAll('button').forEach(item => item.classList.toggle('active', item === button));
+    this.updatePrepReward();
+  },
+
+  updatePrepReward() {
+    const value = Number(document.getElementById('bet-input-val')?.value || 0);
+    const label = document.getElementById('prep-return-value');
+    if (label) label.textContent = this.formatEntry(Math.max(0, value));
   },
 
   async startRealGame() {
@@ -674,7 +716,7 @@ const game = {
       document.getElementById('btn-cashout').disabled = false;
       this.updateHud();
       this.draw();
-      app.showToast('🎉 Partida iniciada no Arraiá! Boa sorte!');
+      app.showToast('🎮 Partida iniciada na Arena Blockerino. Boa sorte!');
     } catch (err) {
       app.showToast(err.message || 'Erro ao iniciar partida.');
     } finally {
@@ -707,7 +749,7 @@ const game = {
     document.getElementById('btn-cashout').style.display = 'none';
     this.updateHud();
     this.draw();
-    app.showToast('🌽 Modo Treino Demo Iniciado!');
+    app.showToast('🎮 Modo de demonstração iniciado.');
   },
 
   initBoard() {
@@ -1098,10 +1140,10 @@ const game = {
     const cellSize = gridW / this.gridSize;
 
     this.ctx.clearRect(0, 0, w, this.canvas.height);
-    this.ctx.fillStyle = '#070b0b';
+    this.ctx.fillStyle = '#071238';
     this.ctx.fillRect(0, 0, gridW, gridW);
 
-    this.ctx.strokeStyle = 'rgba(122, 145, 139, 0.22)';
+    this.ctx.strokeStyle = 'rgba(82, 137, 255, 0.24)';
     this.ctx.lineWidth = 1;
 
     for (let r = 0; r <= this.gridSize; r++) {
@@ -1147,10 +1189,10 @@ const game = {
     }
 
     const handAreaY = gridW;
-    this.ctx.fillStyle = '#0a100f';
+    this.ctx.fillStyle = '#0b153e';
     this.ctx.fillRect(0, handAreaY, w, 130);
 
-    this.ctx.strokeStyle = '#21302d';
+    this.ctx.strokeStyle = '#28477f';
     this.ctx.lineWidth = 2;
     this.ctx.beginPath();
     this.ctx.moveTo(0, handAreaY);

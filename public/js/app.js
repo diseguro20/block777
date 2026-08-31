@@ -253,6 +253,7 @@ const app = {
     const target = document.getElementById(id);
     if (target) target.classList.add('active');
     document.body.classList.toggle('game-active', id === 'game-screen');
+    this.syncPlayerChrome(id);
     if (id === 'landing-screen' && window.game) setTimeout(() => game.initLandingDemo(), 50);
     if (id === 'game-screen' && window.game) setTimeout(() => game.init(), 20);
     if (id === 'wallet-screen' && window.wallet) wallet.loadWallet();
@@ -263,6 +264,27 @@ const app = {
   },
 
   goHome() { this.showScreen(this.token ? 'menu-screen' : 'landing-screen'); },
+  syncPlayerChrome(screenId) {
+    const nav = document.getElementById('player-bottom-nav');
+    if (!nav) return;
+    nav.hidden = !this.token || screenId === 'landing-screen' || screenId === 'game-screen';
+    nav.querySelectorAll('[data-player-tab]').forEach(item => item.classList.remove('active'));
+    const active = screenId === 'wallet-screen' ? 'wallet' : screenId === 'menu-screen' ? 'play' : '';
+    if (active) nav.querySelector(`[data-player-tab="${active}"]`)?.classList.add('active');
+  },
+  openWalletTab(tab = 'deposit') {
+    this.showScreen('wallet-screen');
+    window.setTimeout(() => {
+      window.wallet?.toggleTab(tab);
+      const nav = document.getElementById('player-bottom-nav');
+      nav?.querySelectorAll('[data-player-tab]').forEach(item => item.classList.remove('active'));
+      nav?.querySelector(`[data-player-tab="${tab === 'withdraw' ? 'withdraw' : 'wallet'}"]`)?.classList.add('active');
+    }, 30);
+  },
+  showPlayerProfile() {
+    this.showScreen('menu-screen');
+    window.setTimeout(() => document.querySelector('#menu-screen .stats-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+  },
   toggleMobileMenu() { document.getElementById('nav-actions')?.classList.toggle('open'); },
   openAuth(tab = 'login') { this.toggleAuthTab(tab); document.getElementById('auth-modal')?.classList.add('active'); },
   closeModal(id) { document.getElementById(id)?.classList.remove('active'); },
@@ -283,6 +305,9 @@ const app = {
       const element = document.getElementById(id);
       if (element) element.textContent = this.formatBRL(this.user.balance || 0);
     });
+    const avatar = document.querySelector('.avatar');
+    const initial = String(this.user.username || 'J').trim().charAt(0).toUpperCase();
+    if (avatar) avatar.textContent = initial;
   },
 
   logout(showMessage = true) {
