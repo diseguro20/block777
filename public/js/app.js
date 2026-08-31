@@ -283,7 +283,15 @@ const app = {
   },
   showPlayerProfile() {
     this.showScreen('menu-screen');
-    window.setTimeout(() => document.querySelector('#menu-screen .stats-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+    this.loadDashboard();
+    document.getElementById('profile-modal')?.classList.add('active');
+    const nav = document.getElementById('player-bottom-nav');
+    nav?.querySelectorAll('[data-player-tab]').forEach(item => item.classList.remove('active'));
+    nav?.querySelector('[data-player-tab="profile"]')?.classList.add('active');
+  },
+  closePlayerProfile() {
+    this.closeModal('profile-modal');
+    this.syncPlayerChrome('menu-screen');
   },
   toggleMobileMenu() { document.getElementById('nav-actions')?.classList.toggle('open'); },
   openAuth(tab = 'login') { this.toggleAuthTab(tab); document.getElementById('auth-modal')?.classList.add('active'); },
@@ -301,13 +309,15 @@ const app = {
 
   updateBalanceDisplays() {
     if (!this.user) return;
-    ['nav-balance', 'wallet-balance-val', 'dashboard-balance'].forEach(id => {
+    ['nav-balance', 'wallet-balance-val', 'dashboard-balance', 'profile-balance-value'].forEach(id => {
       const element = document.getElementById(id);
       if (element) element.textContent = this.formatBRL(this.user.balance || 0);
     });
     const avatar = document.querySelector('.avatar');
     const initial = String(this.user.username || 'J').trim().charAt(0).toUpperCase();
     if (avatar) avatar.textContent = initial;
+    const profileAvatar = document.getElementById('profile-avatar');
+    if (profileAvatar) profileAvatar.textContent = initial;
   },
 
   logout(showMessage = true) {

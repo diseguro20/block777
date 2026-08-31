@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://block777-omega.vercel.app/og.png?v=20260803-1">
   <title>Blockerino — Deposite R$ 20 e jogue com R$ 40</title>
   <link rel="stylesheet" href="./css/style.css?v=20260826-1">
-  <link rel="stylesheet" href="./css/arena.css?v=20260831-2">
+  <link rel="stylesheet" href="./css/arena.css?v=20260831-3">
 </head>
 <body class="player-app">
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
@@ -94,9 +94,9 @@
     </section>
 
     <section class="screen dashboard" id="menu-screen">
-      <header class="page-head">
-        <div><div class="eyebrow"><span></span> PAINEL DO JOGADOR</div><h2>Boa jogada, <em id="dashboard-name">jogador</em>.</h2><p>Acompanhe sua banca e entre em uma nova partida.</p></div>
-        <button class="btn btn-primary" onclick="game.showPrep('real','classic')">Nova partida <span>→</span></button>
+      <header class="player-home-balance" aria-label="Saldo disponível">
+        <span>SALDO DISPONÍVEL</span><strong id="dashboard-balance">R$ 0,00</strong>
+        <button type="button" onclick="app.openWalletTab('deposit')">Depositar <span>＋</span></button>
       </header>
       <section class="tenant-campaign-banner" id="tenant-dashboard-banner" hidden></section>
       <article class="arena-entry-card" aria-labelledby="arena-title">
@@ -119,31 +119,6 @@
           <p class="arena-rule">Você pode retirar o retorno durante a partida. Jogue com responsabilidade.</p>
         </div>
       </article>
-      <div class="stats-grid">
-        <article class="metric metric-main"><small>SALDO DISPONÍVEL</small><strong id="dashboard-balance">R$ 0,00</strong><button onclick="app.showScreen('wallet-screen')">Adicionar saldo</button></article>
-        <article class="metric"><small>RETORNO TOTAL</small><strong id="dashboard-return">R$ 0,00</strong><span class="positive">↑ desempenho acumulado</span></article>
-        <article class="metric"><small>PARTIDAS</small><strong id="dashboard-games">0</strong><span>histórico completo</span></article>
-        <article class="metric"><small>MELHOR MULT.</small><strong id="dashboard-best">1.00x</strong><span>recorde pessoal</span></article>
-      </div>
-      <article class="dashboard-promo">
-        <div><small>OFERTA ATIVA</small><h3 id="dashboard-promo-title">100% de bônus em depósitos a partir de R$ 20</h3><p id="dashboard-promo-copy">R$ 20 viram R$ 40 para jogar. O progresso do rollover aparece na sua carteira.</p></div>
-        <button class="btn btn-primary" onclick="app.showScreen('wallet-screen')">Ativar bônus agora <span>→</span></button>
-      </article>
-      <div class="dashboard-grid">
-        <article class="panel bet-card">
-          <div class="panel-title"><div><small>JOGO PRINCIPAL</small><h3>Blockerino clássico</h3></div><span class="live-dot">AO VIVO</span></div>
-          <div class="mode-visual"><div class="block-stack"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div><b>Até 10.00x</b><span>Multiplicador máximo</span></div></div>
-          <div class="mode-row"><button class="mode active" onclick="game.showPrep('real','classic')"><b>Clássico</b><span>8×8 · 3 peças</span></button><button class="mode" onclick="game.showPrep('real','chaos')"><b>Caos</b><span>10×10 · 5 peças</span></button></div>
-          <button class="btn btn-primary btn-wide" onclick="game.showPrep('real','classic')">Preparar aposta <span>→</span></button>
-        </article>
-        <article class="panel activity-card">
-          <div class="panel-title"><div><small>ATIVIDADE</small><h3>Últimas movimentações</h3></div><button onclick="app.showScreen('wallet-screen')">Ver todas</button></div>
-          <div id="recent-activity" class="activity-list"><div class="empty-state">Suas movimentações aparecerão aqui.</div></div>
-        </article>
-        <article class="panel affiliate-callout">
-          <div class="affiliate-icon">↗</div><div><small>PROGRAMA DE AFILIADOS</small><h3>Sua rede também multiplica.</h3><p>Ganhe comissão em dois níveis e acompanhe tudo em tempo real.</p></div><a class="btn btn-ghost" href="./affiliate/">Ver painel</a>
-        </article>
-      </div>
     </section>
 
     <section class="screen play-screen" id="game-screen">
@@ -206,10 +181,11 @@
   </nav>
 
   <div class="modal" id="auth-modal"><div class="modal-card auth-card"><button class="modal-close" onclick="app.closeModal('auth-modal')">×</button><div class="brand auth-brand"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO</span></div><h3>Entre no jogo.</h3><p>Uma conta para jogar, sacar e acompanhar seus resultados.</p><div class="tabs"><button id="tab-login-btn" class="active" onclick="app.toggleAuthTab('login')">Entrar</button><button id="tab-reg-btn" onclick="app.toggleAuthTab('register')">Criar conta</button></div><form id="login-form"><label>Celular ou E-mail</label><input name="email" id="login-identifier-input" required placeholder="(11) 99999-9999 ou e-mail" autocomplete="username"><label>Senha</label><input name="password" type="password" required placeholder="••••••••"><button class="btn btn-primary btn-wide" type="submit">Entrar</button></form><form id="register-form" hidden><label>Nome de usuário</label><input name="username" required minlength="3" placeholder="Seu nome no jogo"><label>Celular com DDD (WhatsApp)</label><input name="phone" id="reg-phone-input" type="tel" required placeholder="(11) 99999-9999" maxlength="15" autocomplete="tel"><label>Senha</label><input name="password" type="password" required minlength="6" placeholder="Mínimo de 6 caracteres"><button class="btn btn-primary btn-wide" type="submit">Criar minha conta</button></form><small class="legal">Ao continuar, você confirma ter 18 anos ou mais.</small></div></div>
+  <div class="modal" id="profile-modal"><div class="modal-card player-profile-card"><button class="modal-close" onclick="app.closePlayerProfile()">×</button><header class="profile-head"><span class="profile-avatar" id="profile-avatar">J</span><div><small>PERFIL DO JOGADOR</small><h3 id="dashboard-name">jogador</h3></div></header><section class="profile-balance"><span>SALDO DISPONÍVEL</span><strong id="profile-balance-value">R$ 0,00</strong><button onclick="app.closePlayerProfile();app.openWalletTab('deposit')">Adicionar saldo</button></section><div class="profile-stats"><article><small>RETORNO TOTAL</small><strong id="dashboard-return">R$ 0,00</strong></article><article><small>PARTIDAS</small><strong id="dashboard-games">0</strong></article><article><small>MELHOR MULT.</small><strong id="dashboard-best">1.00x</strong></article></div><section class="profile-activity"><div class="panel-title"><div><small>ATIVIDADE</small><h3>Últimas movimentações</h3></div><button onclick="app.closePlayerProfile();app.showScreen('wallet-screen')">Ver todas</button></div><div id="recent-activity" class="activity-list"><div class="empty-state">Suas movimentações aparecerão aqui.</div></div></section><div class="profile-actions"><a class="btn btn-ghost" href="./affiliate/">Painel de afiliados</a><button class="btn btn-ghost" onclick="app.closePlayerProfile();app.logout()">Sair da conta</button></div></div></div>
   <div class="modal" id="prep-modal"><div class="modal-card prep-card arena-prep"><button class="modal-close" onclick="app.closeModal('prep-modal')">×</button><div class="prep-visual"><small>BLOCKERINO ARENA</small><h3>Encaixe os blocos<br><em>e multiplique</em></h3><div class="mini-blocks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div></div><div class="prep-content"><label>VALOR DA ENTRADA</label><div class="quick-values prep-values"><button onclick="game.selectPrepBet(2,this)">R$ 2</button><button onclick="game.selectPrepBet(5,this)" class="active">R$ 5</button><button onclick="game.selectPrepBet(10,this)">R$ 10</button><button onclick="game.selectPrepBet(25,this)">R$ 25</button><button onclick="game.selectPrepBet(50,this)">R$ 50</button><button onclick="game.selectPrepBet(100,this)">R$ 100</button></div><div class="money-input"><span>R$</span><input id="bet-input-val" type="number" inputmode="decimal" min="1" max="100" value="5" oninput="game.updatePrepReward()"></div><div class="prep-return"><span>Retorno potencial inicial</span><strong id="prep-return-value">R$ 5,00</strong></div><div class="risk-note"><span>i</span><p>O valor é debitado ao iniciar. Você pode retirar o retorno durante a partida.</p></div><button class="btn btn-primary btn-wide" onclick="game.startRealGame()">Começar partida <span>→</span></button></div></div></div>
   <div class="modal" id="win-modal"><div class="modal-card result-card"><div class="result-icon">✓</div><small>RESGATE CONCLUÍDO</small><h3 id="win-modal-payout">R$ 0,00</h3><p>Multiplicador final: <b id="win-modal-mult">1.00x</b></p><button class="btn btn-primary btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="modal" id="gameover-modal"><div class="modal-card result-card"><div class="result-icon danger">×</div><small>FIM DE PARTIDA</small><h3>Sem movimentos</h3><p>A rodada foi encerrada. Revise sua estratégia e tente novamente.</p><button class="btn btn-primary btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/branding.js?v=20260831-3"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260831-3"></script><script src="./js/wallet.js?v=20260821-2"></script><script src="./js/game.js?v=20260831-1"></script>
+  <script src="./js/branding.js?v=20260831-3"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260831-4"></script><script src="./js/wallet.js?v=20260821-2"></script><script src="./js/game.js?v=20260831-1"></script>
 </body>
 </html>
