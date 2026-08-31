@@ -16,12 +16,6 @@
       image.addEventListener('error', () => image.remove(), { once: true });
       brand.querySelector('.brand-mark')?.setAttribute('hidden', ''); brand.prepend(image);
     });
-    const whatsapp = String(branding.supportWhatsapp || '').replace(/\D/g, '');
-    document.querySelectorAll('[data-support-whatsapp]').forEach(link => {
-      if (!whatsapp) return;
-      link.href = `https://wa.me/${whatsapp}?text=${encodeURIComponent(`Olá! Quero testar por 1 dia o melhor plano da ${branding.brandName}.`)}`;
-      link.hidden = false;
-    });
     window.blockerinoBranding = branding;
     renderBanner('tenant-top-banner', branding.banners?.topBanner);
     renderBanner('tenant-dashboard-banner', branding.banners?.dashboardBanner);
