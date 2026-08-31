@@ -18,11 +18,14 @@
   let frame = 0;
   let lastFrame = 0;
   let lastAmbient = 0;
+  let lastFormationStep = 0;
+  let formation = null;
+  let lineFlash = null;
   let active = true;
   const litCells = new Map();
 
   const cellKey = (column, row) => `${column}:${row}`;
-  const lightCell = (column, row, strength = 1, color) => {
+  const lightCell = (column, row, strength = 1, color, life) => {
     if (column < 0 || row < 0 || column >= columns || row >= rows) return;
     litCells.set(cellKey(column, row), {
       column,
@@ -30,8 +33,44 @@
       color: color || palette[Math.floor(Math.random() * palette.length)],
       strength,
       born: performance.now(),
-      life: coarsePointer ? 1500 : 1050
+      life: life || (coarsePointer ? 1500 : 1050)
     });
+  };
+
+  const beginFormation = now => {
+    const widthInCells = Math.min(8, Math.max(4, columns - 2));
+    const startColumn = Math.max(1, Math.floor(Math.random() * Math.max(1, columns - widthInCells - 1)));
+    const targetRow = Math.max(3, Math.min(rows - 2, 4 + Math.floor(Math.random() * Math.max(1, rows - 7))));
+    const pieceLayouts = widthInCells >= 8 ? [
+      [[0, 0], [-1, 0], [0, 1]],
+      [[0, 2], [0, 3], [-1, 2], [-1, 3]],
+      [[0, 4], [0, 5], [0, 6], [-1, 5]],
+      [[0, 7], [-1, 7], [-2, 7]]
+    ] : Array.from({ length: widthInCells }, (_, index) => [[0, index], [-1, index]]);
+    formation = { startColumn, targetRow, widthInCells, pieces: pieceLayouts, index: 0, completedAt: 0 };
+    lastFormationStep = now - 700;
+  };
+
+  const advanceFormation = now => {
+    if (!formation) beginFormation(now);
+    if (formation.index < formation.pieces.length && now - lastFormationStep > (coarsePointer ? 760 : 620)) {
+      lastFormationStep = now;
+      const color = palette[(formation.index + Math.floor(now / 1000)) % palette.length];
+      formation.pieces[formation.index].forEach(([rowOffset, columnOffset]) => {
+        lightCell(formation.startColumn + columnOffset, formation.targetRow + rowOffset, .62, color, 5200);
+      });
+      formation.index += 1;
+      return;
+    }
+    if (formation.index >= formation.pieces.length && !formation.completedAt) {
+      formation.completedAt = now;
+      lineFlash = { row: formation.targetRow, start: formation.startColumn, width: formation.widthInCells, born: now };
+      for (let column = 0; column < formation.widthInCells; column++) {
+        lightCell(formation.startColumn + column, formation.targetRow, .95, '#c9ff43', 720);
+      }
+    } else if (formation.completedAt && now - formation.completedAt > 1150) {
+      formation = null;
+    }
   };
 
   const resize = () => {
@@ -70,6 +109,20 @@
     context.lineWidth = 1;
     context.stroke();
 
+    if (lineFlash) {
+      const flashProgress = (now - lineFlash.born) / 700;
+      if (flashProgress >= 1) lineFlash = null;
+      else {
+        context.save();
+        context.globalAlpha = (1 - flashProgress) * .42;
+        context.shadowColor = '#c9ff43';
+        context.shadowBlur = 26;
+        context.fillStyle = '#c9ff43';
+        context.fillRect(lineFlash.start * cellSize + 1, lineFlash.row * cellSize + 1, lineFlash.width * cellSize - 1, cellSize - 1);
+        context.restore();
+      }
+    }
+
     for (const [key, cell] of litCells) {
       const progress = Math.min(1, (now - cell.born) / cell.life);
       if (progress >= 1) {
@@ -96,6 +149,7 @@
 
   const animate = now => {
     if (!active) return;
+    advanceFormation(now);
     if (now - lastAmbient > (coarsePointer ? 420 : 700)) {
       lastAmbient = now;
       const column = Math.floor(Math.random() * columns);
