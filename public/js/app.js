@@ -1,14 +1,23 @@
 const app = {
-  token: localStorage.getItem('token'),
+  tenantSlug: (() => {
+    const requested = new URLSearchParams(location.search).get('tenant');
+    const sharedHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname.endsWith('.vercel.app');
+    if (requested) localStorage.setItem('tenant_slug', requested.toLowerCase().replace(/[^a-z0-9-]/g, ''));
+    return (requested || (sharedHost ? 'blockerino' : '')).toLowerCase().replace(/[^a-z0-9-]/g, '');
+  })(),
+  token: null,
   user: null,
 
   init() {
+    const sessionScope = this.tenantSlug || `host:${location.hostname}`;
+    this.token = localStorage.getItem(`token:${sessionScope}`) || (this.tenantSlug === 'blockerino' || !this.tenantSlug ? localStorage.getItem('token') : null);
     this.syncViewport();
     window.addEventListener('resize', () => this.syncViewport(), { passive: true });
     window.addEventListener('orientationchange', () => window.setTimeout(() => this.syncViewport(), 120), { passive: true });
     window.visualViewport?.addEventListener('resize', () => this.syncViewport(), { passive: true });
     window.visualViewport?.addEventListener('scroll', () => this.syncViewport(), { passive: true });
     this.captureRef();
+    this.preserveTenantLinks();
     this.bindForms();
     this.loadPublicPromotion();
     const registerButton = document.getElementById('landing-register-btn');
@@ -30,6 +39,16 @@ const app = {
     else this.showScreen('landing-screen');
   },
 
+  preserveTenantLinks() {
+    if (!this.tenantSlug || this.tenantSlug === 'blockerino') return;
+    document.querySelectorAll('a[href^="./"],a[href^="/"]').forEach(link => {
+      const url = new URL(link.getAttribute('href'), location.origin);
+      if (url.origin !== location.origin) return;
+      url.searchParams.set('tenant', this.tenantSlug);
+      link.href = `${url.pathname}${url.search}${url.hash}`;
+    });
+  },
+
   syncViewport() {
     const viewport = window.visualViewport;
     const height = Math.round(viewport?.height || window.innerHeight || document.documentElement.clientHeight);
@@ -44,7 +63,8 @@ const app = {
     if (params.get('manager')) localStorage.setItem('manager_code', params.get('manager').trim().toLowerCase());
     const impersonateToken = params.get('impersonate_token') || params.get('auth_token');
     if (impersonateToken) {
-      localStorage.setItem('token', impersonateToken);
+      localStorage.setItem(`token:${this.tenantSlug || `host:${location.hostname}`}`, impersonateToken);
+      if (this.tenantSlug === 'blockerino') localStorage.setItem('token', impersonateToken);
       this.token = impersonateToken;
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -52,7 +72,7 @@ const app = {
 
   async loadPublicPromotion() {
     try {
-      const response = await fetch('/api/wallet/promotion');
+      const response = await fetch('/api/wallet/promotion', { headers: { 'X-Tenant-Slug': this.tenantSlug } });
       if (!response.ok) return;
       const promo = await response.json();
       if (window.wallet) {
@@ -152,15 +172,20 @@ const app = {
   },
 
   setSession(data) {
+    if (data.user?.tenant_id) {
+      this.tenantSlug = data.user.tenant_id;
+      localStorage.setItem('tenant_slug', this.tenantSlug);
+    }
     this.token = data.token;
     this.user = data.user;
-    localStorage.setItem('token', data.token);
+    localStorage.setItem(`token:${this.tenantSlug}`, data.token);
+    if (this.tenantSlug === 'blockerino') localStorage.setItem('token', data.token);
     this.closeModal('auth-modal');
     this.loadUserData();
   },
 
   async fetchAPI(url, options = {}) {
-    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    const headers = { 'Content-Type': 'application/json', ...(this.tenantSlug ? { 'X-Tenant-Slug': this.tenantSlug } : {}), ...(options.headers || {}) };
     if (this.token) headers.Authorization = `Bearer ${this.token}`;
     try {
       const response = await fetch(url, { ...options, headers });
@@ -184,7 +209,7 @@ const app = {
       this.user = await this.fetchAPI('/api/auth/me');
       this.updateBalanceDisplays();
       const adminLink = document.getElementById('btn-admin-link');
-      if (adminLink) adminLink.style.display = this.user.role === 'admin' ? '' : 'none';
+      if (adminLink) adminLink.style.display = ['admin', 'super_admin', 'tenant_admin'].includes(this.user.role) ? '' : 'none';
       const managerLink = document.getElementById('btn-manager-link');
       if (managerLink) managerLink.style.display = this.user.role === 'manager' ? '' : 'none';
       const registerButton = document.getElementById('landing-register-btn');
@@ -261,7 +286,8 @@ const app = {
   },
 
   logout(showMessage = true) {
-    this.token = null; this.user = null; localStorage.removeItem('token');
+    this.token = null; this.user = null; localStorage.removeItem(`token:${this.tenantSlug}`);
+    if (this.tenantSlug === 'blockerino') localStorage.removeItem('token');
     const nav = document.getElementById('nav-actions');
     if (nav) nav.style.display = 'none';
     const registerButton = document.getElementById('landing-register-btn');

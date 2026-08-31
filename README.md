@@ -12,12 +12,17 @@ npm run dev
 
 Abra `http://localhost:3001`.
 
-## Contas locais
+## Segurança e configuração
 
-- Jogador: `demo@blockerino.app` / `demo123`
-- Administrador: `admin@block777.com` / `admin777`
+O projeto não cria administrador padrão e não aceita senha mestre. Administradores
+são registros protegidos no Firestore e toda senha é armazenada como hash bcrypt.
+Copie `.env.example` para `.env.local` no desenvolvimento e defina os valores sem
+versionar o arquivo. Em produção, configure as mesmas variáveis diretamente na
+Vercel e marque chaves privadas, segredo JWT e credenciais do gateway como
+**Sensitive/Secret**.
 
-Troque `JWT_SECRET` e as credenciais iniciais antes de publicar em produção.
+Nenhuma variável de Firebase Admin, JWT ou Vizzion Pay é enviada para o navegador.
+O front-end recebe somente identidade visual, banners e dados permitidos pelas APIs.
 
 ## Funcionalidades
 
@@ -29,7 +34,9 @@ Troque `JWT_SECRET` e as credenciais iniciais antes de publicar em produção.
 - Afiliados em dois níveis com taxas configuráveis
 - Painel administrativo para usuários, saldo, status, influenciadores,
   depósitos, saques, dificuldade, limites, comissões e manutenção
+- Operações white label isoladas por cliente, com administrador próprio
+- Marca, cores e banners editáveis para landing page, dashboard e afiliados
 - Armazenamento local persistente para desenvolvimento
 
-Em produção, conecte um banco durável e um provedor PIX real. O código PIX local
-é próprio para homologação e os pagamentos dependem de aprovação administrativa.
+O modo local usa dados de homologação. A produção utiliza Firestore e o gateway
+configurado no servidor. Não utilize o código PIX simulado do modo local para cobrar clientes.

@@ -7,12 +7,25 @@ import { requireAdmin } from '../middleware/admin.js';
 import { calculateDepositPromotion, getWalletBuckets, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
 import { BRANDING_DEFAULTS, normalizeBranding } from '../lib/branding.js';
+import { authTokenTtl, getJwtSecret } from '../lib/security.js';
+import { DEFAULT_TENANT_ID, belongsToTenant, tenantBannedIpsId, tenantSettingsRef } from '../lib/tenant.js';
+import { BANNER_DEFAULTS, normalizeBanners } from '../lib/banners.js';
+import { findTenantUser } from '../lib/userLookup.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
+const JWT_SECRET = getJwtSecret();
 const router = express.Router();
 
 router.use(authenticateToken);
 router.use(requireAdmin);
+router.use((req, res, next) => {
+  const requestedTenant = req.tenant?.id || DEFAULT_TENANT_ID;
+  const adminTenant = req.adminUser?.tenant_id || DEFAULT_TENANT_ID;
+  req.adminTenantId = req.adminUser?.role === 'tenant_admin' ? adminTenant : requestedTenant;
+  if (req.adminUser?.role === 'tenant_admin' && requestedTenant !== adminTenant) {
+    return res.status(403).json({ error: 'Este painel pertence a outra operação.' });
+  }
+  next();
+});
 
 const ADMIN_CACHE_TTL_MS = 2 * 60 * 1000;
 const adminResponseCache = new Map();
@@ -24,6 +37,14 @@ const getStaleAdminCache = key => adminResponseCache.get(key)?.value || null;
 const setAdminCache = (key, value) => {
   adminResponseCache.set(key, { value, savedAt: Date.now() });
   return value;
+};
+const tenantCacheKey = (req, key) => `${req.adminTenantId || DEFAULT_TENANT_ID}:${key}`;
+const ensureTenantAccess = (req, data) => {
+  if (!belongsToTenant(data, req.adminTenantId)) {
+    const error = new Error('Registro não encontrado nesta operação.');
+    error.status = 404;
+    throw error;
+  }
 };
 
 const timestampMillis = value => {
@@ -60,7 +81,7 @@ router.use((req, _res, next) => {
 });
 
 router.get('/stats', async (req, res) => {
-  const cacheKey = 'stats';
+  const cacheKey = tenantCacheKey(req, 'stats');
   const cached = getAdminCache(cacheKey);
   if (cached) return res.json(cached);
   try {
@@ -80,9 +101,11 @@ router.get('/stats', async (req, res) => {
 
     try {
       const usersSnapshot = await db.collection('users').get();
-      totalUsers = usersSnapshot.size || 1;
+      totalUsers = 0;
       usersSnapshot.forEach(doc => {
         const user = doc.data();
+        if (!belongsToTenant(user, req.adminTenantId)) return;
+        totalUsers++;
         lockedBonus += Number(user.bonus_balance) || 0;
         if ((Number(user.rollover_remaining) || 0) > 0) activeRolloverUsers++;
       });
@@ -90,6 +113,7 @@ router.get('/stats', async (req, res) => {
       const betsSnapshot = await db.collection('bets').get();
       betsSnapshot.forEach(doc => {
         const data = doc.data();
+        if (!belongsToTenant(data, req.adminTenantId)) return;
         if (data.is_demo) return;
         totalBets += data.amount || 0;
         totalPayouts += data.payout || 0;
@@ -103,13 +127,13 @@ router.get('/stats', async (req, res) => {
       });
 
       const depositsSnapshot = await db.collection('deposit_requests').where('status', '==', 'pending').get();
-      pendingDeposits = depositsSnapshot.size || 0;
+      pendingDeposits = depositsSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).length;
 
       const approvedDepositsSnapshot = await db.collection('deposit_requests').where('status', '==', 'approved').get();
-      approvedDepositsSnapshot.forEach(doc => { totalBonusGranted += Number(doc.data().bonusAmount) || 0; });
+      approvedDepositsSnapshot.forEach(doc => { if (belongsToTenant(doc.data(), req.adminTenantId)) totalBonusGranted += Number(doc.data().bonusAmount) || 0; });
 
       const withdrawalsSnapshot = await db.collection('withdrawal_requests').where('status', '==', 'pending').get();
-      pendingWithdrawals = withdrawalsSnapshot.size || 0;
+      pendingWithdrawals = withdrawalsSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).length;
     } catch (e) {
       console.warn('Firestore indisponível para admin stats:', e.message);
       throw e;
@@ -125,10 +149,10 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-async function autoBanIp(ip) {
+async function autoBanIp(ip, tenantId = DEFAULT_TENANT_ID) {
   if (!ip || ip === 'unknown') return;
   try {
-    const docRef = db.collection('settings').doc('banned_ips');
+    const docRef = db.collection('settings').doc(tenantBannedIpsId(tenantId));
     const doc = await docRef.get();
     const ips = doc.exists ? (doc.data().ips || []) : [];
     if (!ips.includes(ip)) {
@@ -140,7 +164,7 @@ async function autoBanIp(ip) {
 
 router.get('/users', async (req, res) => {
   const search = String(req.query.search || '').trim().toLowerCase();
-  const cacheKey = `users:${search}`;
+  const cacheKey = tenantCacheKey(req, `users:${search}`);
   const cached = getAdminCache(cacheKey);
   if (cached) return res.json(cached);
   try {
@@ -150,6 +174,7 @@ router.get('/users', async (req, res) => {
       const snapshot = await db.collection('users').get();
       snapshot.forEach(doc => {
         const data = doc.data();
+        if (!belongsToTenant(data, req.adminTenantId)) return;
         delete data.password_hash;
         if (data.email === 'cj@gmail.com' || String(data.username || '').toLowerCase() === 'cj1') {
           data.status = 'suspended';
@@ -159,7 +184,7 @@ router.get('/users', async (req, res) => {
           data.rollover_remaining = 0;
           data.ban_reason = 'Ban permanente';
           if (data.last_ip) {
-            autoBanIp(data.last_ip).catch(() => {});
+            autoBanIp(data.last_ip, req.adminTenantId).catch(() => {});
           }
           doc.ref.update({
             status: 'suspended',
@@ -182,6 +207,7 @@ router.get('/users', async (req, res) => {
       const betsSnapshot = await db.collection('bets').get();
       betsSnapshot.forEach(doc => {
         const bet = doc.data();
+        if (!belongsToTenant(bet, req.adminTenantId)) return;
         if (bet.status !== 'completed') return;
         const stats = gameStats.get(bet.uid) || { gamesPlayed: 0, wins: 0, losses: 0, blocksPlaced: 0, linesCleared: 0 };
         stats.gamesPlayed++;
@@ -222,7 +248,7 @@ router.get('/users', async (req, res) => {
 
 router.get('/game-logs', async (req, res) => {
   const search = String(req.query.search || '').trim().toLowerCase();
-  const cacheKey = `game-logs:${search}`;
+  const cacheKey = tenantCacheKey(req, `game-logs:${search}`);
   const cached = getAdminCache(cacheKey);
   if (cached) return res.json(cached);
   try {
@@ -230,14 +256,16 @@ router.get('/game-logs', async (req, res) => {
       db.collection('bets').get(),
       db.collection('users').get()
     ]);
-    const users = new Map(usersSnapshot.docs.map(doc => [doc.id, doc.data()]));
+    const users = new Map(usersSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(doc => [doc.id, doc.data()]));
     const toMillis = value => value?.toMillis?.() || new Date(value || 0).getTime();
     const games = betsSnapshot.docs
       .map(doc => {
         const bet = doc.data();
+        if (!belongsToTenant(bet, req.adminTenantId)) return null;
         const user = users.get(bet.uid) || {};
         return { id: doc.id, ...bet, username: user.username || bet.uid, email: user.email || '' };
       })
+      .filter(Boolean)
       .filter(bet => bet.status === 'completed')
       .filter(bet => !search || String(bet.username).toLowerCase().includes(search) || String(bet.email).toLowerCase().includes(search) || String(bet.sessionId || '').toLowerCase().includes(search))
       .sort((a, b) => toMillis(b.completed_at || b.created_at) - toMillis(a.completed_at || a.created_at))
@@ -255,7 +283,7 @@ router.put('/users/:id', async (req, res) => {
     const { role, status, is_influencer, affiliate_rate, sub_affiliate_rate } = req.body;
     const updateData = {};
     if (role !== undefined) {
-      if (!['user', 'manager', 'admin'].includes(role)) return res.status(400).json({ error: 'Perfil inválido.' });
+      if (!['user', 'manager'].includes(role)) return res.status(400).json({ error: 'Perfil inválido.' });
       updateData.role = role;
     }
     if (status !== undefined) updateData.status = status;
@@ -264,9 +292,12 @@ router.put('/users/:id', async (req, res) => {
     if (sub_affiliate_rate !== undefined) updateData.sub_affiliate_rate = Number(sub_affiliate_rate);
     if (req.body.manager_ggr_rate !== undefined) updateData.manager_ggr_rate = normalizeGgrRate(req.body.manager_ggr_rate);
 
-    try {
-      await db.collection('users').doc(req.params.id).update(updateData);
-    } catch (e) {}
+    const userRef = db.collection('users').doc(req.params.id);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    ensureTenantAccess(req, userDoc.data());
+    if (userDoc.data().role === 'tenant_admin' || ['admin', 'super_admin'].includes(userDoc.data().role)) return res.status(403).json({ error: 'Use o painel da plataforma para alterar administradores.' });
+    await userRef.update(updateData);
 
     res.json({ id: req.params.id, ...updateData, success: true });
   } catch (error) {
@@ -289,6 +320,7 @@ router.put('/users/:id/balance', async (req, res) => {
         const userRef = db.collection('users').doc(uid);
         const userDoc = await t.get(userRef);
         if (userDoc.exists) {
+          ensureTenantAccess(req, userDoc.data());
           const wallet = getWalletBuckets(userDoc.data());
           const newCashBalance = wallet.cashBalance + adjustment;
           const newBalance = wallet.balance + adjustment;
@@ -309,10 +341,11 @@ router.post('/users/:id/impersonate', async (req, res) => {
     const userDoc = await db.collection('users').doc(req.params.id).get();
     if (!userDoc.exists) return res.status(404).json({ error: 'Usuário não encontrado.' });
     const user = userDoc.data();
+    ensureTenantAccess(req, user);
     const token = jwt.sign(
-      { uid: userDoc.id, email: user.email || '', role: user.role || 'user' },
+      { uid: userDoc.id, email: user.email || '', role: user.role || 'user', tenant_id: user.tenant_id || req.adminTenantId },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: authTokenTtl(user.role || 'user') }
     );
     res.json({
       token,
@@ -333,12 +366,13 @@ router.post('/users/:id/impersonate', async (req, res) => {
 router.put('/users/:id/password', async (req, res) => {
   try {
     const { newPassword } = req.body;
-    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 4) {
-      return res.status(400).json({ error: 'A nova senha deve ter no mínimo 4 caracteres.' });
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
+      return res.status(400).json({ error: 'A nova senha deve ter no mínimo 8 caracteres.' });
     }
     const userRef = db.collection('users').doc(req.params.id);
     const userDoc = await userRef.get();
     if (!userDoc.exists) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    ensureTenantAccess(req, userDoc.data());
     const password_hash = await bcrypt.hash(newPassword, 10);
     await userRef.update({
       password_hash,
@@ -353,9 +387,12 @@ router.put('/users/:id/password', async (req, res) => {
 
 router.delete('/users/:id', async (req, res) => {
   try {
-    try {
-      await db.collection('users').doc(req.params.id).delete();
-    } catch (e) {}
+    const userRef = db.collection('users').doc(req.params.id);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    ensureTenantAccess(req, userDoc.data());
+    if (['tenant_admin', 'admin', 'super_admin'].includes(userDoc.data().role)) return res.status(403).json({ error: 'Administradores não podem ser excluídos por esta tela.' });
+    await userRef.delete();
     res.json({ success: true });
   } catch (error) {
     res.json({ success: true });
@@ -363,7 +400,7 @@ router.delete('/users/:id', async (req, res) => {
 });
 
 router.get('/managers', async (req, res) => {
-  const cacheKey = 'managers';
+  const cacheKey = tenantCacheKey(req, 'managers');
   const cached = getAdminCache(cacheKey);
   if (cached) return res.json(cached);
   try {
@@ -371,13 +408,13 @@ router.get('/managers', async (req, res) => {
       db.collection('users').get(),
       db.collection('manager_metrics').get(),
       db.collection('manager_payments').get(),
-      db.collection('settings').doc('global').get()
+      tenantSettingsRef(req.adminTenantId).get()
     ]);
     const settings = settingsDoc.exists ? settingsDoc.data() : {};
     const defaultRate = normalizeGgrRate(settings.defaultManagerGgrRate, DEFAULT_MANAGER_GGR_RATE);
-    const users = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-    const metrics = metricsSnapshot.docs.map(doc => doc.data());
-    const payments = paymentsSnapshot.docs.map(doc => doc.data());
+    const users = usersSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(doc => ({ id: doc.id, ...doc.data() }));
+    const metrics = metricsSnapshot.docs.map(doc => doc.data()).filter(item => belongsToTenant(item, req.adminTenantId));
+    const payments = paymentsSnapshot.docs.map(doc => doc.data()).filter(item => belongsToTenant(item, req.adminTenantId));
     const managers = users.filter(user => user.role === 'manager').map(manager => {
       const managerMetrics = metrics.filter(item => item.manager_id === manager.id);
       const managerPayments = payments.filter(item => item.manager_id === manager.id);
@@ -413,8 +450,9 @@ router.post('/managers/:id/activate', async (req, res) => {
     const userRef = db.collection('users').doc(req.params.id);
     const userDoc = await userRef.get();
     if (!userDoc.exists) return res.status(404).json({ error: 'Usuário não encontrado.' });
+    ensureTenantAccess(req, userDoc.data());
     if (userDoc.id === 'admin_master_uid') return res.status(400).json({ error: 'A conta principal não pode virar gerente.' });
-    const settingsDoc = await db.collection('settings').doc('global').get();
+    const settingsDoc = await tenantSettingsRef(req.adminTenantId).get();
     const defaultRate = normalizeGgrRate(settingsDoc.exists ? settingsDoc.data().defaultManagerGgrRate : undefined, DEFAULT_MANAGER_GGR_RATE);
     const rate = normalizeGgrRate(req.body.ggrRate, defaultRate);
     const code = userDoc.data().manager_code || buildManagerCode(userDoc.data().username, userDoc.id.slice(0, 5));
@@ -427,6 +465,10 @@ router.post('/managers/:id/activate', async (req, res) => {
 
 router.put('/managers/:id', async (req, res) => {
   try {
+    const managerRef = db.collection('users').doc(req.params.id);
+    const managerDoc = await managerRef.get();
+    if (!managerDoc.exists) return res.status(404).json({ error: 'Gerente não encontrado.' });
+    ensureTenantAccess(req, managerDoc.data());
     const update = {};
     if (req.body.ggrRate !== undefined) update.manager_ggr_rate = normalizeGgrRate(req.body.ggrRate);
     if (req.body.status !== undefined) {
@@ -436,11 +478,11 @@ router.put('/managers/:id', async (req, res) => {
     if (req.body.code !== undefined) {
       const code = String(req.body.code).trim().toLowerCase();
       if (!/^[a-z0-9]{4,20}$/.test(code)) return res.status(400).json({ error: 'Use um código de 4 a 20 letras ou números.' });
-      const existing = await db.collection('users').where('manager_code', '==', code).limit(1).get();
-      if (!existing.empty && existing.docs[0].id !== req.params.id) return res.status(409).json({ error: 'Este código já está em uso.' });
+      const existing = await findTenantUser('manager_code', code, req.adminTenantId);
+      if (existing && existing.id !== req.params.id) return res.status(409).json({ error: 'Este código já está em uso.' });
       update.manager_code = code;
     }
-    await db.collection('users').doc(req.params.id).update(update);
+    await managerRef.update(update);
     res.json({ id: req.params.id, ...update });
   } catch (error) {
     res.status(500).json({ error: 'Não foi possível atualizar o gerente.' });
@@ -453,8 +495,10 @@ router.post('/managers/:id/payments', async (req, res) => {
     if (!amount) return res.status(400).json({ error: 'Informe um pagamento válido.' });
     const managerDoc = await db.collection('users').doc(req.params.id).get();
     if (!managerDoc.exists || managerDoc.data().role !== 'manager') return res.status(404).json({ error: 'Gerente não encontrado.' });
+    ensureTenantAccess(req, managerDoc.data());
     const paymentRef = await db.collection('manager_payments').add({
       manager_id: req.params.id,
+      tenant_id: req.adminTenantId,
       amount,
       period: String(req.body.period || managerPeriod()),
       description: String(req.body.description || 'Pagamento de GGR'),
@@ -481,10 +525,11 @@ router.get('/settings', async (req, res) => {
       defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE,
       managerSelfRegistrationEnabled: true,
       ...BRANDING_DEFAULTS,
+      banners: BANNER_DEFAULTS,
       ...PROMOTION_DEFAULTS
     };
     try {
-      const doc = await db.collection('settings').doc('global').get();
+      const doc = await tenantSettingsRef(req.adminTenantId).get();
       if (doc.exists) {
         settings = { ...settings, ...doc.data() };
       }
@@ -512,7 +557,7 @@ router.put('/settings', async (req, res) => {
       ...PROMOTION_DEFAULTS
     };
     const brandingKeys = Object.keys(BRANDING_DEFAULTS);
-    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance', 'promoEnabled', 'bonusPercent', 'bonusMinDeposit', 'rolloverMultiplier', 'depositRolloverMultiplier', 'defaultManagerGgrRate', 'managerSelfRegistrationEnabled', ...brandingKeys];
+    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance', 'promoEnabled', 'bonusPercent', 'bonusMinDeposit', 'rolloverMultiplier', 'depositRolloverMultiplier', 'defaultManagerGgrRate', 'managerSelfRegistrationEnabled', 'banners', ...brandingKeys];
     const update = {};
     allowed.forEach(key => {
       if (req.body[key] !== undefined) update[key] = req.body[key];
@@ -525,12 +570,16 @@ router.put('/settings', async (req, res) => {
     if (update.managerSelfRegistrationEnabled !== undefined) update.managerSelfRegistrationEnabled = Boolean(update.managerSelfRegistrationEnabled);
     if (update.defaultManagerGgrRate !== undefined) update.defaultManagerGgrRate = normalizeGgrRate(update.defaultManagerGgrRate);
     if (brandingKeys.some(key => update[key] !== undefined)) {
-      const currentDoc = await db.collection('settings').doc('global').get();
+      const currentDoc = await tenantSettingsRef(req.adminTenantId).get();
       const currentBranding = currentDoc.exists ? currentDoc.data() : {};
       Object.assign(update, normalizeBranding({ ...BRANDING_DEFAULTS, ...currentBranding, ...update }));
     }
-    await db.collection('settings').doc('global').set(update, { merge: true });
-    const saved = await db.collection('settings').doc('global').get();
+    if (update.banners !== undefined) update.banners = normalizeBanners({ banners: update.banners });
+    update.tenant_id = req.adminTenantId;
+    update.updated_by = req.user.uid;
+    update.updated_at = FieldValue.serverTimestamp();
+    await tenantSettingsRef(req.adminTenantId).set(update, { merge: true });
+    const saved = await tenantSettingsRef(req.adminTenantId).get();
     res.json({ ...defaults, ...saved.data() });
   } catch (error) {
     res.status(500).json({ error: 'Não foi possível salvar as configurações.' });
@@ -541,7 +590,7 @@ router.put('/settings/difficulty', async (req, res) => {
   try {
     const { level } = req.body;
     try {
-      await db.collection('settings').doc('global').set({ difficulty: level }, { merge: true });
+      await tenantSettingsRef(req.adminTenantId).set({ difficulty: level, tenant_id: req.adminTenantId }, { merge: true });
     } catch (e) {}
     res.json({ difficulty: level, success: true });
   } catch (error) {
@@ -551,7 +600,7 @@ router.put('/settings/difficulty', async (req, res) => {
 
 router.post('/recalculate-rollovers', async (req, res) => {
   try {
-    const settingsDoc = await db.collection('settings').doc('global').get();
+    const settingsDoc = await tenantSettingsRef(req.adminTenantId).get();
     const settings = settingsDoc.exists ? settingsDoc.data() : {};
     const depositMultiplier = settings.depositRolloverMultiplier != null ? Number(settings.depositRolloverMultiplier) : 1;
     const bonusMultiplier = settings.rolloverMultiplier != null ? Number(settings.rolloverMultiplier) : 10;
@@ -570,7 +619,8 @@ router.post('/recalculate-rollovers', async (req, res) => {
     for (const userDoc of usersSnap.docs) {
       const user = userDoc.data();
       const uid = userDoc.id;
-      if (user.role === 'admin' || user.demo_account) continue;
+      if (!belongsToTenant(user, req.adminTenantId)) continue;
+      if (['admin', 'super_admin', 'tenant_admin'].includes(user.role) || user.demo_account) continue;
 
       let depsSnap;
       try {
@@ -647,7 +697,7 @@ router.post('/recalculate-rollovers', async (req, res) => {
 });
 
 router.get('/deposits', async (req, res) => {
-  const cacheKey = 'deposits:all';
+  const cacheKey = tenantCacheKey(req, 'deposits:all');
   const cached = getAdminCache(cacheKey);
   if (cached) return res.json(cached);
   try {
@@ -656,7 +706,7 @@ router.get('/deposits', async (req, res) => {
       db.collection('deposit_requests').where('status', '==', 'approved').get(),
       db.collection('users').get()
     ]);
-    const usersById = new Map(usersSnapshot.docs.map(doc => [doc.id, { id: doc.id, ...doc.data() }]));
+    const usersById = new Map(usersSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(doc => [doc.id, { id: doc.id, ...doc.data() }]));
     const mapDeposit = doc => {
       const deposit = doc.data();
       const user = usersById.get(deposit.uid) || {};
@@ -669,9 +719,9 @@ router.get('/deposits', async (req, res) => {
         origin: buildLeadOrigin(user, usersById)
       };
     };
-    const pending = pendingSnapshot.docs.map(mapDeposit)
+    const pending = pendingSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(mapDeposit)
       .sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at));
-    const approved = approvedSnapshot.docs.map(mapDeposit)
+    const approved = approvedSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(mapDeposit)
       .sort((a, b) => timestampMillis(b.approved_at || b.created_at) - timestampMillis(a.approved_at || a.created_at));
     const response = {
       deposits: [...approved, ...pending],
@@ -701,7 +751,8 @@ router.put('/deposits/:id/approve', async (req, res) => {
       const depositDoc = await transaction.get(depositRef);
       if (!depositDoc.exists || depositDoc.data().status !== 'pending') throw new Error('Depósito pendente não encontrado');
       const deposit = depositDoc.data();
-      const settingsDoc = await transaction.get(db.collection('settings').doc('global'));
+      ensureTenantAccess(req, deposit);
+      const settingsDoc = await transaction.get(tenantSettingsRef(req.adminTenantId));
       const calculatedPromotion = calculateDepositPromotion(deposit.amount, settingsDoc.exists ? settingsDoc.data() : {});
       const bonusAmount = deposit.bonusAmount == null ? calculatedPromotion.bonusAmount : Number(deposit.bonusAmount);
       const rolloverRequired = deposit.rolloverRequired == null ? calculatedPromotion.rolloverRequired : Number(deposit.rolloverRequired);
@@ -751,6 +802,7 @@ router.put('/deposits/:id/approve', async (req, res) => {
           reference_id: depositRef.id,
           balance_after: newBalance,
           rollover_required: rolloverRequired,
+          tenant_id: req.adminTenantId,
           created_at: FieldValue.serverTimestamp()
         });
       }
@@ -759,13 +811,13 @@ router.put('/deposits/:id/approve', async (req, res) => {
           const level1Rate = affiliate.affiliate_rate ?? 10;
           const commission = Math.floor(deposit.amount * level1Rate / 100);
           transaction.update(affiliateRef, { affiliate_balance: FieldValue.increment(commission) });
-          transaction.set(db.collection('affiliate_commissions').doc(), { affiliate_id: affiliateDoc.id, source_user_id: deposit.uid, level: 1, amount: commission, created_at: FieldValue.serverTimestamp() });
+          transaction.set(db.collection('affiliate_commissions').doc(), { tenant_id: req.adminTenantId, affiliate_id: affiliateDoc.id, source_user_id: deposit.uid, level: 1, amount: commission, created_at: FieldValue.serverTimestamp() });
 
           if (upperDoc?.exists) {
               const level2Rate = upperDoc.data().sub_affiliate_rate ?? 2;
               const subCommission = Math.floor(deposit.amount * level2Rate / 100);
               transaction.update(upperRef, { affiliate_balance: FieldValue.increment(subCommission) });
-              transaction.set(db.collection('affiliate_commissions').doc(), { affiliate_id: upperDoc.id, source_user_id: deposit.uid, level: 2, amount: subCommission, created_at: FieldValue.serverTimestamp() });
+              transaction.set(db.collection('affiliate_commissions').doc(), { tenant_id: req.adminTenantId, affiliate_id: upperDoc.id, source_user_id: deposit.uid, level: 2, amount: subCommission, created_at: FieldValue.serverTimestamp() });
           }
       }
     });
@@ -777,9 +829,11 @@ router.put('/deposits/:id/approve', async (req, res) => {
 
 router.put('/deposits/:id/reject', async (req, res) => {
   try {
-    try {
-      await db.collection('deposit_requests').doc(req.params.id).update({ status: 'rejected' });
-    } catch (e) {}
+    const ref = db.collection('deposit_requests').doc(req.params.id);
+    const doc = await ref.get();
+    if (!doc.exists) return res.status(404).json({ error: 'Depósito não encontrado.' });
+    ensureTenantAccess(req, doc.data());
+    await ref.update({ status: 'rejected', rejected_at: FieldValue.serverTimestamp(), rejected_by: req.user.uid });
     res.json({ success: true });
   } catch (error) {
     res.json({ success: true });
@@ -787,7 +841,7 @@ router.put('/deposits/:id/reject', async (req, res) => {
 });
 
 router.get('/withdrawals', async (req, res) => {
-  const cacheKey = 'withdrawals';
+  const cacheKey = tenantCacheKey(req, 'withdrawals');
   const cached = getAdminCache(cacheKey);
   if (cached) return res.json(cached);
   try {
@@ -795,8 +849,8 @@ router.get('/withdrawals', async (req, res) => {
       db.collection('withdrawal_requests').get(),
       db.collection('users').get()
     ]);
-    const usersById = new Map(usersSnapshot.docs.map(doc => [doc.id, { id: doc.id, ...doc.data() }]));
-    const withdrawals = snapshot.docs.map(doc => {
+    const usersById = new Map(usersSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(doc => [doc.id, { id: doc.id, ...doc.data() }]));
+    const withdrawals = snapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(doc => {
       const data = doc.data();
       const user = usersById.get(data.uid) || {};
       return {
@@ -833,6 +887,7 @@ router.put('/withdrawals/:id/approve', async (req, res) => {
     await db.runTransaction(async transaction => {
       const withdrawalDoc = await transaction.get(withdrawalRef);
       if (!withdrawalDoc.exists || withdrawalDoc.data().status !== 'pending') throw new Error('Saque pendente não encontrado ou já processado.');
+      ensureTenantAccess(req, withdrawalDoc.data());
       const txSnapshot = await transaction.get(db.collection('transactions').where('reference_id', '==', withdrawalRef.id).limit(1));
       transaction.update(withdrawalRef, {
         status: 'approved',
@@ -856,6 +911,7 @@ router.put('/withdrawals/:id/reject', async (req, res) => {
       const withdrawalDoc = await transaction.get(withdrawalRef);
       if (!withdrawalDoc.exists || withdrawalDoc.data().status !== 'pending') throw new Error('Saque pendente não encontrado');
       const withdrawal = withdrawalDoc.data();
+      ensureTenantAccess(req, withdrawal);
       const userRef = db.collection('users').doc(withdrawal.uid);
       const userDoc = await transaction.get(userRef);
       if (!userDoc.exists) throw new Error('Usuário não encontrado');
@@ -882,6 +938,7 @@ router.put('/withdrawals/:id/reject', async (req, res) => {
         status: 'completed',
         reference_id: withdrawalRef.id,
         description: 'Estorno de saque recusado',
+        tenant_id: req.adminTenantId,
         created_at: FieldValue.serverTimestamp()
       });
     });
@@ -893,7 +950,7 @@ router.put('/withdrawals/:id/reject', async (req, res) => {
 
 router.get('/banned-ips', async (req, res) => {
   try {
-    const doc = await db.collection('settings').doc('banned_ips').get();
+    const doc = await db.collection('settings').doc(tenantBannedIpsId(req.adminTenantId)).get();
     const bannedIPs = doc.exists ? (doc.data().ips || []) : [];
     res.json({ bannedIPs });
   } catch (error) {
@@ -905,7 +962,7 @@ router.post('/ban-ip', async (req, res) => {
   try {
     const ip = String(req.body.ip || '').trim();
     if (!ip) return res.status(400).json({ error: 'IP obrigatório.' });
-    const docRef = db.collection('settings').doc('banned_ips');
+    const docRef = db.collection('settings').doc(tenantBannedIpsId(req.adminTenantId));
     const doc = await docRef.get();
     const ips = doc.exists ? (doc.data().ips || []) : [];
     if (!ips.includes(ip)) {
@@ -915,7 +972,7 @@ router.post('/ban-ip', async (req, res) => {
       const usersSnap = await db.collection('users').where('last_ip', '==', ip).get();
       const batch = db.batch();
       usersSnap.forEach(userDoc => {
-        if (userDoc.data().role !== 'admin') {
+        if (belongsToTenant(userDoc.data(), req.adminTenantId) && !['admin', 'super_admin', 'tenant_admin'].includes(userDoc.data().role)) {
           batch.update(userDoc.ref, {
             status: 'suspended',
             balance: 0,
@@ -942,7 +999,8 @@ router.post('/ban-user-ip', async (req, res) => {
     const userDoc = await userRef.get();
     if (!userDoc.exists) return res.status(404).json({ error: 'Usuário não encontrado.' });
     const userData = userDoc.data();
-    if (userData.role === 'admin') return res.status(400).json({ error: 'Não é possível banir um administrador.' });
+    ensureTenantAccess(req, userData);
+    if (['admin', 'super_admin', 'tenant_admin'].includes(userData.role)) return res.status(400).json({ error: 'Não é possível banir um administrador.' });
 
     await userRef.update({
       status: 'suspended',
@@ -956,7 +1014,7 @@ router.post('/ban-user-ip', async (req, res) => {
 
     const userIp = userData.last_ip;
     if (userIp) {
-      const docRef = db.collection('settings').doc('banned_ips');
+      const docRef = db.collection('settings').doc(tenantBannedIpsId(req.adminTenantId));
       const doc = await docRef.get();
       const ips = doc.exists ? (doc.data().ips || []) : [];
       if (!ips.includes(userIp)) {
@@ -973,7 +1031,7 @@ router.post('/ban-user-ip', async (req, res) => {
 router.delete('/ban-ip/:ip', async (req, res) => {
   try {
     const ip = req.params.ip;
-    const docRef = db.collection('settings').doc('banned_ips');
+    const docRef = db.collection('settings').doc(tenantBannedIpsId(req.adminTenantId));
     const doc = await docRef.get();
     let ips = doc.exists ? (doc.data().ips || []) : [];
     ips = ips.filter(i => i !== ip);

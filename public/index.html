@@ -42,6 +42,7 @@
   <main>
     <section class="screen active landing" id="landing-screen">
       <div class="prism-grid" id="prism-grid" aria-hidden="true"><canvas id="prism-grid-canvas"></canvas><i class="prism-grid-vignette"></i></div>
+      <section class="tenant-campaign-banner tenant-campaign-top" id="tenant-top-banner" hidden></section>
       <div class="hero">
         <div class="hero-copy">
           <div class="eyebrow"><span></span><b id="hero-promo-eyebrow">OFERTA ATIVA · 100% DE BÔNUS</b></div>
@@ -100,6 +101,7 @@
         <div><div class="eyebrow"><span></span> PAINEL DO JOGADOR</div><h2>Boa jogada, <em id="dashboard-name">jogador</em>.</h2><p>Acompanhe sua banca e entre em uma nova partida.</p></div>
         <button class="btn btn-primary" onclick="game.showPrep('real','classic')">Nova partida <span>→</span></button>
       </header>
+      <section class="tenant-campaign-banner" id="tenant-dashboard-banner" hidden></section>
       <div class="stats-grid">
         <article class="metric metric-main"><small>SALDO DISPONÍVEL</small><strong id="dashboard-balance">R$ 0,00</strong><button onclick="app.showScreen('wallet-screen')">Adicionar saldo</button></article>
         <article class="metric"><small>RETORNO TOTAL</small><strong id="dashboard-return">R$ 0,00</strong><span class="positive">↑ desempenho acumulado</span></article>
@@ -183,6 +185,6 @@
   <div class="modal" id="win-modal"><div class="modal-card result-card"><div class="result-icon">✓</div><small>RESGATE CONCLUÍDO</small><h3 id="win-modal-payout">R$ 0,00</h3><p>Multiplicador final: <b id="win-modal-mult">1.00x</b></p><button class="btn btn-primary btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="modal" id="gameover-modal"><div class="modal-card result-card"><div class="result-icon danger">×</div><small>FIM DE PARTIDA</small><h3>Sem movimentos</h3><p>A rodada foi encerrada. Revise sua estratégia e tente novamente.</p><button class="btn btn-primary btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/branding.js?v=20260831-1"></script><script src="./js/prism-grid.js?v=20260811-1"></script><script src="./js/app.js?v=20260826-1"></script><script src="./js/wallet.js?v=20260821-2"></script><script src="./js/game.js?v=20260826-1"></script>
+  <script src="./js/branding.js?v=20260831-2"></script><script src="./js/prism-grid.js?v=20260811-1"></script><script src="./js/app.js?v=20260831-2"></script><script src="./js/wallet.js?v=20260821-2"></script><script src="./js/game.js?v=20260826-1"></script>
 </body>
 </html>

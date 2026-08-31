@@ -5,6 +5,8 @@ import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requireManager } from '../middleware/manager.js';
 import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
+import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
+import { findTenantUser } from '../lib/userLookup.js';
 
 const router = express.Router();
 router.use(authenticateToken);
@@ -16,6 +18,7 @@ const sum = (items, field) => items.reduce((total, item) => total + (Number(item
 router.get('/dashboard', async (req, res) => {
   try {
     const managerId = req.managerUser.id;
+    const tenantId = req.managerUser.tenant_id || req.user.tenant_id || DEFAULT_TENANT_ID;
     const currentPeriod = managerPeriod();
     
     let settingsDoc = { exists: false, data: () => ({}) };
@@ -26,7 +29,7 @@ router.get('/dashboard', async (req, res) => {
 
     try {
       [settingsDoc, metricsSnapshot, playersSnapshot, paymentsSnapshot, betsSnapshot] = await Promise.all([
-        db.collection('settings').doc('global').get().catch(() => ({ exists: false, data: () => ({}) })),
+        tenantSettingsRef(tenantId).get().catch(() => ({ exists: false, data: () => ({}) })),
         db.collection('manager_metrics').where('manager_id', '==', managerId).get().catch(() => ({ docs: [], size: 0 })),
         db.collection('users').where('manager_id', '==', managerId).get().catch(() => ({ docs: [], size: 0 })),
         db.collection('manager_payments').where('manager_id', '==', managerId).get().catch(() => ({ docs: [], size: 0 })),
@@ -69,7 +72,7 @@ router.get('/dashboard', async (req, res) => {
         email: req.managerUser.email,
         code: req.managerUser.manager_code,
         rate,
-        referralLink: `${req.protocol}://${req.get('host')}/?manager=${encodeURIComponent(req.managerUser.manager_code || '')}`
+        referralLink: `${req.protocol}://${req.get('host')}/?tenant=${encodeURIComponent(tenantId)}&manager=${encodeURIComponent(req.managerUser.manager_code || '')}`
       },
       currentPeriod,
       current: {
@@ -141,7 +144,7 @@ router.put('/players/:id/influencer', async (req, res) => {
   try {
     const playerRef = db.collection('users').doc(req.params.id);
     const playerDoc = await playerRef.get();
-    if (!playerDoc.exists || playerDoc.data().manager_id !== req.managerUser.id || playerDoc.data().role !== 'user') {
+    if (!playerDoc.exists || !belongsToTenant(playerDoc.data(), req.managerUser.tenant_id || DEFAULT_TENANT_ID) || playerDoc.data().manager_id !== req.managerUser.id || playerDoc.data().role !== 'user') {
       return res.status(404).json({ error: 'Jogador vinculado não encontrado.' });
     }
     const enabled = req.body.enabled === true;
@@ -162,20 +165,22 @@ router.post('/demo-accounts', async (req, res) => {
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');
     const demoBalance = Math.max(10000, Math.min(1000000, Math.round(Number(req.body.demoBalance) || 50000)));
+    const tenantId = req.managerUser.tenant_id || req.user.tenant_id || DEFAULT_TENANT_ID;
     if (username.length < 3 || !email.includes('@') || password.length < 6) {
       return res.status(400).json({ error: 'Use nome válido, e-mail válido e senha com 6 ou mais caracteres.' });
     }
     const [emailCheck, usernameCheck] = await Promise.all([
-      db.collection('users').where('email', '==', email).limit(1).get(),
-      db.collection('users').where('username', '==', username).limit(1).get()
+      findTenantUser('email', email, tenantId),
+      findTenantUser('username', username, tenantId)
     ]);
-    if (!emailCheck.empty) return res.status(409).json({ error: 'E-mail já cadastrado.' });
-    if (!usernameCheck.empty) return res.status(409).json({ error: 'Nome de usuário em uso.' });
+    if (emailCheck) return res.status(409).json({ error: 'E-mail já cadastrado.' });
+    if (usernameCheck) return res.status(409).json({ error: 'Nome de usuário em uso.' });
 
     const password_hash = await bcrypt.hash(password, 10);
     const ref_code = buildManagerCode(username, crypto.randomBytes(3).toString('hex'));
     const demoUser = {
       username,
+      tenant_id: tenantId,
       email,
       password_hash,
       balance: demoBalance,

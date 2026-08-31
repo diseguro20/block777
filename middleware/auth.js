@@ -1,9 +1,10 @@
 import jwt from 'jsonwebtoken';
+import { authTokenTtl, getJwtSecret } from '../lib/security.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
+const JWT_SECRET = getJwtSecret();
 
 export function generateToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '30d' });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: authTokenTtl(payload.role) });
 }
 
 export function authenticateToken(req, res, next) {
@@ -16,6 +17,11 @@ export function authenticateToken(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
+    const tokenTenant = decoded.tenant_id || 'blockerino';
+    const requestTenant = req.tenant?.id || 'blockerino';
+    if (!['admin', 'super_admin'].includes(decoded.role) && tokenTenant !== requestTenant) {
+      return res.status(403).json({ error: 'Esta sessão pertence a outra operação.' });
+    }
     req.user = decoded;
     next();
   } catch (err) {

@@ -19,6 +19,7 @@
         <button data-view="managers" onclick="admin.showView('managers',this)"><b>G</b><span>Gerentes</span></button>
         <button data-view="games" onclick="admin.showView('games',this)"><b>▦</b><span>Partidas</span></button>
         <button data-view="finance" onclick="admin.showView('finance',this)"><b>R$</b><span>Financeiro</span></button>
+        <button id="nav-tenants" data-view="tenants" onclick="admin.showView('tenants',this)" hidden><b>WL</b><span>Clientes</span></button>
         <button data-view="settings" onclick="admin.showView('settings',this)"><b>⚙</b><span>Configurações</span></button>
       </nav>
       <div class="side-bottom"><span class="system-online"><i></i>SISTEMA ONLINE</span><a href="/">← Voltar ao jogo</a></div>
@@ -131,6 +132,29 @@
         </div>
       </section>
 
+      <section class="admin-view" id="view-tenants">
+        <div class="admin-section-head"><div><small>PLATAFORMA WHITE LABEL</small><h3>Clientes e operações isoladas</h3><p class="section-copy">Crie uma operação com administrador próprio. Cada cliente acessa somente seus jogadores, financeiro e identidade visual.</p></div><button class="btn btn-ghost" onclick="admin.loadTenants()">Atualizar</button></div>
+        <div class="tenant-layout">
+          <article class="panel tenant-create-panel">
+            <div class="panel-title"><div><small>NOVO CLIENTE</small><h3>Provisionar operação</h3></div></div>
+            <form id="tenant-form" class="settings-grid">
+              <label>Nome da marca<input id="tenant-name" maxlength="80" required placeholder="Marca do cliente"></label>
+              <label>Identificador da URL<input id="tenant-slug" minlength="3" maxlength="40" required pattern="[a-z0-9-]+" placeholder="cliente-exemplo"></label>
+              <label>Nome do administrador<input id="tenant-admin-name" maxlength="80" required></label>
+              <label>E-mail do administrador<input id="tenant-admin-email" type="email" required></label>
+              <label class="wide-field">Senha inicial segura<input id="tenant-admin-password" type="password" minlength="10" autocomplete="new-password" required placeholder="Mínimo de 10 caracteres"></label>
+              <label class="wide-field">Domínios (opcional)<input id="tenant-domains" placeholder="cliente.com.br, jogar.cliente.com.br"></label>
+              <button class="btn btn-primary" type="submit">Criar operação e administrador</button>
+            </form>
+            <p class="security-note">A senha é transmitida somente ao servidor por HTTPS, transformada em hash e nunca retornada. Chaves do gateway não são copiadas para o cliente.</p>
+          </article>
+          <article class="panel table-wrap">
+            <div class="panel-title"><div><small>OPERAÇÕES</small><h3>Clientes ativos</h3></div></div>
+            <table class="responsive-table"><thead><tr><th>Cliente</th><th>Identificador</th><th>Domínios</th><th>Links</th><th>Status</th><th>Ação</th></tr></thead><tbody id="tenants-table"></tbody></table>
+          </article>
+        </div>
+      </section>
+
       <section class="admin-view" id="view-settings">
         <article class="panel settings-panel">
           <div class="panel-title"><div><small>REGRAS DA PLATAFORMA</small><h3>Configurações gerais</h3></div></div>
@@ -153,7 +177,7 @@
           </form>
         </article>
         <article class="panel settings-panel white-label-panel">
-          <div class="panel-title"><div><small>WHITE LABEL</small><h3>Marca e canais comerciais</h3></div><span class="badge">Configuração global</span></div>
+          <div class="panel-title"><div><small>WHITE LABEL</small><h3>Marca e canais comerciais</h3></div><span class="badge">Sua operação</span></div>
           <p class="settings-intro">Personalize nome, identidade visual, domínio e atendimento. As alterações são aplicadas na landing page e nos painéis.</p>
           <form id="branding-form" class="settings-grid">
             <label>Nome da marca<input id="set-brand-name" maxlength="40" placeholder="BLOCKERINO"></label>
@@ -165,6 +189,16 @@
             <label class="wide-field">URL do logotipo<input id="set-logo-url" type="url" placeholder="https://seudominio.com/logo.png"></label>
             <label class="wide-field">URL oficial da plataforma<input id="set-site-url" type="url" placeholder="https://seudominio.com"></label>
             <button class="btn btn-primary" type="submit">Salvar identidade white-label</button>
+          </form>
+        </article>
+        <article class="panel settings-panel white-label-panel">
+          <div class="panel-title"><div><small>BANNERS</small><h3>Campanhas da operação</h3></div><span class="badge">Responsivo</span></div>
+          <p class="settings-intro">Personalize o banner do topo da landing page, do painel do jogador e da área de afiliados. Use imagens HTTPS em formato horizontal.</p>
+          <form id="banners-form" class="banner-settings-list">
+            <fieldset class="banner-editor" data-banner="topBanner"><legend>Topo da landing page</legend><label class="switch-row"><span><b>Exibir banner</b><small>Mostra a campanha antes da apresentação principal</small></span><input id="banner-top-enabled" type="checkbox"></label><label>URL da imagem<input id="banner-top-image" type="url" placeholder="https://.../banner.jpg"></label><label>Título<input id="banner-top-title" maxlength="100"></label><label>Texto<input id="banner-top-copy" maxlength="240"></label><div class="settings-grid"><label>Texto do botão<input id="banner-top-cta-label" maxlength="40"></label><label>Link do botão<input id="banner-top-cta-url" type="url" placeholder="https://..."></label></div></fieldset>
+            <fieldset class="banner-editor" data-banner="dashboardBanner"><legend>Painel do jogador</legend><label class="switch-row"><span><b>Exibir banner</b><small>Campanha após o login</small></span><input id="banner-dashboard-enabled" type="checkbox"></label><label>URL da imagem<input id="banner-dashboard-image" type="url" placeholder="https://.../banner.jpg"></label><label>Título<input id="banner-dashboard-title" maxlength="100"></label><label>Texto<input id="banner-dashboard-copy" maxlength="240"></label><div class="settings-grid"><label>Texto do botão<input id="banner-dashboard-cta-label" maxlength="40"></label><label>Link do botão<input id="banner-dashboard-cta-url" type="url" placeholder="https://..."></label></div></fieldset>
+            <fieldset class="banner-editor" data-banner="affiliateBanner"><legend>Painel de afiliados</legend><label class="switch-row"><span><b>Exibir banner</b><small>Campanha para parceiros e influenciadores</small></span><input id="banner-affiliate-enabled" type="checkbox"></label><label>URL da imagem<input id="banner-affiliate-image" type="url" placeholder="https://.../banner.jpg"></label><label>Título<input id="banner-affiliate-title" maxlength="100"></label><label>Texto<input id="banner-affiliate-copy" maxlength="240"></label><div class="settings-grid"><label>Texto do botão<input id="banner-affiliate-cta-label" maxlength="40"></label><label>Link do botão<input id="banner-affiliate-cta-url" type="url" placeholder="https://..."></label></div></fieldset>
+            <button class="btn btn-primary" type="submit">Salvar banners</button>
           </form>
         </article>
       </section>
@@ -185,12 +219,12 @@
   </div>
 
   <div class="modal" id="balance-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('balance-modal')">×</button><small>AJUSTE MANUAL</small><h3 id="balance-modal-user">Jogador</h3><label>Operação</label><select id="balance-type-select"><option value="credit">Adicionar saldo</option><option value="debit">Remover saldo</option></select><label>Valor em R$</label><input id="balance-amount-input" type="number" min="1"><label>Motivo</label><input id="balance-desc-input"><button class="btn btn-primary btn-wide" onclick="admin.confirmBalanceAdjustment()">Confirmar ajuste</button></div></div>
-  <div class="modal" id="password-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('password-modal')">×</button><small>ALTERAR SENHA DO JOGADOR</small><h3 id="password-modal-user">Jogador</h3><p style="color:var(--color-text-muted);font-size:13px;margin:0 0 14px">Defina uma nova senha de acesso para esta conta.</p><label>Nova senha</label><input id="user-new-password" type="text" placeholder="Digite a nova senha (mínimo 4 caracteres)" minlength="4" required><button class="btn btn-primary btn-wide" type="button" onclick="admin.confirmPasswordChange()">Salvar nova senha</button></div></div>
+  <div class="modal" id="password-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('password-modal')">×</button><small>ALTERAR SENHA DO JOGADOR</small><h3 id="password-modal-user">Jogador</h3><p style="color:var(--color-text-muted);font-size:13px;margin:0 0 14px">Defina uma nova senha de acesso para esta conta.</p><label>Nova senha</label><input id="user-new-password" type="password" placeholder="Digite a nova senha (mínimo 8 caracteres)" minlength="8" autocomplete="new-password" required><button class="btn btn-primary btn-wide" type="button" onclick="admin.confirmPasswordChange()">Salvar nova senha</button></div></div>
   <div class="modal" id="commission-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('commission-modal')">×</button><small>COMISSÃO DE AFILIADO / INFLUENCIADOR</small><h3 id="commission-modal-user">Jogador</h3><p style="color:var(--color-text-muted);font-size:13px;margin:0 0 14px">Configure a porcentagem de comissão deste influenciador sobre os depósitos dos indicados (atualizado em tempo real no painel dele).</p><label>Comissão Nível 1 - Indicação Direta (%)</label><input id="comm-level1-input" type="number" min="0" max="100" step="0.5" placeholder="Padrão global: 10%"><label>Comissão Nível 2 - Sub-afiliados (%)</label><input id="comm-level2-input" type="number" min="0" max="100" step="0.5" placeholder="Padrão global: 2%"><button class="btn btn-primary btn-wide" type="button" onclick="admin.saveCustomCommission()">Salvar comissão</button></div></div>
   <div class="modal" id="manager-modal"><div class="modal-card"><button class="modal-close" onclick="app.closeModal('manager-modal')">×</button><small>CONFIGURAÇÃO DO GERENTE</small><h3 id="manager-modal-name">Gerente</h3><p style="color:var(--color-text-muted);font-size:13px;margin:0 0 14px">Configure a taxa GGR e o código do gerente (atualizado em tempo real no painel dele).</p><label>Taxa de GGR da plataforma (%)</label><input id="manager-rate-input" type="number" min="0" max="100" step="0.01"><label>Código do link</label><input id="manager-code-input" minlength="4" maxlength="20"><label>Status</label><select id="manager-status-select"><option value="active">Ativo</option><option value="suspended">Suspenso</option></select><button class="btn btn-primary btn-wide" type="button" onclick="admin.saveManager()">Salvar gerente</button><hr class="modal-divider"><small>BAIXA DE PAGAMENTO</small><label>Valor recebido em R$</label><input id="manager-payment-input" type="number" min="0.01" step="0.01"><label>Descrição</label><input id="manager-payment-desc" placeholder="Pagamento de GGR"><button class="btn btn-ghost btn-wide" type="button" onclick="admin.registerManagerPayment()">Registrar pagamento</button></div></div>
   <div class="toast-container" id="toast-container"></div>
   <script src="/js/branding.js?v=20260831-1"></script>
   <script src="/js/app.js?v=20260821-2"></script>
-  <script src="/js/admin.js?v=20260831-1"></script>
+  <script src="/js/admin.js?v=20260831-2"></script>
 </body>
 </html>

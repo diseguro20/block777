@@ -5,14 +5,15 @@ import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { createVizzionPix, getVizzionTransaction, parseVizzionWebhook, vizzionPayStatus } from '../lib/vizzionpay.js';
 import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
+import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
 
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 const PUBLIC_PROMOTION_CACHE_TTL_MS = 5 * 60 * 1000;
-let publicPromotionCache = { value: null, expiresAt: 0 };
+const publicPromotionCache = new Map();
 
-async function getPromotionSettings() {
-  const settingsRef = db.collection('settings').doc('global');
+async function getPromotionSettings(tenantId = DEFAULT_TENANT_ID) {
+  const settingsRef = tenantSettingsRef(tenantId);
   const settingsDoc = await settingsRef.get();
   const settings = settingsDoc.exists ? settingsDoc.data() : {};
   if (settings.promotionVersion === PROMOTION_DEFAULTS.promotionVersion) return settings;
@@ -26,21 +27,22 @@ async function getPromotionSettings() {
   return { ...settings, ...campaign };
 }
 
-async function getPublicPromotionSettings() {
+async function getPublicPromotionSettings(tenantId = DEFAULT_TENANT_ID) {
   const now = Date.now();
-  if (publicPromotionCache.value && now < publicPromotionCache.expiresAt) {
-    return publicPromotionCache.value;
+  const cached = publicPromotionCache.get(tenantId);
+  if (cached?.value && now < cached.expiresAt) {
+    return cached.value;
   }
 
   try {
-    const promotion = normalizePromotionSettings(await getPromotionSettings());
-    publicPromotionCache = {
+    const promotion = normalizePromotionSettings(await getPromotionSettings(tenantId));
+    publicPromotionCache.set(tenantId, {
       value: promotion,
       expiresAt: now + PUBLIC_PROMOTION_CACHE_TTL_MS
-    };
+    });
     return promotion;
   } catch (error) {
-    if (publicPromotionCache.value) return publicPromotionCache.value;
+    if (cached?.value) return cached.value;
     return normalizePromotionSettings({});
   }
 }
@@ -48,16 +50,17 @@ async function getPublicPromotionSettings() {
 router.get('/promotion', async (req, res) => {
   res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=900');
   res.set('X-Blockerino-Promotion-Cache', 'edge-v1');
-  res.json(await getPublicPromotionSettings());
+  res.json(await getPublicPromotionSettings(req.tenant?.id || DEFAULT_TENANT_ID));
 });
 
 router.post('/deposit', authenticateToken, async (req, res) => {
   try {
     const { amount } = req.body;
+    const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
     let minDeposit = 2000;
     let settings = {};
     try {
-      settings = await getPromotionSettings();
+      settings = await getPromotionSettings(tenantId);
       if (settings) {
         minDeposit = Math.max(2000, Number(settings.minDeposit) || 2000);
       }
@@ -70,6 +73,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     const docRef = db.collection('deposit_requests').doc();
     const userDoc = await db.collection('users').doc(req.user.uid).get();
     const user = userDoc.exists ? userDoc.data() : {};
+    if (!belongsToTenant(user, tenantId)) return res.status(403).json({ error: 'Conta não pertence a esta operação.' });
     if (user.demo_account) return res.status(403).json({ error: 'Contas demo utilizam saldo virtual e não aceitam depósitos.' });
     const webhookUrl = `${req.protocol}://${req.get('host')}/api/wallet/webhook/vizzionpay`;
     const charge = await createVizzionPix({
@@ -84,6 +88,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
 
     await docRef.set({
       uid: req.user.uid,
+      tenant_id: tenantId,
       username: user.username || '',
       amount,
       pixCode: charge.pixCode,
@@ -105,6 +110,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
 
     await db.collection('transactions').add({
       uid: req.user.uid,
+      tenant_id: tenantId,
       type: 'deposit',
       amount,
       status: 'pending',
@@ -145,9 +151,11 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
     const userDoc = await transaction.get(userRef);
     if (!userDoc.exists) throw new Error('Usuário não encontrado.');
     const user = userDoc.data();
+    const tenantId = deposit.tenant_id || DEFAULT_TENANT_ID;
+    if (!belongsToTenant(user, tenantId)) throw new Error('Depósito não pertence à conta informada.');
     const wallet = getWalletBuckets(user);
 
-    const settingsDoc = await transaction.get(db.collection('settings').doc('global'));
+    const settingsDoc = await transaction.get(tenantSettingsRef(deposit.tenant_id || DEFAULT_TENANT_ID));
     const settings = settingsDoc.exists ? settingsDoc.data() : {};
     const calculatedPromo = calculateDepositPromotion(deposit.amount, settings);
 
@@ -172,9 +180,11 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
     if (user.referred_by) {
       affiliateRef = db.collection('users').doc(user.referred_by);
       affiliateDoc = await transaction.get(affiliateRef);
-      if (affiliateDoc.exists && affiliateDoc.data().referred_by) {
+      if (affiliateDoc.exists && !belongsToTenant(affiliateDoc.data(), tenantId)) affiliateDoc = null;
+      if (affiliateDoc?.exists && affiliateDoc.data().referred_by) {
         upperRef = db.collection('users').doc(affiliateDoc.data().referred_by);
         upperDoc = await transaction.get(upperRef);
+        if (upperDoc.exists && !belongsToTenant(upperDoc.data(), tenantId)) upperDoc = null;
       }
     }
 
@@ -206,6 +216,7 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
     if (bonusAmount > 0) {
       transaction.set(db.collection('transactions').doc(), {
         uid: deposit.uid,
+        tenant_id: tenantId,
         type: 'deposit_bonus',
         amount: bonusAmount,
         status: 'locked',
@@ -220,6 +231,7 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       const commission = Math.floor(deposit.amount * (affiliateDoc.data().affiliate_rate ?? 10) / 100);
       transaction.update(affiliateRef, { affiliate_balance: FieldValue.increment(commission) });
       transaction.set(db.collection('affiliate_commissions').doc(), {
+        tenant_id: tenantId,
         affiliate_id: affiliateDoc.id,
         source_user_id: deposit.uid,
         level: 1,
@@ -230,6 +242,7 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
         const subCommission = Math.floor(deposit.amount * (upperDoc.data().sub_affiliate_rate ?? 2) / 100);
         transaction.update(upperRef, { affiliate_balance: FieldValue.increment(subCommission) });
         transaction.set(db.collection('affiliate_commissions').doc(), {
+          tenant_id: tenantId,
           affiliate_id: upperDoc.id,
           source_user_id: deposit.uid,
           level: 2,
@@ -252,7 +265,6 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
 router.post('/webhook/vizzionpay', async (req, res) => {
   try {
     const event = parseVizzionWebhook(req.body);
-    console.log('[VizzionPay Webhook Received]:', JSON.stringify(req.body));
 
     let depositRef = null;
     let depositDoc = null;
@@ -293,19 +305,46 @@ router.post('/webhook/vizzionpay', async (req, res) => {
       return res.json({ received: true, status: 'already_approved' });
     }
 
-    const isPaid = event.paid ||
-      ['COMPLETED', 'PAID', 'APPROVED', 'SETTLED'].includes(String(event.status).toUpperCase()) ||
-      ['TRANSACTION_PAID', 'PIX_RECEIVED', 'PAYMENT_RECEIVED'].includes(String(event.event).toUpperCase()) ||
-      String(req.body?.status || '').toUpperCase() === 'COMPLETED' ||
-      String(req.body?.event || '').toUpperCase() === 'TRANSACTION_PAID';
+    // Nunca confie no status enviado pelo chamador. A confirmação é consultada
+    // diretamente na Vizzion Pay usando as credenciais privadas do servidor.
+    let verifiedTransaction;
+    try {
+      const lookup = await getVizzionTransaction({
+        gatewayId: depositData.gatewayId || event.gatewayId,
+        referenceId: depositRef.id
+      });
+      const candidates = Array.isArray(lookup) ? lookup
+        : Array.isArray(lookup?.data) ? lookup.data
+        : Array.isArray(lookup?.transactions) ? lookup.transactions
+        : [lookup?.transaction || lookup];
+      verifiedTransaction = candidates.find(item => {
+        const id = String(item?.id || item?.transactionId || '');
+        const reference = String(item?.identifier || item?.clientIdentifier || item?.metadata?.referenceId || '');
+        return (depositData.gatewayId && id === String(depositData.gatewayId)) || reference === depositRef.id;
+      });
+    } catch (verificationError) {
+      console.warn('[VizzionPay Webhook] Confirmação autenticada indisponível:', verificationError.message);
+      return res.status(202).json({ received: true, status: 'verification_pending' });
+    }
+
+    if (!verifiedTransaction) {
+      return res.status(202).json({ received: true, status: 'transaction_not_verified' });
+    }
+    const verifiedStatus = String(verifiedTransaction.status || '').toUpperCase();
+    const isPaid = ['COMPLETED', 'PAID', 'APPROVED', 'SETTLED'].includes(verifiedStatus);
+    const gatewayAmount = Number(verifiedTransaction.amount ?? verifiedTransaction.value);
+    if (Number.isFinite(gatewayAmount) && Math.round(gatewayAmount * 100) !== Number(depositData.amount)) {
+      console.warn(`[VizzionPay Webhook] Valor divergente no depósito ${depositRef.id}.`);
+      return res.status(409).json({ received: true, status: 'amount_mismatch' });
+    }
 
     if (isPaid) {
-      await approveAndCreditDeposit(depositRef, 'COMPLETED');
+      await approveAndCreditDeposit(depositRef, verifiedStatus);
       console.log(`[VizzionPay Webhook] Depósito ${depositRef.id} aprovado com sucesso e saldo creditado!`);
       return res.json({ received: true, status: 'approved' });
     }
 
-    const statusUpper = String(event.status || req.body?.status || '').toUpperCase();
+    const statusUpper = verifiedStatus;
     if (['REFUNDED', 'CHARGED_BACK', 'FAILED'].includes(statusUpper)) {
       await depositRef.update({
         status: statusUpper.toLowerCase(),
@@ -401,7 +440,7 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
     const { amount, pixKey } = req.body;
     let minWithdrawal = 1000;
     try {
-      const settingsDoc = await db.collection('settings').doc('global').get();
+      const settingsDoc = await tenantSettingsRef(req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID).get();
       if (settingsDoc.exists) minWithdrawal = settingsDoc.data().minWithdrawal ?? minWithdrawal;
     } catch (e) {}
     if (!amount || amount < minWithdrawal || !pixKey) {
@@ -409,6 +448,7 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
     }
 
     const uid = req.user.uid;
+    const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
     const withdrawalId = uuidv4();
 
     const result = await db.runTransaction(async (t) => {
@@ -417,6 +457,7 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
       if (!userDoc.exists) throw new Error('User not found');
       
       const userData = userDoc.data();
+      if (!belongsToTenant(userData, tenantId)) throw new Error('Conta não pertence a esta operação.');
       if (userData.demo_account) throw new Error('Saldo de conta demo é virtual e não pode ser sacado.');
       const wallet = getWalletBuckets(userData);
       if (wallet.rolloverRemaining > 0) {
@@ -434,6 +475,7 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
       const reqRef = db.collection('withdrawal_requests').doc();
       t.set(reqRef, {
         uid,
+        tenant_id: tenantId,
         amount,
         pixKey,
         status: 'pending',
@@ -444,6 +486,7 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
       const txRef = db.collection('transactions').doc();
       t.set(txRef, {
         uid,
+        tenant_id: tenantId,
         type: 'withdraw_request',
         amount: -amount,
         balance_after: newBalance,
@@ -467,7 +510,7 @@ router.get('/history', authenticateToken, async (req, res) => {
     const [snapshot, userDoc, settingsDoc, approvedDepsSnap] = await Promise.all([
       db.collection('transactions').where('uid', '==', uid).get(),
       db.collection('users').doc(uid).get(),
-      getPromotionSettings(),
+      getPromotionSettings(req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID),
       db.collection('deposit_requests').where('uid', '==', uid).where('status', '==', 'approved').get()
     ]);
 

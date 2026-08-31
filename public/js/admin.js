@@ -9,10 +9,13 @@ const admin = {
     if (!app.token) return this.requireLogin();
     try {
       await app.fetchUserDataOnly();
-      if (app.user?.role !== 'admin') throw new Error('Sem permissão');
+      if (!['admin', 'super_admin', 'tenant_admin'].includes(app.user?.role)) throw new Error('Sem permissão');
+      this.configureAccess();
       await this.loadInitialView();
       this.bindSettings();
       this.bindBranding();
+      this.bindBanners();
+      this.bindTenants();
     } catch (_) {
       this.requireLogin();
     }
@@ -55,20 +58,28 @@ const admin = {
         method: 'POST',
         body: JSON.stringify({ email, password })
       });
-      if (data?.user?.role !== 'admin') {
+      if (!['admin', 'super_admin', 'tenant_admin'].includes(data?.user?.role)) {
         throw new Error('Esta conta não possui acesso administrativo.');
       }
       app.token = data.token;
       app.user = data.user;
-      localStorage.setItem('token', data.token);
+      if (data.user?.tenant_id) {
+        app.tenantSlug = data.user.tenant_id;
+        localStorage.setItem('tenant_slug', app.tenantSlug);
+      }
+      localStorage.setItem(`token:${app.tenantSlug || `host:${location.hostname}`}`, data.token);
+      if (app.tenantSlug === 'blockerino') localStorage.setItem('token', data.token);
 
       const auth = document.getElementById('admin-auth');
       if (auth) auth.hidden = true;
       document.querySelector('.admin-layout')?.classList.remove('locked');
 
+      this.configureAccess();
       await this.loadInitialView();
       this.bindSettings();
       this.bindBranding();
+      this.bindBanners();
+      this.bindTenants();
       app.showToast('Login de administrador realizado com sucesso!');
     } catch (error) {
       if (btn) {
@@ -85,6 +96,7 @@ const admin = {
   },
 
   showView(name) {
+    if (name === 'tenants' && !this.isPlatformAdmin()) return;
     document.querySelectorAll('.admin-view').forEach(view => view.classList.remove('active'));
     document.getElementById(`view-${name}`)?.classList.add('active');
     document.querySelectorAll('.side-nav button').forEach(item => item.classList.toggle('active', item.dataset.view === name));
@@ -94,7 +106,8 @@ const admin = {
       managers: 'Gerentes',
       games: 'Partidas',
       finance: 'Financeiro',
-      settings: 'Configurações'
+      settings: 'Configurações',
+      tenants: 'Clientes white label'
     })[name];
     if (name === 'players') this.loadUsers();
     if (name === 'managers') this.loadManagers();
@@ -104,6 +117,7 @@ const admin = {
       this.loadWithdrawals();
       this.loadGatewayStatus();
     }
+    if (name === 'tenants') this.loadTenants();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   },
 
@@ -113,6 +127,21 @@ const admin = {
       this.loadSettings(),
       this.loadGatewayStatus()
     ]);
+  },
+
+  isPlatformAdmin() {
+    return ['admin', 'super_admin'].includes(app.user?.role);
+  },
+
+  configureAccess() {
+    const platformAdmin = this.isPlatformAdmin();
+    document.body.classList.toggle('platform-admin', platformAdmin);
+    const tenantNav = document.getElementById('nav-tenants');
+    if (tenantNav) tenantNav.hidden = !platformAdmin;
+    const profileTitle = document.querySelector('.admin-profile span b');
+    const profileCopy = document.querySelector('.admin-profile span small');
+    if (profileTitle) profileTitle.textContent = platformAdmin ? 'Administrador da plataforma' : 'Administrador do cliente';
+    if (profileCopy) profileCopy.textContent = platformAdmin ? 'Controle de operações white label' : 'Acesso isolado à sua operação';
   },
 
   scheduleUserSearch(value = '') {
@@ -186,6 +215,7 @@ const admin = {
       const element = document.getElementById(id);
       if (element) element.value = value;
     });
+    this.populateBanners(data.banners || {});
   },
 
   bindSettings() {
@@ -237,6 +267,98 @@ const admin = {
         app.showToast(error.message || 'Não foi possível salvar a identidade.');
       }
     };
+  },
+
+  bannerFromForm(prefix) {
+    return {
+      enabled: document.getElementById(`banner-${prefix}-enabled`)?.checked === true,
+      imageUrl: document.getElementById(`banner-${prefix}-image`)?.value || '',
+      title: document.getElementById(`banner-${prefix}-title`)?.value || '',
+      copy: document.getElementById(`banner-${prefix}-copy`)?.value || '',
+      ctaLabel: document.getElementById(`banner-${prefix}-cta-label`)?.value || '',
+      ctaUrl: document.getElementById(`banner-${prefix}-cta-url`)?.value || ''
+    };
+  },
+
+  populateBanners(banners) {
+    const mapping = { top: banners.topBanner || {}, dashboard: banners.dashboardBanner || {}, affiliate: banners.affiliateBanner || {} };
+    Object.entries(mapping).forEach(([prefix, banner]) => {
+      const enabled = document.getElementById(`banner-${prefix}-enabled`);
+      if (enabled) enabled.checked = banner.enabled === true;
+      ['image', 'title', 'copy', 'cta-label', 'cta-url'].forEach(field => {
+        const key = ({ image: 'imageUrl', title: 'title', copy: 'copy', 'cta-label': 'ctaLabel', 'cta-url': 'ctaUrl' })[field];
+        const element = document.getElementById(`banner-${prefix}-${field}`);
+        if (element) element.value = banner[key] || '';
+      });
+    });
+  },
+
+  bindBanners() {
+    const form = document.getElementById('banners-form');
+    if (!form || form.dataset.bound === 'true') return;
+    form.dataset.bound = 'true';
+    form.onsubmit = async event => {
+      event.preventDefault();
+      try {
+        await app.fetchAPI('/api/admin/settings', { method: 'PUT', body: JSON.stringify({ banners: {
+          topBanner: this.bannerFromForm('top'),
+          dashboardBanner: this.bannerFromForm('dashboard'),
+          affiliateBanner: this.bannerFromForm('affiliate')
+        } }) });
+        app.showToast('Banners publicados com segurança.');
+      } catch (error) { app.showToast(error.message || 'Não foi possível salvar os banners.'); }
+    };
+  },
+
+  bindTenants() {
+    const form = document.getElementById('tenant-form');
+    if (!form || form.dataset.bound === 'true') return;
+    form.dataset.bound = 'true';
+    const slug = document.getElementById('tenant-slug');
+    if (slug) slug.addEventListener('input', () => { slug.value = slug.value.toLowerCase().replace(/[^a-z0-9-]/g, ''); });
+    form.onsubmit = async event => {
+      event.preventDefault();
+      const payload = {
+        name: document.getElementById('tenant-name').value,
+        slug: document.getElementById('tenant-slug').value,
+        adminName: document.getElementById('tenant-admin-name').value,
+        adminEmail: document.getElementById('tenant-admin-email').value,
+        password: document.getElementById('tenant-admin-password').value,
+        domain: document.getElementById('tenant-domains').value
+      };
+      try {
+        const created = await app.fetchAPI('/api/platform/tenants', { method: 'POST', body: JSON.stringify(payload) });
+        form.reset();
+        await this.loadTenants();
+        app.showToast(`Operação ${created.tenant.name} criada.`);
+      } catch (error) { app.showToast(error.message || 'Não foi possível criar o cliente.'); }
+    };
+  },
+
+  async loadTenants() {
+    if (!this.isPlatformAdmin()) return;
+    const table = document.getElementById('tenants-table');
+    if (!table) return;
+    try {
+      const data = await app.fetchAPI('/api/platform/tenants');
+      const tenants = data.tenants || [];
+      table.innerHTML = tenants.length ? tenants.map(tenant => {
+        const slug = this.escape(tenant.slug || tenant.id);
+        const active = tenant.status !== 'suspended';
+        const domains = Array.isArray(tenant.domains) && tenant.domains.length ? tenant.domains.join(', ') : 'URL compartilhada';
+        const base = `${location.origin}/?tenant=${encodeURIComponent(tenant.slug || tenant.id)}`;
+        const adminUrl = `${location.origin}/admin/?tenant=${encodeURIComponent(tenant.slug || tenant.id)}`;
+        return `<tr><td data-label="Cliente"><b>${this.escape(tenant.name || slug)}</b></td><td data-label="Identificador"><span class="mono">${slug}</span></td><td data-label="Domínios">${this.escape(domains)}</td><td data-label="Links"><a href="${base}" target="_blank" rel="noopener">Site</a> · <a href="${adminUrl}" target="_blank" rel="noopener">Admin</a></td><td data-label="Status"><span class="badge ${active ? '' : 'badge-danger'}">${active ? 'Ativo' : 'Suspenso'}</span></td><td data-label="Ação"><button class="table-action" onclick="admin.setTenantStatus('${slug}','${active ? 'suspended' : 'active'}')">${active ? 'Suspender' : 'Ativar'}</button></td></tr>`;
+      }).join('') : '<tr><td colspan="6" class="empty-state">Nenhum cliente white label criado.</td></tr>';
+    } catch (error) { table.innerHTML = `<tr><td colspan="6" class="empty-state">${this.escape(error.message)}</td></tr>`; }
+  },
+
+  async setTenantStatus(id, status) {
+    try {
+      await app.fetchAPI(`/api/platform/tenants/${encodeURIComponent(id)}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+      await this.loadTenants();
+      app.showToast(status === 'active' ? 'Operação ativada.' : 'Operação suspensa.');
+    } catch (error) { app.showToast(error.message); }
   },
 
   highlightDifficulty(level) {
@@ -375,7 +497,8 @@ const admin = {
       });
       if (data && data.token) {
         app.showToast(`Abrindo conta de ${username}...`);
-        window.open(`/?impersonate_token=${encodeURIComponent(data.token)}`, '_blank');
+        const tenant = app.tenantSlug && app.tenantSlug !== 'blockerino' ? `&tenant=${encodeURIComponent(app.tenantSlug)}` : '';
+        window.open(`/?impersonate_token=${encodeURIComponent(data.token)}${tenant}`, '_blank', 'noopener');
       }
     } catch (error) {
       app.showToast(error.message || 'Não foi possível entrar na conta.');
@@ -397,8 +520,8 @@ const admin = {
     if (!this.selectedPasswordUserId) return;
     const passInput = document.getElementById('user-new-password');
     const newPassword = passInput ? passInput.value.trim() : '';
-    if (!newPassword || newPassword.length < 4) {
-      return app.showToast('A nova senha deve ter no mínimo 4 caracteres.');
+    if (!newPassword || newPassword.length < 8) {
+      return app.showToast('A nova senha deve ter no mínimo 8 caracteres.');
     }
     try {
       await app.fetchAPI(`/api/admin/users/${encodeURIComponent(this.selectedPasswordUserId)}/password`, {

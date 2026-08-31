@@ -1,33 +1,28 @@
 import { db } from '../lib/firebase.js';
+import { DEFAULT_TENANT_ID, belongsToTenant } from '../lib/tenant.js';
 
 export async function requireManager(req, res, next) {
-  if (req.user?.role !== 'manager' && req.user?.role !== 'admin') {
+  if (req.user?.role !== 'manager') {
     return res.status(403).json({ error: 'Acesso restrito a gerentes.' });
   }
 
   try {
     const userDoc = await db.collection('users').doc(req.user.uid).get();
     if (userDoc.exists) {
-      if (userDoc.data().role !== 'manager' && userDoc.data().role !== 'admin') {
+      if (userDoc.data().role !== 'manager') {
         return res.status(403).json({ error: 'Acesso restrito a gerentes.' });
       }
       if (userDoc.data().status === 'suspended') {
         return res.status(403).json({ error: 'Conta de gerente suspensa.' });
       }
+      if (!belongsToTenant(userDoc.data(), req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID)) {
+        return res.status(403).json({ error: 'Gerente não pertence a esta operação.' });
+      }
       req.managerUser = { id: userDoc.id, ...userDoc.data() };
       return next();
     }
-  } catch (error) {}
-
-  // Fallback seguro a partir das claims do JWT validado
-  req.managerUser = {
-    id: req.user.uid,
-    username: req.user.username || String(req.user.email || '').split('@')[0] || 'gerente',
-    email: req.user.email,
-    role: req.user.role,
-    manager_code: req.user.manager_code || `manager_${req.user.uid.slice(0,6)}`,
-    manager_ggr_rate: 30,
-    status: 'active'
-  };
-  next();
+  } catch (error) {
+    return res.status(503).json({ error: 'Não foi possível validar a conta do gerente.' });
+  }
+  return res.status(403).json({ error: 'Conta de gerente não encontrada.' });
 }

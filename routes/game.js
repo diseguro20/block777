@@ -5,14 +5,16 @@ import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { allocatePromotionalBet, allocatePromotionalPayout, getWalletBuckets } from '../lib/promotion.js';
 import { calculateGgrEntry, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
+import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
 
 const router = express.Router();
 
-function recordManagerMetric(transaction, managerId, period, entry, won) {
+function recordManagerMetric(transaction, managerId, period, entry, won, tenantId = DEFAULT_TENANT_ID) {
   if (!managerId) return;
   const metricRef = db.collection('manager_metrics').doc(`${managerId}_${period}`);
   transaction.set(metricRef, {
     manager_id: managerId,
+    tenant_id: tenantId,
     period,
     total_bets: FieldValue.increment(entry.betAmount),
     total_payouts: FieldValue.increment(entry.payout),
@@ -29,6 +31,7 @@ router.post('/start', authenticateToken, async (req, res) => {
   try {
     const { amount } = req.body;
     const uid = req.user.uid;
+    const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
     const userRef = db.collection('users').doc(uid);
 
     // Consulta de configurações e apostas pendentes antes da transação para evitar conflitos no Firestore
@@ -38,7 +41,7 @@ router.post('/start', authenticateToken, async (req, res) => {
     let maintenance = false;
     let defaultManagerGgrRate = DEFAULT_MANAGER_GGR_RATE;
     try {
-      const settingsDoc = await db.collection('settings').doc('global').get();
+      const settingsDoc = await tenantSettingsRef(tenantId).get();
       if (settingsDoc.exists) {
         const settings = settingsDoc.data();
         difficulty = settings.difficulty || 'impossible';
@@ -67,6 +70,7 @@ router.post('/start', authenticateToken, async (req, res) => {
       if (!userDoc.exists) throw new Error('Usuário não encontrado');
 
       const userData = userDoc.data();
+      if (!belongsToTenant(userData, tenantId)) throw new Error('Conta não pertence a esta operação.');
       const wallet = getWalletBuckets(userData);
       if (wallet.balance < amount) throw new Error('Saldo insuficiente para realizar a aposta.');
 
@@ -75,7 +79,7 @@ router.post('/start', authenticateToken, async (req, res) => {
       let managerGgrRate = defaultManagerGgrRate;
       if (managerId) {
         const managerDoc = await t.get(db.collection('users').doc(managerId));
-        if (!managerDoc.exists || managerDoc.data().role !== 'manager' || managerDoc.data().status !== 'active') {
+        if (!managerDoc.exists || !belongsToTenant(managerDoc.data(), tenantId) || managerDoc.data().role !== 'manager' || managerDoc.data().status !== 'active') {
           managerId = null;
         } else {
           managerGgrRate = normalizeGgrRate(managerDoc.data().manager_ggr_rate, defaultManagerGgrRate);
@@ -110,7 +114,7 @@ router.post('/start', authenticateToken, async (req, res) => {
           manager_period: managerPeriod(),
           completed_at: FieldValue.serverTimestamp()
         });
-        recordManagerMetric(t, pendingManagerId, managerPeriod(), pendingEntry, false);
+        recordManagerMetric(t, pendingManagerId, managerPeriod(), pendingEntry, false, tenantId);
       });
 
       const allocation = allocatePromotionalBet(wallet, amount);
@@ -136,6 +140,7 @@ router.post('/start', authenticateToken, async (req, res) => {
       const betRef = db.collection('bets').doc();
       t.set(betRef, {
         uid,
+        tenant_id: tenantId,
         amount,
         sessionId,
         seedHash,
@@ -159,6 +164,7 @@ router.post('/start', authenticateToken, async (req, res) => {
       const txRef = db.collection('transactions').doc();
       t.set(txRef, {
         uid,
+        tenant_id: tenantId,
         type: 'bet',
         amount: -amount,
         balance_after: newBalance,
@@ -168,6 +174,7 @@ router.post('/start', authenticateToken, async (req, res) => {
       if (rolloverCompleted) {
         t.set(db.collection('transactions').doc(), {
           uid,
+          tenant_id: tenantId,
           type: 'bonus_unlock',
           amount: 0,
           unlocked_amount: unlockedBonus,
@@ -205,6 +212,7 @@ router.post('/end', authenticateToken, async (req, res) => {
     }
 
     const uid = req.user.uid;
+    const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
     const finalMultiplier = Math.max(0, Math.min(Number(multiplier) || 0, 10));
 
     const betsSnapshot = await db.collection('bets')
@@ -220,6 +228,7 @@ router.post('/end', authenticateToken, async (req, res) => {
 
     const betDoc = betsSnapshot.docs[0];
     const betData = betDoc.data();
+    if (!belongsToTenant(betData, tenantId)) return res.status(404).json({ error: 'Aposta não encontrada nesta operação.' });
     const payout = Math.floor(betData.amount * finalMultiplier);
     const safeLines = Math.max(0, Math.floor(Number(floorsReached) || 0));
     const safeBlocks = Math.max(0, Math.floor(Number(blocksPlaced) || 0));
@@ -236,6 +245,7 @@ router.post('/end', authenticateToken, async (req, res) => {
     const result = await db.runTransaction(async (t) => {
       const userDoc = await t.get(userRef);
       if (!userDoc.exists) throw new Error('Usuário não encontrado');
+      if (!belongsToTenant(userDoc.data(), tenantId)) throw new Error('Conta não pertence a esta operação.');
 
       const wallet = getWalletBuckets(userDoc.data());
       let newBalance = wallet.balance;
@@ -256,7 +266,7 @@ router.post('/end', authenticateToken, async (req, res) => {
         manager_period: period,
         completed_at: FieldValue.serverTimestamp()
       });
-      recordManagerMetric(t, betData.manager_id, period, managerEntry, payout > 0);
+      recordManagerMetric(t, betData.manager_id, period, managerEntry, payout > 0, tenantId);
 
       if (payout > 0) {
         const payoutAllocation = allocatePromotionalPayout(wallet, payout, betData);
@@ -279,6 +289,7 @@ router.post('/end', authenticateToken, async (req, res) => {
         const txRef = db.collection('transactions').doc();
         t.set(txRef, {
           uid,
+          tenant_id: tenantId,
           type: 'win',
           amount: payout,
           cash_amount: cashPayout,

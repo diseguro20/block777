@@ -23,6 +23,38 @@
       link.hidden = false;
     });
     window.blockerinoBranding = branding;
+    renderBanner('tenant-top-banner', branding.banners?.topBanner);
+    renderBanner('tenant-dashboard-banner', branding.banners?.dashboardBanner);
+    renderBanner('tenant-affiliate-banner', branding.banners?.affiliateBanner);
   }
-  fetch('/api/branding').then(response => response.ok ? response.json() : defaults).then(applyBranding).catch(() => applyBranding(defaults));
+
+  function renderBanner(id, banner) {
+    const container = document.getElementById(id);
+    if (!container || !banner?.enabled) return;
+    container.replaceChildren();
+    if (banner.imageUrl) {
+      const image = document.createElement('img');
+      image.src = banner.imageUrl;
+      image.alt = banner.title || 'Campanha promocional';
+      image.loading = id === 'tenant-top-banner' ? 'eager' : 'lazy';
+      container.appendChild(image);
+    }
+    const content = document.createElement('div');
+    if (banner.title) { const title = document.createElement('h2'); title.textContent = banner.title; content.appendChild(title); }
+    if (banner.copy) { const copy = document.createElement('p'); copy.textContent = banner.copy; content.appendChild(copy); }
+    if (banner.ctaLabel && banner.ctaUrl) {
+      const link = document.createElement('a'); link.className = 'btn btn-primary'; link.textContent = banner.ctaLabel; link.href = banner.ctaUrl; link.rel = 'noopener noreferrer';
+      if (new URL(banner.ctaUrl).origin !== location.origin) link.target = '_blank';
+      content.appendChild(link);
+    }
+    container.appendChild(content);
+    container.hidden = false;
+  }
+  const requestedTenant = new URLSearchParams(location.search).get('tenant');
+  const sharedHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname.endsWith('.vercel.app');
+  const tenantSlug = (requestedTenant || (sharedHost ? 'blockerino' : '')).toLowerCase().replace(/[^a-z0-9-]/g, '');
+  fetch('/api/branding', { headers: tenantSlug ? { 'X-Tenant-Slug': tenantSlug } : {} }).then(response => response.ok ? response.json() : defaults).then(data => {
+    if (data.tenantId) localStorage.setItem('tenant_slug', data.tenantId);
+    applyBranding(data);
+  }).catch(() => applyBranding(defaults));
 })();

