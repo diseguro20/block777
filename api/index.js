@@ -168,7 +168,8 @@ if (useFirebase) {
     try {
       const modules = await firebaseModulesPromise;
       const doc = await tenantSettingsRef(req.tenant?.id || DEFAULT_TENANT_ID, modules[5].db).get();
-      res.set('Cache-Control', 'public, max-age=30, s-maxage=60, stale-while-revalidate=120');
+      res.set('Cache-Control', 'private, no-store');
+      res.set('Vary', 'Host, X-Tenant-Slug');
       const settings = doc.exists ? doc.data() : {};
       res.json({ tenantId: req.tenant?.id || DEFAULT_TENANT_ID, ...normalizeBranding(settings), banners: normalizeBanners(settings) });
     } catch (_) {

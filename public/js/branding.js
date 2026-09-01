@@ -1,5 +1,6 @@
 (function () {
   const defaults = { brandName: 'BLOCKERINO', brandTagline: 'PLAY SMART', primaryColor: '#c9ff43', secondaryColor: '#9dd51b', supportWhatsapp: '', supportEmail: '', logoUrl: '' };
+  const baseTitle = document.title;
   const safeColor = (value, fallback) => /^#[0-9a-f]{6}$/i.test(String(value || '')) ? value : fallback;
   function applyBranding(input) {
     const branding = { ...defaults, ...(input || {}) };
@@ -8,7 +9,9 @@
     document.querySelectorAll('[data-brand-name]').forEach(element => { element.textContent = branding.brandName; });
     document.querySelectorAll('[data-brand-tagline]').forEach(element => { element.textContent = branding.brandTagline; });
     document.querySelectorAll('.auth-brand > span:last-child').forEach(element => { element.textContent = branding.brandName; });
-    document.title = document.title.replace(/Blockerino/gi, branding.brandName);
+    document.title = baseTitle.replace(/Blockerino/gi, branding.brandName);
+    document.querySelectorAll('.custom-brand-logo').forEach(image => image.remove());
+    document.querySelectorAll('.brand-mark').forEach(mark => mark.removeAttribute('hidden'));
     if (branding.logoUrl) document.querySelectorAll('.brand').forEach(brand => {
       if (brand.querySelector('.custom-brand-logo')) return;
       const image = document.createElement('img');
@@ -24,8 +27,10 @@
 
   function renderBanner(id, banner) {
     const container = document.getElementById(id);
-    if (!container || !banner?.enabled) return;
+    if (!container) return;
     container.replaceChildren();
+    container.hidden = true;
+    if (!banner?.enabled) return;
     if (banner.imageUrl) {
       const image = document.createElement('img');
       image.src = banner.imageUrl;
@@ -46,9 +51,11 @@
   }
   const requestedTenant = new URLSearchParams(location.search).get('tenant');
   const sharedHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname.endsWith('.vercel.app');
-  const tenantSlug = (requestedTenant || (sharedHost ? 'blockerino' : '')).toLowerCase().replace(/[^a-z0-9-]/g, '');
-  fetch('/api/branding', { headers: tenantSlug ? { 'X-Tenant-Slug': tenantSlug } : {} }).then(response => response.ok ? response.json() : defaults).then(data => {
-    if (data.tenantId) localStorage.setItem('tenant_slug', data.tenantId);
+  const tenantSlug = (sharedHost ? (requestedTenant || 'blockerino') : '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+  if (sharedHost && tenantSlug === 'blockerino') applyBranding(defaults);
+  const brandingUrl = sharedHost && tenantSlug ? `/api/branding?tenant=${encodeURIComponent(tenantSlug)}` : '/api/branding';
+  fetch(brandingUrl, { cache: 'no-store', headers: tenantSlug ? { 'X-Tenant-Slug': tenantSlug } : {} }).then(response => response.ok ? response.json() : defaults).then(data => {
+    window.blockerinoTenantId = data.tenantId || tenantSlug || '';
     applyBranding(data);
   }).catch(() => applyBranding(defaults));
 })();

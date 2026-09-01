@@ -48,8 +48,8 @@ async function getPublicPromotionSettings(tenantId = DEFAULT_TENANT_ID) {
 }
 
 router.get('/promotion', async (req, res) => {
-  res.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=900');
-  res.set('X-Blockerino-Promotion-Cache', 'edge-v1');
+  res.set('Cache-Control', 'private, no-store');
+  res.set('Vary', 'Host, X-Tenant-Slug');
   res.json(await getPublicPromotionSettings(req.tenant?.id || DEFAULT_TENANT_ID));
 });
 

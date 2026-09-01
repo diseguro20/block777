@@ -4,7 +4,7 @@ import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { BRANDING_DEFAULTS } from '../lib/branding.js';
 import { BANNER_DEFAULTS } from '../lib/banners.js';
-import { clearTenantCache, normalizeTenantSlug, tenantSettingsRef } from '../lib/tenant.js';
+import { clearTenantCache, isSharedTenantHost, normalizeTenantDomain, normalizeTenantSlug, RESERVED_TENANT_SLUGS, tenantSettingsRef } from '../lib/tenant.js';
 import { PROMOTION_DEFAULTS } from '../lib/promotion.js';
 
 const router = express.Router();
@@ -37,10 +37,21 @@ router.post('/tenants', async (req, res) => {
     const adminEmail = String(req.body.adminEmail || '').trim().toLowerCase().slice(0, 120);
     const password = String(req.body.password || '');
     const domains = [...new Set((Array.isArray(req.body.domains) ? req.body.domains : String(req.body.domain || '').split(','))
-      .map(value => String(value).trim().toLowerCase().replace(/^https?:\/\//, '').split('/')[0].split(':')[0])
+      .map(normalizeTenantDomain)
       .filter(Boolean))].slice(0, 10);
     if (slug.length < 3 || name.length < 2 || adminName.length < 2 || !adminEmail.includes('@') || password.length < 10) {
       return res.status(400).json({ error: 'Informe slug, empresa, administrador, e-mail e senha com pelo menos 10 caracteres.' });
+    }
+    if (RESERVED_TENANT_SLUGS.has(slug)) {
+      return res.status(409).json({ error: 'Este identificador é reservado para a plataforma principal.' });
+    }
+    if (domains.some(domain => isSharedTenantHost(domain))) {
+      return res.status(409).json({ error: 'Use apenas domínios próprios do cliente. Endereços da plataforma e da Vercel são reservados.' });
+    }
+
+    for (const domain of domains) {
+      const duplicate = await db.collection('tenants').where('domains', 'array-contains', domain).limit(1).get();
+      if (!duplicate.empty) return res.status(409).json({ error: `O domínio ${domain} já pertence a outra white label.` });
     }
 
     const tenantRef = db.collection('tenants').doc(slug);

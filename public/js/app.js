@@ -1,16 +1,21 @@
+const blockerinoSharedHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname.endsWith('.vercel.app');
+const blockerinoRequestedTenant = new URLSearchParams(location.search).get('tenant');
+const blockerinoInitialTenant = blockerinoSharedHost
+  ? String(blockerinoRequestedTenant || 'blockerino').toLowerCase().replace(/[^a-z0-9-]/g, '')
+  : '';
+
 const app = {
-  tenantSlug: (() => {
-    const requested = new URLSearchParams(location.search).get('tenant');
-    const sharedHost = location.hostname === 'localhost' || location.hostname === '127.0.0.1' || location.hostname.endsWith('.vercel.app');
-    if (requested) localStorage.setItem('tenant_slug', requested.toLowerCase().replace(/[^a-z0-9-]/g, ''));
-    return (requested || (sharedHost ? 'blockerino' : '')).toLowerCase().replace(/[^a-z0-9-]/g, '');
-  })(),
+  tenantSlug: blockerinoInitialTenant,
   token: null,
   user: null,
 
+  sessionScope(tenantSlug = this.tenantSlug) {
+    return blockerinoSharedHost ? (tenantSlug || 'blockerino') : `host:${location.hostname.toLowerCase()}`;
+  },
+
   init() {
-    const sessionScope = this.tenantSlug || `host:${location.hostname}`;
-    this.token = localStorage.getItem(`token:${sessionScope}`) || (this.tenantSlug === 'blockerino' || !this.tenantSlug ? localStorage.getItem('token') : null);
+    const sessionScope = this.sessionScope();
+    this.token = localStorage.getItem(`token:${sessionScope}`) || (blockerinoSharedHost && this.tenantSlug === 'blockerino' ? localStorage.getItem('token') : null);
     this.syncViewport();
     window.addEventListener('resize', () => this.syncViewport(), { passive: true });
     window.addEventListener('orientationchange', () => window.setTimeout(() => this.syncViewport(), 120), { passive: true });
@@ -63,8 +68,8 @@ const app = {
     if (params.get('manager')) localStorage.setItem('manager_code', params.get('manager').trim().toLowerCase());
     const impersonateToken = params.get('impersonate_token') || params.get('auth_token');
     if (impersonateToken) {
-      localStorage.setItem(`token:${this.tenantSlug || `host:${location.hostname}`}`, impersonateToken);
-      if (this.tenantSlug === 'blockerino') localStorage.setItem('token', impersonateToken);
+      localStorage.setItem(`token:${this.sessionScope()}`, impersonateToken);
+      if (blockerinoSharedHost && this.tenantSlug === 'blockerino') localStorage.setItem('token', impersonateToken);
       this.token = impersonateToken;
       window.history.replaceState({}, document.title, window.location.pathname);
     }
@@ -72,7 +77,8 @@ const app = {
 
   async loadPublicPromotion() {
     try {
-      const response = await fetch('/api/wallet/promotion', { headers: { 'X-Tenant-Slug': this.tenantSlug } });
+      const tenantQuery = blockerinoSharedHost && this.tenantSlug ? `?tenant=${encodeURIComponent(this.tenantSlug)}` : '';
+      const response = await fetch(`/api/wallet/promotion${tenantQuery}`, { cache: 'no-store', headers: { 'X-Tenant-Slug': this.tenantSlug } });
       if (!response.ok) return;
       const promo = await response.json();
       if (window.wallet) {
@@ -171,15 +177,20 @@ const app = {
     };
   },
 
-  setSession(data) {
-    if (data.user?.tenant_id) {
-      this.tenantSlug = data.user.tenant_id;
-      localStorage.setItem('tenant_slug', this.tenantSlug);
+  persistSession(data) {
+    const responseTenant = String(data.user?.tenant_id || '').toLowerCase().replace(/[^a-z0-9-]/g, '');
+    if (this.tenantSlug && responseTenant && responseTenant !== this.tenantSlug) {
+      throw new Error('A sessão recebida pertence a outra operação.');
     }
+    if (!this.tenantSlug && responseTenant) this.tenantSlug = responseTenant;
     this.token = data.token;
     this.user = data.user;
-    localStorage.setItem(`token:${this.tenantSlug}`, data.token);
-    if (this.tenantSlug === 'blockerino') localStorage.setItem('token', data.token);
+    localStorage.setItem(`token:${this.sessionScope()}`, data.token);
+    if (blockerinoSharedHost && this.tenantSlug === 'blockerino') localStorage.setItem('token', data.token);
+  },
+
+  setSession(data) {
+    this.persistSession(data);
     this.closeModal('auth-modal');
     this.loadUserData();
   },
@@ -321,8 +332,8 @@ const app = {
   },
 
   logout(showMessage = true) {
-    this.token = null; this.user = null; localStorage.removeItem(`token:${this.tenantSlug}`);
-    if (this.tenantSlug === 'blockerino') localStorage.removeItem('token');
+    this.token = null; this.user = null; localStorage.removeItem(`token:${this.sessionScope()}`);
+    if (blockerinoSharedHost && this.tenantSlug === 'blockerino') localStorage.removeItem('token');
     const nav = document.getElementById('nav-actions');
     if (nav) nav.style.display = 'none';
     const registerButton = document.getElementById('landing-register-btn');

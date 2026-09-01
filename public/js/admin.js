@@ -61,14 +61,7 @@ const admin = {
       if (!['admin', 'super_admin', 'tenant_admin'].includes(data?.user?.role)) {
         throw new Error('Esta conta não possui acesso administrativo.');
       }
-      app.token = data.token;
-      app.user = data.user;
-      if (data.user?.tenant_id) {
-        app.tenantSlug = data.user.tenant_id;
-        localStorage.setItem('tenant_slug', app.tenantSlug);
-      }
-      localStorage.setItem(`token:${app.tenantSlug || `host:${location.hostname}`}`, data.token);
-      if (app.tenantSlug === 'blockerino') localStorage.setItem('token', data.token);
+      app.persistSession(data);
 
       const auth = document.getElementById('admin-auth');
       if (auth) auth.hidden = true;
