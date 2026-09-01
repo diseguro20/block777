@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://block777-omega.vercel.app/og.png?v=20260803-1">
   <title>Blockerino — Deposite R$ 20 e jogue com R$ 40</title>
   <link rel="stylesheet" href="./css/style.css?v=20260826-1">
-  <link rel="stylesheet" href="./css/arena.css?v=20260831-3">
+  <link rel="stylesheet" href="./css/arena.css?v=20260831-4">
 </head>
 <body class="player-app">
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
@@ -173,11 +173,11 @@
   </main>
 
   <nav class="player-bottom-nav" id="player-bottom-nav" aria-label="Navegação do jogador" hidden>
-    <button type="button" data-player-tab="wallet" onclick="app.openWalletTab('deposit')"><span>＋</span><small>Depositar</small></button>
-    <button type="button" data-player-tab="withdraw" onclick="app.openWalletTab('withdraw')"><span>↓</span><small>Sacar</small></button>
+    <button type="button" data-player-tab="wallet" onclick="app.openWalletTab('deposit')" aria-label="Depositar"><span class="nav-icon nav-icon-deposit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5h13.5A2.5 2.5 0 0 1 20 10v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 2 17V6a2.5 2.5 0 0 1 2.5-2.5H16"/><path d="M15.5 12.5h5v4h-5a2 2 0 1 1 0-4Z"/><path class="nav-icon-accent" d="M8 8.5v-4M6 6.5h4"/></svg></span><small>Depositar</small></button>
+    <button type="button" data-player-tab="withdraw" onclick="app.openWalletTab('withdraw')" aria-label="Sacar"><span class="nav-icon nav-icon-withdraw" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6.5h16v11H4z"/><path d="M7 9.5a2 2 0 0 1-2 2m12-2a2 2 0 0 0 2 2M7 14.5a2 2 0 0 0-2-2m12 2a2 2 0 0 1 2-2"/><circle cx="12" cy="12" r="2"/><path class="nav-icon-accent" d="M12 2.5v5m-2-2 2 2 2-2"/></svg></span><small>Sacar</small></button>
     <button type="button" class="play-tab" data-player-tab="play" onclick="game.openQuickPlay()" aria-label="Jogar: escolher valor da entrada"><span class="play-mark"><i></i><i></i><i></i><i></i></span><small>Jogar</small></button>
-    <a data-player-tab="affiliate" href="./affiliate/"><span>↗</span><small>Indicar</small></a>
-    <button type="button" data-player-tab="profile" onclick="app.showPlayerProfile()"><span>○</span><small>Perfil</small></button>
+    <a data-player-tab="affiliate" href="./affiliate/" aria-label="Indicar amigos"><span class="nav-icon nav-icon-affiliate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.5"/><circle cx="17.5" cy="7" r="2"/><path d="M3.5 18c.4-3 2-4.5 4.5-4.5s4.1 1.5 4.5 4.5M15 11.5c2.8 0 4.7 1.3 5 3.8"/><path class="nav-icon-accent" d="m14.5 4 3-3m0 0h-2.8m2.8 0v2.8"/></svg></span><small>Indicar</small></a>
+    <button type="button" data-player-tab="profile" onclick="app.showPlayerProfile()" aria-label="Abrir perfil"><span class="nav-icon nav-icon-profile" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19.5c.6-4.2 3-6.3 7-6.3s6.4 2.1 7 6.3"/><path class="nav-icon-accent" d="M18.2 5.2h.1"/></svg></span><small>Perfil</small></button>
   </nav>
 
   <div class="modal" id="auth-modal"><div class="modal-card auth-card"><button class="modal-close" onclick="app.closeModal('auth-modal')">×</button><div class="brand auth-brand"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO</span></div><h3>Entre no jogo.</h3><p>Uma conta para jogar, sacar e acompanhar seus resultados.</p><div class="tabs"><button id="tab-login-btn" class="active" onclick="app.toggleAuthTab('login')">Entrar</button><button id="tab-reg-btn" onclick="app.toggleAuthTab('register')">Criar conta</button></div><form id="login-form"><label>Celular ou E-mail</label><input name="email" id="login-identifier-input" required placeholder="(11) 99999-9999 ou e-mail" autocomplete="username"><label>Senha</label><input name="password" type="password" required placeholder="••••••••"><button class="btn btn-primary btn-wide" type="submit">Entrar</button></form><form id="register-form" hidden><label>Nome de usuário</label><input name="username" required minlength="3" placeholder="Seu nome no jogo"><label>Celular com DDD (WhatsApp)</label><input name="phone" id="reg-phone-input" type="tel" required placeholder="(11) 99999-9999" maxlength="15" autocomplete="tel"><label>Senha</label><input name="password" type="password" required minlength="6" placeholder="Mínimo de 6 caracteres"><button class="btn btn-primary btn-wide" type="submit">Criar minha conta</button></form><small class="legal">Ao continuar, você confirma ter 18 anos ou mais.</small></div></div>
