@@ -6,6 +6,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { createVizzionPix, getVizzionTransaction, parseVizzionWebhook, vizzionPayStatus } from '../lib/vizzionpay.js';
 import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
+import { updateAdminSummary } from '../lib/adminSummary.js';
 
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
@@ -119,6 +120,9 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       gateway_id: charge.gatewayId,
       created_at: FieldValue.serverTimestamp()
     });
+    updateAdminSummary(null, tenantId, { pendingDeposits: 1 }).catch(error => {
+      console.warn('Admin summary deposit update:', error.message);
+    });
 
     res.json({
       depositId,
@@ -202,6 +206,15 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       bonus_balance: newBonusBalance,
       rollover_remaining: newRolloverRemaining,
       rollover_target: newRolloverTarget
+    });
+    updateAdminSummary(transaction, tenantId, {
+      pendingDeposits: -1,
+      approvedDeposits: 1,
+      approvedDepositAmount: deposit.amount,
+      totalBonusGranted: bonusAmount,
+      lockedBonus: bonusAmount,
+      activeRolloverUsers: wallet.rolloverRemaining > 0 ? 0 : (newRolloverRemaining > 0 ? 1 : 0),
+      totalWalletBalance: deposit.amount + bonusAmount
     });
 
     const txSnapshot = await db.collection('transactions').where('reference_id', '==', depositRef.id).limit(1).get();
@@ -481,6 +494,10 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
         status: 'pending',
         withdrawalId,
         created_at: FieldValue.serverTimestamp()
+      });
+      updateAdminSummary(t, tenantId, {
+        pendingWithdrawals: 1,
+        totalWalletBalance: -amount
       });
 
       const txRef = db.collection('transactions').doc();

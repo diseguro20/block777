@@ -35,6 +35,7 @@ O front-end recebe somente identidade visual, banners e dados permitidos pelas A
 - Painel administrativo para usuários, saldo, status, influenciadores,
   depósitos, saques, dificuldade, limites, comissões e manutenção
 - Operações white label isoladas por cliente, com administrador próprio
+- Modo de infraestrutura explícito por white label: compartilhado ou isolado. Operações isoladas permanecem como "aguardando recursos" até que Vercel, Firebase e URL próprios sejam vinculados; nenhum segredo é salvo no frontend ou no documento do cliente.
 - Marca, cores e banners editáveis para landing page, dashboard e afiliados
 - Armazenamento local persistente para desenvolvimento
 

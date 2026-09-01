@@ -33,6 +33,7 @@
       </header>
 
       <section class="admin-view active" id="view-overview">
+        <div class="admin-load-state" id="admin-overview-status" hidden><span id="admin-overview-status-copy">Não foi possível atualizar os indicadores.</span><button type="button" onclick="admin.refreshOverview()">Tentar novamente</button></div>
         <div class="metrics admin-stats">
           <article class="metric"><span>USUÁRIOS</span><strong id="stat-users">0</strong><small>cadastros</small></article>
           <article class="metric"><span>PARTIDAS</span><strong id="stat-games">0</strong><small id="stat-record">0V · 0D</small></article>
@@ -46,6 +47,7 @@
           <article class="metric"><span>VIZZION PAY</span><strong class="gateway-mini" id="gateway-status-mini">VERIFICANDO</strong><small id="gateway-webhook-mini">webhook</small></article>
         </div>
         <div class="metrics admin-stats promo-stats">
+          <article class="metric"><span>SALDO NAS CARTEIRAS</span><strong id="stat-wallet-balance">R$ 0,00</strong><small>saldo total dos usuários</small></article>
           <article class="metric"><span>BÔNUS CONCEDIDO</span><strong id="stat-bonus-granted">R$ 0,00</strong><small>campanha acumulada</small></article>
           <article class="metric"><span>BÔNUS BLOQUEADO</span><strong id="stat-bonus-locked">R$ 0,00</strong><small>em rollover</small></article>
           <article class="metric"><span>ROLLOVER ATIVO</span><strong id="stat-rollover-users">0</strong><small>jogadores</small></article>
@@ -145,13 +147,14 @@
               <label>E-mail do administrador<input id="tenant-admin-email" type="email" required></label>
               <label class="wide-field">Senha inicial segura<input id="tenant-admin-password" type="password" minlength="10" autocomplete="new-password" required placeholder="Mínimo de 10 caracteres"></label>
               <label class="wide-field">Domínios (opcional)<input id="tenant-domains" placeholder="cliente.com.br, jogar.cliente.com.br"></label>
+              <label class="wide-field">Estrutura da operação<select id="tenant-deployment-mode"><option value="isolated" selected>Isolada — Firebase e Vercel próprios</option><option value="shared">Compartilhada — mesmo projeto, dados separados por tenant</option></select></label>
               <button class="btn btn-primary" type="submit">Criar operação e administrador</button>
             </form>
-            <p class="security-note">A senha é transmitida somente ao servidor por HTTPS, transformada em hash e nunca retornada. Chaves do gateway não são copiadas para o cliente.</p>
+            <p class="security-note">A senha é transformada em hash e nunca retornada. No modo isolado, a operação só aparece como pronta depois que os projetos Firebase/Vercel e a URL exclusiva forem vinculados. Nenhuma chave privada é salva no navegador ou no cadastro do cliente.</p>
           </article>
           <article class="panel table-wrap">
             <div class="panel-title"><div><small>OPERAÇÕES</small><h3>Clientes ativos</h3></div></div>
-            <table class="responsive-table"><thead><tr><th>Cliente</th><th>Identificador</th><th>Domínios</th><th>Links</th><th>Status</th><th>Ação</th></tr></thead><tbody id="tenants-table"></tbody></table>
+            <table class="responsive-table"><thead><tr><th>Cliente</th><th>Identificador</th><th>Infraestrutura</th><th>Domínios</th><th>Links</th><th>Status</th><th>Ação</th></tr></thead><tbody id="tenants-table"></tbody></table>
           </article>
         </div>
       </section>
@@ -226,6 +229,6 @@
   <div class="toast-container" id="toast-container"></div>
   <script src="/js/branding.js?v=20260831-5"></script>
   <script src="/js/app.js?v=20260831-5"></script>
-  <script src="/js/admin.js?v=20260831-3"></script>
+  <script src="/js/admin.js?v=20260901-1"></script>
 </body>
 </html>

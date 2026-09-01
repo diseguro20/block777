@@ -6,6 +6,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import { allocatePromotionalBet, allocatePromotionalPayout, getWalletBuckets } from '../lib/promotion.js';
 import { calculateGgrEntry, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
+import { updateAdminSummary } from '../lib/adminSummary.js';
 
 const router = express.Router();
 
@@ -160,6 +161,12 @@ router.post('/start', authenticateToken, async (req, res) => {
         rolloverCompleted,
         created_at: FieldValue.serverTimestamp()
       });
+      if (!demoAccount) {
+        updateAdminSummary(t, tenantId, {
+          totalBets: amount,
+          totalWalletBalance: -amount
+        });
+      }
 
       const txRef = db.collection('transactions').doc();
       t.set(txRef, {
@@ -267,6 +274,17 @@ router.post('/end', authenticateToken, async (req, res) => {
         completed_at: FieldValue.serverTimestamp()
       });
       recordManagerMetric(t, betData.manager_id, period, managerEntry, payout > 0, tenantId);
+      if (!betData.is_demo) {
+        updateAdminSummary(t, tenantId, {
+          totalPayouts: payout,
+          totalGames: 1,
+          wins: payout > 0 ? 1 : 0,
+          losses: payout > 0 ? 0 : 1,
+          blocksPlaced: safeBlocks,
+          linesCleared: safeLines,
+          totalWalletBalance: payout
+        });
+      }
 
       if (payout > 0) {
         const payoutAllocation = allocatePromotionalPayout(wallet, payout, betData);

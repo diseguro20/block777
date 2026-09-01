@@ -11,6 +11,7 @@ import { authTokenTtl, getJwtSecret } from '../lib/security.js';
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantBannedIpsId, tenantSettingsRef } from '../lib/tenant.js';
 import { BANNER_DEFAULTS, normalizeBanners } from '../lib/banners.js';
 import { findTenantUser } from '../lib/userLookup.js';
+import { adminSummaryRef, emptyAdminSummary, normalizeAdminSummary, updateAdminSummary } from '../lib/adminSummary.js';
 
 const JWT_SECRET = getJwtSecret();
 const router = express.Router();
@@ -27,7 +28,7 @@ router.use((req, res, next) => {
   next();
 });
 
-const ADMIN_CACHE_TTL_MS = 2 * 60 * 1000;
+const ADMIN_CACHE_TTL_MS = 5 * 60 * 1000;
 const adminResponseCache = new Map();
 const getAdminCache = key => {
   const entry = adminResponseCache.get(key);
@@ -82,32 +83,27 @@ router.use((req, _res, next) => {
 
 router.get('/stats', async (req, res) => {
   const cacheKey = tenantCacheKey(req, 'stats');
-  const cached = getAdminCache(cacheKey);
+  const forceRefresh = req.query.refresh === '1';
+  const cached = forceRefresh ? null : getAdminCache(cacheKey);
   if (cached) return res.json(cached);
   try {
-    let totalUsers = 1;
-    let totalBets = 0;
-    let totalPayouts = 0;
-    let pendingDeposits = 0;
-    let pendingWithdrawals = 0;
-    let totalGames = 0;
-    let wins = 0;
-    let losses = 0;
-    let blocksPlaced = 0;
-    let linesCleared = 0;
-    let totalBonusGranted = 0;
-    let lockedBonus = 0;
-    let activeRolloverUsers = 0;
+    const summaryRef = adminSummaryRef(req.adminTenantId);
+    const existingSummary = await summaryRef.get();
+    if (!forceRefresh && existingSummary.exists && existingSummary.data().initialized === true) {
+      return res.json(setAdminCache(cacheKey, normalizeAdminSummary(existingSummary.data())));
+    }
+
+    const summary = emptyAdminSummary();
 
     try {
       const usersSnapshot = await db.collection('users').get();
-      totalUsers = 0;
       usersSnapshot.forEach(doc => {
         const user = doc.data();
         if (!belongsToTenant(user, req.adminTenantId)) return;
-        totalUsers++;
-        lockedBonus += Number(user.bonus_balance) || 0;
-        if ((Number(user.rollover_remaining) || 0) > 0) activeRolloverUsers++;
+        summary.totalUsers++;
+        summary.lockedBonus += Number(user.bonus_balance) || 0;
+        summary.totalWalletBalance += Number(user.balance) || 0;
+        if ((Number(user.rollover_remaining) || 0) > 0) summary.activeRolloverUsers++;
       });
 
       const betsSnapshot = await db.collection('bets').get();
@@ -115,32 +111,43 @@ router.get('/stats', async (req, res) => {
         const data = doc.data();
         if (!belongsToTenant(data, req.adminTenantId)) return;
         if (data.is_demo) return;
-        totalBets += data.amount || 0;
-        totalPayouts += data.payout || 0;
+        summary.totalBets += data.amount || 0;
+        summary.totalPayouts += data.payout || 0;
         if (data.status === 'completed') {
-          totalGames++;
-          if (data.result === 'win' || data.payout > 0) wins++;
-          else losses++;
-          blocksPlaced += data.blocksPlaced || 0;
-          linesCleared += data.linesCleared || data.floorsReached || 0;
+          summary.totalGames++;
+          if (data.result === 'win' || data.payout > 0) summary.wins++;
+          else summary.losses++;
+          summary.blocksPlaced += data.blocksPlaced || 0;
+          summary.linesCleared += data.linesCleared || data.floorsReached || 0;
         }
       });
 
       const depositsSnapshot = await db.collection('deposit_requests').where('status', '==', 'pending').get();
-      pendingDeposits = depositsSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).length;
+      summary.pendingDeposits = depositsSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).length;
 
       const approvedDepositsSnapshot = await db.collection('deposit_requests').where('status', '==', 'approved').get();
-      approvedDepositsSnapshot.forEach(doc => { if (belongsToTenant(doc.data(), req.adminTenantId)) totalBonusGranted += Number(doc.data().bonusAmount) || 0; });
+      approvedDepositsSnapshot.forEach(doc => {
+        if (!belongsToTenant(doc.data(), req.adminTenantId)) return;
+        summary.approvedDeposits++;
+        summary.approvedDepositAmount += Number(doc.data().amount) || 0;
+        summary.totalBonusGranted += Number(doc.data().bonusAmount) || 0;
+      });
 
       const withdrawalsSnapshot = await db.collection('withdrawal_requests').where('status', '==', 'pending').get();
-      pendingWithdrawals = withdrawalsSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).length;
+      summary.pendingWithdrawals = withdrawalsSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).length;
     } catch (e) {
       console.warn('Firestore indisponível para admin stats:', e.message);
       throw e;
     }
     
-    const houseProfit = totalBets - totalPayouts;
-    res.json(setAdminCache(cacheKey, { totalUsers, totalBets, totalPayouts, houseProfit, pendingDeposits, pendingWithdrawals, totalGames, wins, losses, blocksPlaced, linesCleared, totalBonusGranted, lockedBonus, activeRolloverUsers }));
+    await summaryRef.set({
+      ...summary,
+      tenant_id: req.adminTenantId,
+      initialized: true,
+      generated_at: FieldValue.serverTimestamp(),
+      updated_at: FieldValue.serverTimestamp()
+    });
+    res.json(setAdminCache(cacheKey, normalizeAdminSummary({ ...summary, initialized: true })));
   } catch (error) {
     console.error('Admin stats error:', error);
     const stale = getStaleAdminCache(cacheKey);
@@ -793,6 +800,15 @@ router.put('/deposits/:id/approve', async (req, res) => {
         rollover_remaining: newRolloverRemaining,
         rollover_target: newRolloverTarget
       });
+      updateAdminSummary(transaction, req.adminTenantId, {
+        pendingDeposits: -1,
+        approvedDeposits: 1,
+        approvedDepositAmount: deposit.amount,
+        totalBonusGranted: bonusAmount,
+        lockedBonus: bonusAmount,
+        activeRolloverUsers: wallet.rolloverRemaining > 0 ? 0 : (newRolloverRemaining > 0 ? 1 : 0),
+        totalWalletBalance: deposit.amount + bonusAmount
+      });
       if (bonusAmount > 0) {
         transaction.set(db.collection('transactions').doc(), {
           uid: deposit.uid,
@@ -834,6 +850,7 @@ router.put('/deposits/:id/reject', async (req, res) => {
     if (!doc.exists) return res.status(404).json({ error: 'Depósito não encontrado.' });
     ensureTenantAccess(req, doc.data());
     await ref.update({ status: 'rejected', rejected_at: FieldValue.serverTimestamp(), rejected_by: req.user.uid });
+    await updateAdminSummary(null, req.adminTenantId, { pendingDeposits: -1 });
     res.json({ success: true });
   } catch (error) {
     res.json({ success: true });
@@ -896,6 +913,10 @@ router.put('/withdrawals/:id/approve', async (req, res) => {
         processed_by: req.user.uid,
         admin_note: String(req.body.note || '').trim().slice(0, 240)
       });
+      updateAdminSummary(transaction, req.adminTenantId, {
+        pendingWithdrawals: -1,
+        approvedWithdrawals: 1
+      });
       txSnapshot.docs.forEach(doc => transaction.update(doc.ref, { status: 'approved', processed_at: FieldValue.serverTimestamp() }));
     });
     res.json({ success: true, status: 'approved' });
@@ -927,6 +948,11 @@ router.put('/withdrawals/:id/reject', async (req, res) => {
       transaction.update(userRef, {
         balance: wallet.balance + withdrawal.amount,
         cash_balance: wallet.cashBalance + withdrawal.amount
+      });
+      updateAdminSummary(transaction, req.adminTenantId, {
+        pendingWithdrawals: -1,
+        rejectedWithdrawals: 1,
+        totalWalletBalance: withdrawal.amount
       });
       txSnapshot.docs.forEach(doc => transaction.update(doc.ref, { status: 'rejected', processed_at: FieldValue.serverTimestamp() }));
       const refundRef = db.collection('transactions').doc();

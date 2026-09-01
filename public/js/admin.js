@@ -115,7 +115,7 @@ const admin = {
   },
 
   async loadInitialView() {
-    await Promise.all([
+    await Promise.allSettled([
       this.loadOverview(),
       this.loadSettings(),
       this.loadGatewayStatus()
@@ -147,9 +147,11 @@ const admin = {
     this.searchTimer = setTimeout(() => this.loadGameLogs(value), 450);
   },
 
-  async loadOverview(silent = false) {
+  async loadOverview(silent = false, force = false) {
+    const status = document.getElementById('admin-overview-status');
+    const statusCopy = document.getElementById('admin-overview-status-copy');
     try {
-      const data = await app.fetchAPI('/api/admin/stats');
+      const data = await app.fetchAPI(`/api/admin/stats${force ? '?refresh=1' : ''}`);
       document.getElementById('stat-users').textContent = Number(data.totalUsers || 0).toLocaleString('pt-BR');
       document.getElementById('stat-bets').textContent = app.formatBRL(data.totalBets || 0);
       document.getElementById('stat-payouts').textContent = app.formatBRL(data.totalPayouts || 0);
@@ -160,12 +162,23 @@ const admin = {
       document.getElementById('stat-record').textContent = `${Number(data.wins || 0).toLocaleString('pt-BR')}V · ${Number(data.losses || 0).toLocaleString('pt-BR')}D`;
       document.getElementById('stat-blocks').textContent = Number(data.blocksPlaced || 0).toLocaleString('pt-BR');
       document.getElementById('stat-lines').textContent = Number(data.linesCleared || 0).toLocaleString('pt-BR');
+      document.getElementById('stat-wallet-balance').textContent = app.formatBRL(data.totalWalletBalance || 0);
       document.getElementById('stat-bonus-granted').textContent = app.formatBRL(data.totalBonusGranted || 0);
       document.getElementById('stat-bonus-locked').textContent = app.formatBRL(data.lockedBonus || 0);
       document.getElementById('stat-rollover-users').textContent = Number(data.activeRolloverUsers || 0).toLocaleString('pt-BR');
+      if (status) status.hidden = true;
     } catch (error) {
+      if (statusCopy) statusCopy.textContent = error.message || 'Não foi possível atualizar os indicadores administrativos.';
+      if (status) status.hidden = false;
       if (!silent) app.showToast(error.message);
     }
+  },
+
+  async refreshOverview() {
+    const button = document.querySelector('#admin-overview-status button');
+    if (button) { button.disabled = true; button.textContent = 'Atualizando...'; }
+    try { await this.loadOverview(false, true); }
+    finally { if (button) { button.disabled = false; button.textContent = 'Tentar novamente'; } }
   },
 
   async loadSettings() {
@@ -317,7 +330,8 @@ const admin = {
         adminName: document.getElementById('tenant-admin-name').value,
         adminEmail: document.getElementById('tenant-admin-email').value,
         password: document.getElementById('tenant-admin-password').value,
-        domain: document.getElementById('tenant-domains').value
+        domain: document.getElementById('tenant-domains').value,
+        deploymentMode: document.getElementById('tenant-deployment-mode').value
       };
       try {
         const created = await app.fetchAPI('/api/platform/tenants', { method: 'POST', body: JSON.stringify(payload) });
@@ -339,11 +353,19 @@ const admin = {
         const slug = this.escape(tenant.slug || tenant.id);
         const active = tenant.status !== 'suspended';
         const domains = Array.isArray(tenant.domains) && tenant.domains.length ? tenant.domains.join(', ') : 'URL compartilhada';
+        const deployment = tenant.deployment || { mode: 'shared', status: 'ready' };
+        const isolated = deployment.mode === 'isolated';
+        const deploymentReady = deployment.status === 'ready';
+        const deploymentLabel = isolated
+          ? (deploymentReady ? 'Isolada e pronta' : 'Isolada · aguardando recursos')
+          : 'Compartilhada';
         const base = `${location.origin}/?tenant=${encodeURIComponent(tenant.slug || tenant.id)}`;
         const adminUrl = `${location.origin}/admin/?tenant=${encodeURIComponent(tenant.slug || tenant.id)}`;
-        return `<tr><td data-label="Cliente"><b>${this.escape(tenant.name || slug)}</b></td><td data-label="Identificador"><span class="mono">${slug}</span></td><td data-label="Domínios">${this.escape(domains)}</td><td data-label="Links"><a href="${base}" target="_blank" rel="noopener">Site</a> · <a href="${adminUrl}" target="_blank" rel="noopener">Admin</a></td><td data-label="Status"><span class="badge ${active ? '' : 'badge-danger'}">${active ? 'Ativo' : 'Suspenso'}</span></td><td data-label="Ação"><button class="table-action" onclick="admin.setTenantStatus('${slug}','${active ? 'suspended' : 'active'}')">${active ? 'Suspender' : 'Ativar'}</button></td></tr>`;
-      }).join('') : '<tr><td colspan="6" class="empty-state">Nenhum cliente white label criado.</td></tr>';
-    } catch (error) { table.innerHTML = `<tr><td colspan="6" class="empty-state">${this.escape(error.message)}</td></tr>`; }
+        const productionBase = deploymentReady && deployment.productionUrl ? deployment.productionUrl : base;
+        const productionAdmin = deploymentReady && deployment.productionUrl ? `${deployment.productionUrl.replace(/\/$/, '')}/admin` : adminUrl;
+        return `<tr><td data-label="Cliente"><b>${this.escape(tenant.name || slug)}</b></td><td data-label="Identificador"><span class="mono">${slug}</span></td><td data-label="Infraestrutura"><span class="badge ${isolated && !deploymentReady ? 'badge-danger' : 'badge-success'}">${deploymentLabel}</span></td><td data-label="Domínios">${this.escape(domains)}</td><td data-label="Links"><a href="${this.escape(productionBase)}" target="_blank" rel="noopener">Site</a> · <a href="${this.escape(productionAdmin)}" target="_blank" rel="noopener">Admin</a></td><td data-label="Status"><span class="badge ${active ? '' : 'badge-danger'}">${active ? 'Ativo' : 'Suspenso'}</span></td><td data-label="Ação"><button class="table-action" onclick="admin.setTenantStatus('${slug}','${active ? 'suspended' : 'active'}')">${active ? 'Suspender' : 'Ativar'}</button></td></tr>`;
+      }).join('') : '<tr><td colspan="7" class="empty-state">Nenhum cliente white label criado.</td></tr>';
+    } catch (error) { table.innerHTML = `<tr><td colspan="7" class="empty-state">${this.escape(error.message)}</td></tr>`; }
   },
 
   async setTenantStatus(id, status) {

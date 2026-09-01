@@ -8,6 +8,7 @@ import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, normalizeGgrRate } from '..
 import { authTokenTtl, getJwtSecret } from '../lib/security.js';
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantBannedIpsId, tenantSettingsRef } from '../lib/tenant.js';
 import { findTenantUser } from '../lib/userLookup.js';
+import { updateAdminSummary } from '../lib/adminSummary.js';
 
 const router = express.Router();
 const JWT_SECRET = getJwtSecret();
@@ -191,6 +192,9 @@ router.post('/register', async (req, res) => {
     if (!savedInFirestore) {
       return res.status(503).json({ error: 'O cadastro está temporariamente indisponível. Nenhuma conta foi criada; tente novamente em alguns minutos.' });
     }
+    updateAdminSummary(null, tenantId, { totalUsers: 1 }).catch(error => {
+      console.warn('Admin summary register update:', error.message);
+    });
     persistTmpUser(newUser, docId);
     
     const token = jwt.sign(
@@ -288,6 +292,9 @@ router.post('/register-manager', async (req, res) => {
     if (!savedInFirestore) {
       return res.status(503).json({ error: 'O cadastro de gerente está temporariamente indisponível. Nenhuma conta foi criada; tente novamente mais tarde.' });
     }
+    updateAdminSummary(null, tenantId, { totalUsers: 1 }).catch(error => {
+      console.warn('Admin summary manager update:', error.message);
+    });
     persistTmpUser(newManager, docId);
 
     const token = jwt.sign({ uid: docId, email, role: 'manager', tenant_id: tenantId }, JWT_SECRET, { expiresIn: authTokenTtl('manager') });
