@@ -625,6 +625,21 @@ const game = {
     }
   },
 
+  openQuickPlay() {
+    if (!app.token || !app.user) {
+      app.openAuth('login');
+      return;
+    }
+    if (Number(app.user.balance || 0) < 100) {
+      app.openWalletTab('deposit');
+      app.showToast('Adicione saldo para escolher sua entrada e jogar.');
+      return;
+    }
+    app.closePlayerProfile?.();
+    app.showScreen('menu-screen');
+    this.showPrep('real', 'classic');
+  },
+
   formatEntry(value) {
     return Number(value || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   },

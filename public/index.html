@@ -175,7 +175,7 @@
   <nav class="player-bottom-nav" id="player-bottom-nav" aria-label="Navegação do jogador" hidden>
     <button type="button" data-player-tab="wallet" onclick="app.openWalletTab('deposit')"><span>＋</span><small>Depositar</small></button>
     <button type="button" data-player-tab="withdraw" onclick="app.openWalletTab('withdraw')"><span>↓</span><small>Sacar</small></button>
-    <button type="button" class="play-tab" data-player-tab="play" onclick="app.showScreen('menu-screen')"><span class="play-mark"><i></i><i></i><i></i><i></i></span><small>Jogar</small></button>
+    <button type="button" class="play-tab" data-player-tab="play" onclick="game.openQuickPlay()" aria-label="Jogar: escolher valor da entrada"><span class="play-mark"><i></i><i></i><i></i><i></i></span><small>Jogar</small></button>
     <a data-player-tab="affiliate" href="./affiliate/"><span>↗</span><small>Indicar</small></a>
     <button type="button" data-player-tab="profile" onclick="app.showPlayerProfile()"><span>○</span><small>Perfil</small></button>
   </nav>
@@ -186,6 +186,6 @@
   <div class="modal" id="win-modal"><div class="modal-card result-card"><div class="result-icon">✓</div><small>RESGATE CONCLUÍDO</small><h3 id="win-modal-payout">R$ 0,00</h3><p>Multiplicador final: <b id="win-modal-mult">1.00x</b></p><button class="btn btn-primary btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="modal" id="gameover-modal"><div class="modal-card result-card"><div class="result-icon danger">×</div><small>FIM DE PARTIDA</small><h3>Sem movimentos</h3><p>A rodada foi encerrada. Revise sua estratégia e tente novamente.</p><button class="btn btn-primary btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/branding.js?v=20260831-3"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260831-4"></script><script src="./js/wallet.js?v=20260821-2"></script><script src="./js/game.js?v=20260831-1"></script>
+  <script src="./js/branding.js?v=20260831-3"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260831-4"></script><script src="./js/wallet.js?v=20260821-2"></script><script src="./js/game.js?v=20260831-2"></script>
 </body>
 </html>
