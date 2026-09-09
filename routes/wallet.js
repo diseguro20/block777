@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { createVizzionPix, extractVizzionTransaction, getVizzionTransaction, parseVizzionWebhook, vizzionPayStatus } from '../lib/vizzionpay.js';
+import { createVizzionPix, extractVizzionTransaction, getVizzionTransaction, isVizzionPaid, parseVizzionWebhook, vizzionAmountMatches, vizzionPayStatus, vizzionTransactionStatus } from '../lib/vizzionpay.js';
 import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
 import { updateAdminSummary } from '../lib/adminSummary.js';
@@ -162,7 +162,9 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       const userDoc = await transaction.get(db.collection('users').doc(deposit.uid));
       return { alreadyApproved: true, balance: userDoc.exists ? userDoc.data().balance : 0 };
     }
-    if (deposit.status !== 'pending') throw new Error('Depósito não está pendente.');
+    const localStatus = String(deposit.status || 'pending').toLowerCase();
+    const reconcilableStatuses = ['pending', 'paid', 'completed', 'confirmed', 'success', 'succeeded', 'settled'];
+    if (!reconcilableStatuses.includes(localStatus)) throw new Error('Depósito não pode ser conciliado.');
 
     const userRef = db.collection('users').doc(deposit.uid);
     const userDoc = await transaction.get(userRef);
@@ -215,7 +217,7 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       rollover_target: newRolloverTarget
     });
     updateAdminSummary(transaction, tenantId, {
-      pendingDeposits: -1,
+      pendingDeposits: localStatus === 'pending' ? -1 : 0,
       approvedDeposits: 1,
       approvedDepositAmount: deposit.amount,
       totalBonusGranted: bonusAmount,
@@ -341,10 +343,9 @@ router.post('/webhook/vizzionpay', async (req, res) => {
     if (!verifiedTransaction) {
       return res.status(202).json({ received: true, status: 'transaction_not_verified' });
     }
-    const verifiedStatus = String(verifiedTransaction.status || '').toUpperCase();
-    const isPaid = ['COMPLETED', 'PAID', 'APPROVED', 'SETTLED'].includes(verifiedStatus);
-    const gatewayAmount = Number(verifiedTransaction.amount ?? verifiedTransaction.value);
-    if (Number.isFinite(gatewayAmount) && Math.round(gatewayAmount * 100) !== Number(depositData.amount)) {
+    const verifiedStatus = vizzionTransactionStatus(verifiedTransaction);
+    const isPaid = isVizzionPaid(verifiedTransaction);
+    if (!vizzionAmountMatches(verifiedTransaction, depositData.amount)) {
       console.warn(`[VizzionPay Webhook] Valor divergente no depósito ${depositRef.id}.`);
       return res.status(409).json({ received: true, status: 'amount_mismatch' });
     }
@@ -412,9 +413,9 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
           referenceId: depositRef.id
         });
         const gatewayTx = extractVizzionTransaction(lookup, { gatewayId: deposit.gatewayId, referenceId: depositRef.id });
-        const gStatus = String(gatewayTx?.status || '').toUpperCase();
-        if (['COMPLETED', 'PAID', 'APPROVED', 'SETTLED'].includes(gStatus)) {
-          const result = await approveAndCreditDeposit(depositRef, 'COMPLETED');
+        const gStatus = vizzionTransactionStatus(gatewayTx);
+        if (isVizzionPaid(gatewayTx) && vizzionAmountMatches(gatewayTx, deposit.amount)) {
+          const result = await approveAndCreditDeposit(depositRef, gStatus || 'COMPLETED');
           return res.json({
             status: 'approved',
             balance: result.balance,

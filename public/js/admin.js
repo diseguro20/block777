@@ -106,7 +106,7 @@ const admin = {
     if (name === 'managers') this.loadManagers();
     if (name === 'games') this.loadGameLogs();
     if (name === 'finance') {
-      this.loadDeposits();
+      this.syncVizzionDeposits(true);
       this.loadWithdrawals();
       this.loadGatewayStatus();
     }
@@ -794,6 +794,32 @@ const admin = {
         <td data-label="Status"><span class="badge badge-pending">Pendente</span></td>
         <td data-label="Ações" class="actions"><button class="approve" onclick="admin.resolveDeposit('${item.id}','approve')">Aprovar</button><button onclick="admin.resolveDeposit('${item.id}','reject')">Recusar</button></td>
       </tr>`).join('') : '<tr><td colspan="9" class="empty-state">Nenhum depósito pendente.</td></tr>';
+    }
+  },
+
+  async syncVizzionDeposits(silent = false) {
+    if (this.depositSyncInProgress) return;
+    this.depositSyncInProgress = true;
+    const button = document.getElementById('sync-vizzion-deposits');
+    if (button) { button.disabled = true; button.textContent = 'Sincronizando...'; }
+    try {
+      const data = await app.fetchAPI('/api/admin/deposits/sync-vizzion', { method: 'POST' });
+      await this.loadDeposits();
+      await this.loadOverview(true, true);
+      if (!silent || data.approved > 0) {
+        const message = data.approved > 0
+          ? `${data.approved} depósito(s) pago(s) sincronizado(s) e creditado(s).`
+          : `${data.checked} depósito(s) conferido(s); nenhum novo pagamento confirmado.`;
+        app.showToast(message);
+      }
+      return data;
+    } catch (error) {
+      await this.loadDeposits().catch(() => {});
+      if (!silent) app.showToast(error.message || 'Não foi possível sincronizar a Vizzion Pay.');
+      return null;
+    } finally {
+      this.depositSyncInProgress = false;
+      if (button) { button.disabled = false; button.textContent = 'Sincronizar Vizzion'; }
     }
   },
 

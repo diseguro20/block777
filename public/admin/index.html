@@ -112,7 +112,7 @@
             <div class="gateway-details"><span>Depósitos automáticos via PIX</span><span>Confirmação e crédito por webhook</span><span>Comissões de afiliados automáticas</span></div>
           </article>
           <article class="panel">
-            <div class="panel-title"><div><small>PIX CONFIRMADO</small><h3>Depósitos aprovados</h3></div><div class="panel-actions"><button class="btn btn-ghost" onclick="admin.auditRecentDeposits()">Conferir 48h</button><button class="btn btn-ghost" onclick="admin.loadDeposits()">Atualizar</button></div></div>
+            <div class="panel-title"><div><small>PIX CONFIRMADO</small><h3>Depósitos aprovados</h3></div><div class="panel-actions"><button class="btn btn-ghost" id="sync-vizzion-deposits" onclick="admin.syncVizzionDeposits()">Sincronizar Vizzion</button><button class="btn btn-ghost" onclick="admin.loadDeposits()">Atualizar</button></div></div>
             <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Origem</th><th>Depósito</th><th>Bônus</th><th>Total creditado</th><th>Gateway</th><th>Gerado em</th><th>Aprovado em</th><th>Status</th></tr></thead><tbody id="approved-deposits-table"></tbody></table></div>
           </article>
           <article class="panel">
@@ -228,6 +228,6 @@
   <div class="toast-container" id="toast-container"></div>
   <script src="/js/branding.js?v=20260831-5"></script>
   <script src="/js/app.js?v=20260831-5"></script>
-  <script src="/js/admin.js?v=20260909-2"></script>
+  <script src="/js/admin.js?v=20260909-3"></script>
 </body>
 </html>

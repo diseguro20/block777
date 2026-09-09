@@ -14,6 +14,8 @@ import { findTenantUser } from '../lib/userLookup.js';
 import { adminSummaryRef, emptyAdminSummary, normalizeAdminSummary, updateAdminSummary } from '../lib/adminSummary.js';
 import { createPasswordResetCode, hashPasswordResetCode, PASSWORD_RESET_MAX_ATTEMPTS, passwordResetExpiry } from '../lib/passwordReset.js';
 import { resolveDepositCredit } from '../lib/depositCredit.js';
+import { extractVizzionTransaction, getVizzionTransaction, isVizzionPaid, vizzionAmountMatches, vizzionTransactionStatus } from '../lib/vizzionpay.js';
+import { approveAndCreditDeposit } from './wallet.js';
 
 const JWT_SECRET = getJwtSecret();
 const router = express.Router();
@@ -788,6 +790,54 @@ router.get('/deposits', async (req, res) => {
     const stale = getStaleAdminCache(cacheKey);
     if (stale) return res.json({ ...stale, stale: true });
     res.status(503).json({ error: 'Não foi possível carregar os depósitos.' });
+  }
+});
+
+router.post('/deposits/sync-vizzion', async (req, res) => {
+  try {
+    const snapshot = await db.collection('deposit_requests').get();
+    const pending = snapshot.docs
+      .filter(doc => belongsToTenant(doc.data(), req.adminTenantId))
+      .filter(doc => String(doc.data().gateway || '').toLowerCase() === 'vizzionpay')
+      .filter(doc => !['approved', 'rejected', 'refunded', 'charged_back'].includes(String(doc.data().status || 'pending').toLowerCase()))
+      .sort((a, b) => timestampMillis(b.data().created_at) - timestampMillis(a.data().created_at));
+
+    const summary = { checked: 0, approved: 0, stillPending: 0, mismatched: 0, errors: 0 };
+    const processDeposit = async doc => {
+      const deposit = doc.data();
+      try {
+        const lookup = await getVizzionTransaction({ gatewayId: deposit.gatewayId, referenceId: doc.id });
+        const gatewayTransaction = extractVizzionTransaction(lookup, { gatewayId: deposit.gatewayId, referenceId: doc.id });
+        summary.checked++;
+        if (!gatewayTransaction || !isVizzionPaid(gatewayTransaction)) {
+          summary.stillPending++;
+          return;
+        }
+        if (!vizzionAmountMatches(gatewayTransaction, deposit.amount)) {
+          summary.mismatched++;
+          await doc.ref.update({
+            gateway_status: vizzionTransactionStatus(gatewayTransaction),
+            reconciliation_error: 'amount_mismatch',
+            reconciled_at: FieldValue.serverTimestamp()
+          });
+          return;
+        }
+        await approveAndCreditDeposit(doc.ref, vizzionTransactionStatus(gatewayTransaction) || 'COMPLETED');
+        summary.approved++;
+      } catch (error) {
+        summary.errors++;
+        console.warn(`[Vizzion reconciliation] ${doc.id}:`, error.message);
+      }
+    };
+
+    // Lotes pequenos evitam sobrecarregar tanto o gateway quanto o Firestore.
+    for (let index = 0; index < pending.length; index += 4) {
+      await Promise.all(pending.slice(index, index + 4).map(processDeposit));
+    }
+    res.json({ success: true, total: pending.length, ...summary });
+  } catch (error) {
+    console.error('Vizzion reconciliation error:', error);
+    res.status(502).json({ error: 'Não foi possível sincronizar os depósitos com a Vizzion Pay.' });
   }
 });
 

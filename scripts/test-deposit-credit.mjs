@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { resolveDepositCredit } from '../lib/depositCredit.js';
-import { extractVizzionTransaction } from '../lib/vizzionpay.js';
+import { extractVizzionTransaction, isVizzionPaid, vizzionAmountMatches, vizzionTransactionStatus } from '../lib/vizzionpay.js';
 
 const standard = resolveDepositCredit({ amount: 2000, bonusAmount: 2000, rolloverRequired: 22000 }, {});
 assert.deepEqual(standard, { bonusAmount: 2000, rolloverRequired: 22000, creditedAmount: 4000 });
@@ -12,4 +12,10 @@ assert.equal(calculated.rolloverRequired, 22000);
 const transaction = { id: 'tx-1', status: 'COMPLETED', identifier: 'dep-1' };
 assert.equal(extractVizzionTransaction({ data: [transaction] }, { gatewayId: 'tx-1', referenceId: 'dep-1' }), transaction);
 assert.equal(extractVizzionTransaction({ transactions: [transaction] }, { gatewayId: 'tx-1' }), transaction);
+assert.equal(extractVizzionTransaction({ data: { content: [transaction] } }, { referenceId: 'dep-1' }), transaction);
+assert.equal(vizzionTransactionStatus({ paymentStatus: 'paid' }), 'PAID');
+assert.equal(isVizzionPaid({ transactionStatus: 'succeeded' }), true);
+assert.equal(vizzionAmountMatches({ amount: 20 }, 2000), true);
+assert.equal(vizzionAmountMatches({ amount: 2000 }, 2000), true);
+assert.equal(vizzionAmountMatches({ amount: 30 }, 2000), false);
 console.log('Automatic deposit credit and gateway response parsing validated.');
