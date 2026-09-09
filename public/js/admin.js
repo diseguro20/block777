@@ -102,7 +102,7 @@ const admin = {
       settings: 'Configurações',
       tenants: 'Clientes white label'
     })[name];
-    if (name === 'players') this.loadUsers();
+    if (name === 'players') { this.loadUsers(); this.loadPasswordResets(); }
     if (name === 'managers') this.loadManagers();
     if (name === 'games') this.loadGameLogs();
     if (name === 'finance') {
@@ -459,6 +459,34 @@ const admin = {
     }).join('') : '<tr><td colspan="12" class="empty-state">Nenhum jogador encontrado.</td></tr>';
   },
 
+  async loadPasswordResets() {
+    const body = document.getElementById('password-resets-table');
+    if (!body) return;
+    body.innerHTML = '<tr><td colspan="5" class="empty-state">Carregando solicitações...</td></tr>';
+    try {
+      const data = await app.fetchAPI('/api/admin/password-resets');
+      const requests = data.requests || [];
+      body.innerHTML = requests.length ? requests.map(item => `<tr><td data-label="Jogador"><b>${this.escape(item.username || 'Conta')}</b></td><td data-label="Contato" class="mono">${this.escape(item.contact || 'Contato cadastrado')}</td><td data-label="Solicitado em">${app.formatDate(item.created_at)}</td><td data-label="Status"><span class="badge ${item.status === 'issued' ? 'badge-success' : ''}">${item.status === 'issued' ? 'Código emitido' : 'Aguardando'}</span></td><td data-label="Ação"><button class="table-action" onclick="admin.issuePasswordReset('${this.escape(item.id)}','${this.escape(item.username || 'Jogador')}')">Gerar código</button></td></tr>`).join('') : '<tr><td colspan="5" class="empty-state">Nenhuma solicitação pendente.</td></tr>';
+    } catch (error) { body.innerHTML = `<tr><td colspan="5" class="empty-state">${this.escape(error.message)}</td></tr>`; }
+  },
+
+  async issuePasswordReset(id, username) {
+    try {
+      const data = await app.fetchAPI(`/api/admin/password-resets/${encodeURIComponent(id)}/issue`, { method: 'POST' });
+      this.currentResetCode = data.code;
+      document.getElementById('reset-code-user').textContent = username;
+      document.getElementById('reset-code-value').textContent = data.code;
+      document.getElementById('reset-code-modal')?.classList.add('active');
+      await this.loadPasswordResets();
+    } catch (error) { app.showToast(error.message); }
+  },
+
+  async copyResetCode() {
+    if (!this.currentResetCode) return;
+    try { await navigator.clipboard.writeText(this.currentResetCode); app.showToast('Código copiado.'); }
+    catch (_) { app.showToast(`Código: ${this.currentResetCode}`); }
+  },
+
   openCommissionModal(id, username, level1, level2) {
     this.selectedCommissionUserId = id;
     this.selectedCommissionUsername = username;
@@ -767,6 +795,16 @@ const admin = {
         <td data-label="Ações" class="actions"><button class="approve" onclick="admin.resolveDeposit('${item.id}','approve')">Aprovar</button><button onclick="admin.resolveDeposit('${item.id}','reject')">Recusar</button></td>
       </tr>`).join('') : '<tr><td colspan="9" class="empty-state">Nenhum depósito pendente.</td></tr>';
     }
+  },
+
+  async auditRecentDeposits() {
+    try {
+      app.showToast('Conferindo depósitos aprovados das últimas 48 horas...');
+      const data = await app.fetchAPI('/api/admin/deposits/audit-recent', { method: 'POST' });
+      if (data.review?.length) app.showToast(`${data.total} depósitos conferidos; ${data.review.length} precisam de revisão manual para evitar crédito duplicado.`);
+      else app.showToast(`${data.total} depósitos aprovados conferidos. Todos possuem evidência de crédito.`);
+      await Promise.all([this.loadDeposits(), this.loadOverview(true)]);
+    } catch (error) { app.showToast(error.message); }
   },
 
   async resolveDeposit(id, action) {

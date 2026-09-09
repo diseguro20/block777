@@ -132,6 +132,9 @@ const app = {
   bindForms() {
     const login = document.getElementById('login-form');
     const register = document.getElementById('register-form');
+    const resetRequest = document.getElementById('password-reset-request-form');
+    const resetConfirm = document.getElementById('password-reset-confirm-form');
+    const changePassword = document.getElementById('change-password-form');
     const phoneInput = document.getElementById('reg-phone-input');
     if (phoneInput) {
       phoneInput.addEventListener('input', (e) => {
@@ -174,6 +177,45 @@ const app = {
       } finally {
         if (btn) { btn.disabled = false; btn.textContent = 'Criar minha conta'; }
       }
+    };
+    if (resetRequest) resetRequest.onsubmit = async event => {
+      event.preventDefault();
+      const button = resetRequest.querySelector('button[type="submit"]');
+      if (button) { button.disabled = true; button.textContent = 'Enviando...'; }
+      try {
+        const payload = Object.fromEntries(new FormData(resetRequest));
+        const data = await this.fetchAPI('/api/auth/password-reset/request', { method: 'POST', body: JSON.stringify(payload) });
+        document.getElementById('password-reset-request-id').value = data.requestId;
+        resetRequest.hidden = true;
+        resetConfirm.hidden = false;
+        this.showToast(data.message);
+      } catch (error) { this.showToast(error.message); }
+      finally { if (button) { button.disabled = false; button.textContent = 'Solicitar código'; } }
+    };
+    if (resetConfirm) resetConfirm.onsubmit = async event => {
+      event.preventDefault();
+      const payload = Object.fromEntries(new FormData(resetConfirm));
+      if (payload.newPassword !== document.getElementById('password-reset-confirmation').value) return this.showToast('As senhas não coincidem.');
+      const button = resetConfirm.querySelector('button[type="submit"]');
+      if (button) { button.disabled = true; button.textContent = 'Alterando...'; }
+      try {
+        const data = await this.fetchAPI('/api/auth/password-reset/confirm', { method: 'POST', body: JSON.stringify(payload) });
+        resetConfirm.reset(); resetConfirm.hidden = true; resetRequest.hidden = false;
+        this.closeModal('password-recovery-modal'); this.openAuth('login'); this.showToast(data.message);
+      } catch (error) { this.showToast(error.message); }
+      finally { if (button) { button.disabled = false; button.textContent = 'Definir nova senha'; } }
+    };
+    if (changePassword) changePassword.onsubmit = async event => {
+      event.preventDefault();
+      const payload = Object.fromEntries(new FormData(changePassword));
+      if (payload.newPassword !== document.getElementById('change-password-confirmation').value) return this.showToast('As senhas não coincidem.');
+      const button = changePassword.querySelector('button[type="submit"]');
+      if (button) { button.disabled = true; button.textContent = 'Salvando...'; }
+      try {
+        const data = await this.fetchAPI('/api/auth/change-password', { method: 'POST', body: JSON.stringify(payload) });
+        changePassword.reset(); this.closeModal('change-password-modal'); this.showToast(data.message);
+      } catch (error) { this.showToast(error.message); }
+      finally { if (button) { button.disabled = false; button.textContent = 'Salvar nova senha'; } }
     };
   },
 
@@ -306,6 +348,15 @@ const app = {
   },
   toggleMobileMenu() { document.getElementById('nav-actions')?.classList.toggle('open'); },
   openAuth(tab = 'login') { this.toggleAuthTab(tab); document.getElementById('auth-modal')?.classList.add('active'); },
+  openPasswordRecovery() {
+    this.closeModal('auth-modal');
+    const request = document.getElementById('password-reset-request-form');
+    const confirm = document.getElementById('password-reset-confirm-form');
+    if (request) request.hidden = false;
+    if (confirm) confirm.hidden = true;
+    document.getElementById('password-recovery-modal')?.classList.add('active');
+  },
+  openChangePassword() { this.closePlayerProfile(); document.getElementById('change-password-modal')?.classList.add('active'); },
   closeModal(id) { document.getElementById(id)?.classList.remove('active'); },
 
   toggleAuthTab(tab) {

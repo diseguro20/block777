@@ -12,6 +12,8 @@ import { DEFAULT_TENANT_ID, belongsToTenant, tenantBannedIpsId, tenantSettingsRe
 import { BANNER_DEFAULTS, normalizeBanners } from '../lib/banners.js';
 import { findTenantUser } from '../lib/userLookup.js';
 import { adminSummaryRef, emptyAdminSummary, normalizeAdminSummary, updateAdminSummary } from '../lib/adminSummary.js';
+import { createPasswordResetCode, hashPasswordResetCode, PASSWORD_RESET_MAX_ATTEMPTS, passwordResetExpiry } from '../lib/passwordReset.js';
+import { resolveDepositCredit } from '../lib/depositCredit.js';
 
 const JWT_SECRET = getJwtSecret();
 const router = express.Router();
@@ -392,6 +394,44 @@ router.put('/users/:id/password', async (req, res) => {
   }
 });
 
+router.get('/password-resets', async (req, res) => {
+  try {
+    const snapshot = await db.collection('password_reset_requests').get();
+    const requests = snapshot.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(item => belongsToTenant(item, req.adminTenantId) && item.status !== 'used')
+      .sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at))
+      .slice(0, 100)
+      .map(item => ({ ...item, code_hash: undefined }));
+    res.json({ requests });
+  } catch (error) {
+    res.status(503).json({ error: 'Não foi possível carregar as solicitações de senha.' });
+  }
+});
+
+router.post('/password-resets/:id/issue', async (req, res) => {
+  try {
+    const requestRef = db.collection('password_reset_requests').doc(req.params.id);
+    const requestDoc = await requestRef.get();
+    if (!requestDoc.exists) return res.status(404).json({ error: 'Solicitação não encontrada.' });
+    ensureTenantAccess(req, requestDoc.data());
+    if (requestDoc.data().status === 'used') return res.status(409).json({ error: 'Esta solicitação já foi utilizada.' });
+    const code = createPasswordResetCode();
+    await requestRef.update({
+      status: 'issued',
+      code_hash: hashPasswordResetCode(requestRef.id, code, JWT_SECRET),
+      attempts: 0,
+      max_attempts: PASSWORD_RESET_MAX_ATTEMPTS,
+      expires_at: passwordResetExpiry(),
+      issued_at: FieldValue.serverTimestamp(),
+      issued_by: req.user.uid
+    });
+    res.json({ success: true, code, expiresInMinutes: 15 });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Não foi possível gerar o código.' });
+  }
+});
+
 router.delete('/users/:id', async (req, res) => {
   try {
     const userRef = db.collection('users').doc(req.params.id);
@@ -751,18 +791,53 @@ router.get('/deposits', async (req, res) => {
   }
 });
 
+router.post('/deposits/audit-recent', async (req, res) => {
+  try {
+    const cutoff = Date.now() - (48 * 60 * 60 * 1000);
+    const snapshot = await db.collection('deposit_requests').where('status', '==', 'approved').get();
+    const recent = snapshot.docs.filter(doc => {
+      const data = doc.data();
+      return belongsToTenant(data, req.adminTenantId) && timestampMillis(data.approved_at || data.created_at) >= cutoff;
+    });
+    let verified = 0;
+    let marked = 0;
+    const review = [];
+    for (const doc of recent) {
+      const deposit = doc.data();
+      if (deposit.credit_applied === true) { verified++; continue; }
+      let evidence = deposit.creditedAmount != null;
+      if (!evidence) {
+        const transactions = await db.collection('transactions').where('reference_id', '==', doc.id).limit(5).get();
+        evidence = transactions.docs.some(item => {
+          const transaction = item.data();
+          return ['approved', 'completed'].includes(transaction.status) && Number.isFinite(Number(transaction.balance_after));
+        });
+      }
+      if (!evidence) {
+        review.push({ id: doc.id, username: deposit.username || deposit.uid, amount: deposit.amount });
+        continue;
+      }
+      await doc.ref.update({ credit_applied: true, credit_audited_at: FieldValue.serverTimestamp(), credit_audited_by: req.user.uid });
+      marked++;
+    }
+    res.json({ success: true, total: recent.length, verified, marked, review });
+  } catch (error) {
+    res.status(500).json({ error: 'Não foi possível auditar os depósitos recentes.' });
+  }
+});
+
 router.put('/deposits/:id/approve', async (req, res) => {
   try {
     const depositRef = db.collection('deposit_requests').doc(req.params.id);
+    const depositTransactionSnapshot = await db.collection('transactions').where('reference_id', '==', depositRef.id).limit(1).get();
+    const depositTransactionRef = depositTransactionSnapshot.empty ? null : depositTransactionSnapshot.docs[0].ref;
     await db.runTransaction(async transaction => {
       const depositDoc = await transaction.get(depositRef);
       if (!depositDoc.exists || depositDoc.data().status !== 'pending') throw new Error('Depósito pendente não encontrado');
       const deposit = depositDoc.data();
       ensureTenantAccess(req, deposit);
       const settingsDoc = await transaction.get(tenantSettingsRef(req.adminTenantId));
-      const calculatedPromotion = calculateDepositPromotion(deposit.amount, settingsDoc.exists ? settingsDoc.data() : {});
-      const bonusAmount = deposit.bonusAmount == null ? calculatedPromotion.bonusAmount : Number(deposit.bonusAmount);
-      const rolloverRequired = deposit.rolloverRequired == null ? calculatedPromotion.rolloverRequired : Number(deposit.rolloverRequired);
+      const { bonusAmount, rolloverRequired, creditedAmount } = resolveDepositCredit(deposit, settingsDoc.exists ? settingsDoc.data() : {});
       const userRef = db.collection('users').doc(deposit.uid);
       const userDoc = await transaction.get(userRef);
       if (!userDoc.exists) throw new Error('Usuário não encontrado');
@@ -790,7 +865,9 @@ router.put('/deposits/:id/approve', async (req, res) => {
         status: 'approved',
         bonusAmount,
         rolloverRequired,
-        creditedAmount: deposit.amount + bonusAmount,
+        creditedAmount,
+        credit_applied: true,
+        credit_applied_at: FieldValue.serverTimestamp(),
         approved_at: FieldValue.serverTimestamp()
       });
       transaction.update(userRef, {
@@ -809,6 +886,13 @@ router.put('/deposits/:id/approve', async (req, res) => {
         activeRolloverUsers: wallet.rolloverRemaining > 0 ? 0 : (newRolloverRemaining > 0 ? 1 : 0),
         totalWalletBalance: deposit.amount + bonusAmount
       });
+      if (depositTransactionRef) {
+        transaction.update(depositTransactionRef, {
+          status: 'approved',
+          balance_after: newBalance,
+          completed_at: FieldValue.serverTimestamp()
+        });
+      }
       if (bonusAmount > 0) {
         transaction.set(db.collection('transactions').doc(), {
           uid: deposit.uid,

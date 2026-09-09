@@ -18,6 +18,8 @@
     "test:manager-demo": "node scripts/test-manager-demo.mjs",
     "test:demo-multiplier": "node scripts/test-demo-multiplier.mjs",
     "test:security": "node scripts/test-security.mjs",
+    "test:password-reset": "node scripts/test-password-reset.mjs",
+    "test:deposit-credit": "node scripts/test-deposit-credit.mjs",
     "deploy": "gh-pages --nojekyll -d dist",
     "predeploy": "expo export -p web"
   },

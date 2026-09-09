@@ -9,6 +9,7 @@ import { authTokenTtl, getJwtSecret } from '../lib/security.js';
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantBannedIpsId, tenantSettingsRef } from '../lib/tenant.js';
 import { findTenantUser } from '../lib/userLookup.js';
 import { updateAdminSummary } from '../lib/adminSummary.js';
+import { createPasswordResetCode, hashPasswordResetCode, isPasswordResetExpired, maskResetContact, PASSWORD_RESET_MAX_ATTEMPTS, passwordResetExpiry, safeCodeMatch } from '../lib/passwordReset.js';
 
 const router = express.Router();
 const JWT_SECRET = getJwtSecret();
@@ -423,6 +424,131 @@ router.post('/login', async (req, res) => {
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Erro no servidor' });
+  }
+});
+
+async function findPasswordResetUser(identifier, tenantId) {
+  const raw = String(identifier || '').trim();
+  const digits = raw.replace(/\D/g, '');
+  if (!raw) return null;
+  if (digits.length >= 10) {
+    const byPhone = await findTenantUser('phone', digits, tenantId);
+    if (byPhone) return byPhone;
+  }
+  if (raw.includes('@')) {
+    const byEmail = await findTenantUser('email', raw.toLowerCase(), tenantId);
+    if (byEmail) return byEmail;
+  }
+  return findTenantUser('username', raw, tenantId);
+}
+
+router.post('/password-reset/request', async (req, res) => {
+  const tenantId = req.tenant?.id || DEFAULT_TENANT_ID;
+  const identifier = String(req.body.identifier || '').trim();
+  if (!identifier) return res.status(400).json({ error: 'Informe seu celular, e-mail ou nome de usuário.' });
+  const requestRef = db.collection('password_reset_requests').doc();
+  let responseRequestId = requestRef.id;
+  try {
+    const userDoc = await findPasswordResetUser(identifier, tenantId);
+    if (userDoc && userDoc.data().status !== 'suspended') {
+      const recent = await db.collection('password_reset_requests')
+        .where('uid', '==', userDoc.id)
+        .limit(10)
+        .get();
+      const recentRequest = recent.docs.find(doc => {
+        const data = doc.data();
+        const created = data.created_at?.toMillis?.() || new Date(data.created_at || 0).getTime();
+        return belongsToTenant(data, tenantId)
+          && data.status !== 'used'
+          && Number.isFinite(created)
+          && Date.now() - created < 60 * 1000;
+      });
+      if (recentRequest) {
+        responseRequestId = recentRequest.id;
+      } else {
+        const user = userDoc.data();
+        await requestRef.set({
+          uid: userDoc.id,
+          tenant_id: tenantId,
+          username: user.username || '',
+          contact: maskResetContact(user),
+          status: 'pending',
+          attempts: 0,
+          expires_at: passwordResetExpiry(),
+          created_at: FieldValue.serverTimestamp()
+        });
+      }
+    }
+  } catch (error) {
+    console.warn('Password reset request info:', error.message);
+  }
+  res.json({
+    success: true,
+    requestId: responseRequestId,
+    message: 'Se a conta existir, a solicitação aparecerá para o administrador. Peça o código temporário e informe-o nesta tela.'
+  });
+});
+
+router.post('/password-reset/confirm', async (req, res) => {
+  try {
+    const tenantId = req.tenant?.id || DEFAULT_TENANT_ID;
+    const requestId = String(req.body.requestId || '').trim();
+    const code = String(req.body.code || '').replace(/\D/g, '');
+    const newPassword = String(req.body.newPassword || '');
+    if (!requestId || code.length !== 6 || newPassword.length < 8) {
+      return res.status(400).json({ error: 'Informe a solicitação, o código de 6 dígitos e uma senha com pelo menos 8 caracteres.' });
+    }
+    const password_hash = await bcrypt.hash(newPassword, 12);
+    const requestRef = db.collection('password_reset_requests').doc(requestId);
+    const preflight = await requestRef.get();
+    const reset = preflight.exists ? preflight.data() : null;
+    const receivedHash = hashPasswordResetCode(requestId, code, JWT_SECRET);
+    if (!reset || !belongsToTenant(reset, tenantId) || reset.status !== 'issued' || isPasswordResetExpired(reset.expires_at) || !safeCodeMatch(reset.code_hash, receivedHash)) {
+      if (reset && belongsToTenant(reset, tenantId) && reset.status === 'issued') {
+        await requestRef.update({ attempts: FieldValue.increment(1), last_attempt_at: FieldValue.serverTimestamp() }).catch(() => {});
+      }
+      return res.status(400).json({ error: 'Código inválido ou expirado.' });
+    }
+    await db.runTransaction(async transaction => {
+      const requestDoc = await transaction.get(requestRef);
+      if (!requestDoc.exists) throw new Error('Código inválido ou expirado.');
+      const reset = requestDoc.data();
+      if (!belongsToTenant(reset, tenantId) || reset.status !== 'issued' || isPasswordResetExpired(reset.expires_at)) {
+        throw new Error('Código inválido ou expirado.');
+      }
+      if ((Number(reset.attempts) || 0) >= PASSWORD_RESET_MAX_ATTEMPTS) throw new Error('Código bloqueado por excesso de tentativas.');
+      if (!safeCodeMatch(reset.code_hash, receivedHash)) {
+        throw new Error('Código inválido ou expirado.');
+      }
+      const userRef = db.collection('users').doc(reset.uid);
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists || !belongsToTenant(userDoc.data(), tenantId)) throw new Error('Conta não encontrada.');
+      transaction.update(userRef, { password_hash, password_updated_at: FieldValue.serverTimestamp() });
+      transaction.update(requestRef, { status: 'used', used_at: FieldValue.serverTimestamp(), code_hash: null });
+    });
+    const refreshedUser = await db.collection('users').doc(reset.uid).get();
+    if (refreshedUser.exists) cacheUser(refreshedUser.data(), refreshedUser.id);
+    res.json({ success: true, message: 'Senha alterada. Entre novamente com a nova senha.' });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Não foi possível redefinir a senha.' });
+  }
+});
+
+router.post('/change-password', authenticateToken, async (req, res) => {
+  try {
+    const currentPassword = String(req.body.currentPassword || '');
+    const newPassword = String(req.body.newPassword || '');
+    if (!currentPassword || newPassword.length < 8) return res.status(400).json({ error: 'Informe a senha atual e uma nova senha com pelo menos 8 caracteres.' });
+    const userRef = db.collection('users').doc(req.user.uid);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists || !belongsToTenant(userDoc.data(), req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID)) return res.status(404).json({ error: 'Conta não encontrada.' });
+    if (!await bcrypt.compare(currentPassword, userDoc.data().password_hash)) return res.status(401).json({ error: 'Senha atual incorreta.' });
+    const password_hash = await bcrypt.hash(newPassword, 12);
+    await userRef.update({ password_hash, password_updated_at: FieldValue.serverTimestamp() });
+    cacheUser({ ...userDoc.data(), password_hash }, userDoc.id);
+    res.json({ success: true, message: 'Senha alterada com sucesso.' });
+  } catch (error) {
+    res.status(500).json({ error: 'Não foi possível alterar a senha.' });
   }
 });
 

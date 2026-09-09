@@ -10,3 +10,5 @@
 @media(max-width:650px){.side-nav{grid-template-columns:repeat(6,minmax(0,1fr));overflow-x:auto}.platform-admin .side-nav{grid-template-columns:repeat(7,minmax(0,1fr))}.banner-editor{padding:13px}.tenant-layout{gap:12px}}
 .promo-stats{grid-template-columns:repeat(4,1fr)}
 @media(max-width:1000px){.promo-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:360px){.promo-stats{grid-template-columns:1fr}}
+.password-reset-panel{margin-top:18px}.password-reset-panel .section-copy{margin:-7px 0 18px;color:var(--muted);font-size:11px;line-height:1.5}.reset-code-value{display:block;margin:20px 0;padding:18px;border:1px solid var(--lime);border-radius:12px;background:#101d16;color:var(--lime);font:700 34px/1 var(--mono);letter-spacing:.18em;text-align:center}
+.panel-actions{display:flex;gap:8px;flex-wrap:wrap}

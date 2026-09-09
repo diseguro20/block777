@@ -3,10 +3,11 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { createVizzionPix, getVizzionTransaction, parseVizzionWebhook, vizzionPayStatus } from '../lib/vizzionpay.js';
+import { createVizzionPix, extractVizzionTransaction, getVizzionTransaction, parseVizzionWebhook, vizzionPayStatus } from '../lib/vizzionpay.js';
 import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
 import { updateAdminSummary } from '../lib/adminSummary.js';
+import { resolveDepositCredit } from '../lib/depositCredit.js';
 
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
@@ -87,6 +88,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       }
     });
 
+    const transactionRef = db.collection('transactions').doc();
     await docRef.set({
       uid: req.user.uid,
       tenant_id: tenantId,
@@ -106,10 +108,12 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       bonusPercent: promotion.bonusPercent,
       rolloverMultiplier: promotion.rolloverMultiplier,
       promotionEligible: promotion.eligible,
+      transaction_id: transactionRef.id,
+      credit_applied: false,
       created_at: FieldValue.serverTimestamp()
     });
 
-    await db.collection('transactions').add({
+    await transactionRef.set({
       uid: req.user.uid,
       tenant_id: tenantId,
       type: 'deposit',
@@ -141,6 +145,15 @@ router.post('/deposit', authenticateToken, async (req, res) => {
 });
 
 export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMPLETED') {
+  const initialDeposit = await depositRef.get();
+  if (!initialDeposit.exists) throw new Error('Depósito não encontrado.');
+  let transactionRef = initialDeposit.data().transaction_id
+    ? db.collection('transactions').doc(initialDeposit.data().transaction_id)
+    : null;
+  if (!transactionRef) {
+    const transactionSnapshot = await db.collection('transactions').where('reference_id', '==', depositRef.id).limit(1).get();
+    transactionRef = transactionSnapshot.empty ? null : transactionSnapshot.docs[0].ref;
+  }
   return db.runTransaction(async transaction => {
     const depositDoc = await transaction.get(depositRef);
     if (!depositDoc.exists) throw new Error('Depósito não encontrado.');
@@ -161,15 +174,7 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
 
     const settingsDoc = await transaction.get(tenantSettingsRef(deposit.tenant_id || DEFAULT_TENANT_ID));
     const settings = settingsDoc.exists ? settingsDoc.data() : {};
-    const calculatedPromo = calculateDepositPromotion(deposit.amount, settings);
-
-    const bonusAmount = (deposit.bonusAmount != null && Number(deposit.bonusAmount) > 0)
-      ? Number(deposit.bonusAmount)
-      : calculatedPromo.bonusAmount;
-
-    const rolloverRequired = (deposit.rolloverRequired != null && Number(deposit.rolloverRequired) > 0)
-      ? Number(deposit.rolloverRequired)
-      : calculatedPromo.rolloverRequired;
+    const { bonusAmount, rolloverRequired, creditedAmount } = resolveDepositCredit(deposit, settings);
 
     const newCashBalance = wallet.cashBalance + deposit.amount;
     const newBonusBalance = wallet.bonusBalance + bonusAmount;
@@ -197,7 +202,9 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       gateway_status: verifiedStatus,
       bonusAmount,
       rolloverRequired,
-      creditedAmount: deposit.amount + bonusAmount,
+      creditedAmount,
+      credit_applied: true,
+      credit_applied_at: FieldValue.serverTimestamp(),
       approved_at: FieldValue.serverTimestamp()
     });
     transaction.update(userRef, {
@@ -217,9 +224,8 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       totalWalletBalance: deposit.amount + bonusAmount
     });
 
-    const txSnapshot = await db.collection('transactions').where('reference_id', '==', depositRef.id).limit(1).get();
-    if (!txSnapshot.empty) {
-      transaction.update(txSnapshot.docs[0].ref, {
+    if (transactionRef) {
+      transaction.update(transactionRef, {
         status: 'approved',
         balance_after: newBalance,
         completed_at: FieldValue.serverTimestamp()
@@ -270,7 +276,7 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       balance: newBalance,
       cashBalance: newCashBalance,
       bonusBalance: newBonusBalance,
-      creditedAmount: deposit.amount + bonusAmount
+      creditedAmount
     };
   });
 }
@@ -326,15 +332,7 @@ router.post('/webhook/vizzionpay', async (req, res) => {
         gatewayId: depositData.gatewayId || event.gatewayId,
         referenceId: depositRef.id
       });
-      const candidates = Array.isArray(lookup) ? lookup
-        : Array.isArray(lookup?.data) ? lookup.data
-        : Array.isArray(lookup?.transactions) ? lookup.transactions
-        : [lookup?.transaction || lookup];
-      verifiedTransaction = candidates.find(item => {
-        const id = String(item?.id || item?.transactionId || '');
-        const reference = String(item?.identifier || item?.clientIdentifier || item?.metadata?.referenceId || '');
-        return (depositData.gatewayId && id === String(depositData.gatewayId)) || reference === depositRef.id;
-      });
+      verifiedTransaction = extractVizzionTransaction(lookup, { gatewayId: depositData.gatewayId || event.gatewayId, referenceId: depositRef.id });
     } catch (verificationError) {
       console.warn('[VizzionPay Webhook] Confirmação autenticada indisponível:', verificationError.message);
       return res.status(202).json({ received: true, status: 'verification_pending' });
@@ -409,11 +407,12 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
 
     if (deposit.gatewayId || depositRef.id) {
       try {
-        const gatewayTx = await getVizzionTransaction({
+        const lookup = await getVizzionTransaction({
           gatewayId: deposit.gatewayId,
           referenceId: depositRef.id
         });
-        const gStatus = String(gatewayTx.status || '').toUpperCase();
+        const gatewayTx = extractVizzionTransaction(lookup, { gatewayId: deposit.gatewayId, referenceId: depositRef.id });
+        const gStatus = String(gatewayTx?.status || '').toUpperCase();
         if (['COMPLETED', 'PAID', 'APPROVED', 'SETTLED'].includes(gStatus)) {
           const result = await approveAndCreditDeposit(depositRef, 'COMPLETED');
           return res.json({
