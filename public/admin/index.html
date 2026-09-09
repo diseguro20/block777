@@ -57,7 +57,7 @@
             <div class="panel-title"><div><small>OPERAÇÃO</small><h3>Filas financeiras</h3></div></div>
             <div class="queue-grid">
               <button onclick="admin.showView('finance')"><small>DEPÓSITOS PENDENTES</small><strong id="stat-pending-deposits">0</strong><span>Revisar solicitações →</span></button>
-              <button onclick="admin.showView('finance')"><small>SAQUES PENDENTES</small><strong id="stat-pending-withdrawals">0</strong><span>Revisar solicitações →</span></button>
+              <button onclick="admin.showView('finance')"><small>SAQUES PENDENTES</small><strong id="stat-pending-withdrawals">0</strong><span>Visualizar tentativas →</span></button>
             </div>
           </article>
           <article class="panel">
@@ -120,18 +120,15 @@
             <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Origem</th><th>Depósito</th><th>Bônus previsto</th><th>Total previsto</th><th>Gateway</th><th>Gerado em</th><th>Status</th><th>Ações</th></tr></thead><tbody id="deposits-table"></tbody></table></div>
           </article>
           <article class="panel">
-            <div class="panel-title"><div><small>CONTROLE DE SAÍDAS</small><h3>Central de saques</h3></div><button class="btn btn-ghost" onclick="admin.loadWithdrawals()">Atualizar</button></div>
+            <div class="panel-title"><div><small>REGISTRO DE SAÍDAS</small><h3>Tentativas de saque</h3></div><button class="btn btn-ghost" onclick="admin.loadWithdrawals()">Atualizar</button></div>
             <div class="metrics admin-stats withdrawal-stats">
+              <article class="metric"><span>TENTATIVAS</span><strong id="withdrawal-total-count">0</strong><small id="withdrawal-total-amount">R$ 0,00 informados</small></article>
               <article class="metric"><span>PENDENTES</span><strong id="withdrawal-pending-count">0</strong><small id="withdrawal-pending-amount">R$ 0,00 aguardando</small></article>
-              <article class="metric"><span>PAGOS</span><strong id="withdrawal-approved-count">0</strong><small id="withdrawal-approved-amount">R$ 0,00 aprovados</small></article>
-              <article class="metric"><span>RECUSADOS</span><strong id="withdrawal-rejected-count">0</strong><small id="withdrawal-rejected-amount">R$ 0,00 devolvidos</small></article>
+              <article class="metric"><span>BLOQUEADAS</span><strong id="withdrawal-blocked-count">0</strong><small id="withdrawal-blocked-amount">R$ 0,00 não solicitados</small></article>
             </div>
-            <div class="withdrawal-guidance"><b>Fluxo manual seguro</b><span>Faça o PIX fora da plataforma e só depois clique em “Confirmar pagamento”. Recusar devolve o saldo ao jogador automaticamente.</span></div>
-            <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Origem</th><th>Valor</th><th>Chave PIX</th><th>Solicitado em</th><th>Ações</th></tr></thead><tbody id="withdrawals-table"></tbody></table></div>
-          </article>
-          <article class="panel">
-            <div class="panel-title"><div><small>TRILHA DE AUDITORIA</small><h3>Histórico de saques</h3></div><select id="withdrawal-status-filter" onchange="admin.renderWithdrawals()"><option value="all">Todos</option><option value="approved">Aprovados</option><option value="rejected">Recusados</option></select></div>
-            <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Origem</th><th>Valor</th><th>Chave PIX</th><th>Solicitado em</th><th>Processado em</th><th>Status / motivo</th></tr></thead><tbody id="withdrawals-history-table"></tbody></table></div>
+            <div class="withdrawal-guidance"><b>Somente visualização</b><span>O painel registra as tentativas, mas não aprova, recusa, libera ou envia saques.</span></div>
+            <div class="panel-title compact-title"><div><small>TRILHA DE AUDITORIA</small></div><select id="withdrawal-status-filter" onchange="admin.renderWithdrawals()"><option value="all">Todas</option><option value="pending">Pendentes</option><option value="blocked">Bloqueadas</option><option value="approved">Pagas anteriormente</option><option value="rejected">Recusadas anteriormente</option></select></div>
+            <div class="table-wrap"><table class="responsive-table"><thead><tr><th>Jogador</th><th>Origem</th><th>Valor</th><th>Chave PIX</th><th>Tentativa em</th><th>Status / detalhe</th></tr></thead><tbody id="withdrawals-table"></tbody></table></div>
           </article>
         </div>
       </section>
@@ -231,6 +228,6 @@
   <div class="toast-container" id="toast-container"></div>
   <script src="/js/branding.js?v=20260831-5"></script>
   <script src="/js/app.js?v=20260831-5"></script>
-  <script src="/js/admin.js?v=20260909-1"></script>
+  <script src="/js/admin.js?v=20260909-2"></script>
 </body>
 </html>

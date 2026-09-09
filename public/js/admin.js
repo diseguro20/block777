@@ -818,12 +818,12 @@ const admin = {
     try {
       const { withdrawals = [], summary = {} } = await app.fetchAPI('/api/admin/withdrawals');
       this.withdrawals = withdrawals;
-      ['pending', 'approved', 'rejected'].forEach(status => {
+      ['total', 'pending', 'blocked'].forEach(status => {
         const values = summary[status] || { count: 0, amount: 0 };
         const count = document.getElementById(`withdrawal-${status}-count`);
         const amount = document.getElementById(`withdrawal-${status}-amount`);
         if (count) count.textContent = Number(values.count || 0).toLocaleString('pt-BR');
-        if (amount) amount.textContent = `${app.formatBRL(values.amount || 0)} ${status === 'pending' ? 'aguardando' : status === 'approved' ? 'aprovados' : 'devolvidos'}`;
+        if (amount) amount.textContent = `${app.formatBRL(values.amount || 0)} ${status === 'pending' ? 'aguardando' : status === 'blocked' ? 'não solicitados' : 'informados'}`;
       });
       this.renderWithdrawals();
     } catch (error) {
@@ -832,52 +832,22 @@ const admin = {
   },
 
   renderWithdrawals() {
-    const pendingBody = document.getElementById('withdrawals-table');
-    const historyBody = document.getElementById('withdrawals-history-table');
-    const pending = this.withdrawals.filter(item => item.status === 'pending');
+    const body = document.getElementById('withdrawals-table');
     const filter = document.getElementById('withdrawal-status-filter')?.value || 'all';
-    const history = this.withdrawals.filter(item => item.status !== 'pending' && (filter === 'all' || item.status === filter));
-
-    if (pendingBody) pendingBody.innerHTML = pending.length ? pending.map(item => `<tr>
-      <td data-label="Jogador"><div class="user-cell"><b>${this.escape(item.username || item.uid)}</b><span>${this.escape(item.email || item.phone || '')}</span></div></td>
-      <td data-label="Origem">${this.renderOrigin(item.origin)}</td>
-      <td data-label="Valor" class="mono positive">${app.formatBRL(item.amount)}</td>
-      <td data-label="Chave PIX" class="pix-key-cell">${this.escape(item.pix_key || '-')}</td>
-      <td data-label="Solicitado em">${app.formatDate(item.created_at)}</td>
-      <td data-label="Ações" class="actions"><button class="approve" onclick="admin.resolveWithdrawal('${item.id}','approve')">Confirmar pagamento</button><button onclick="admin.resolveWithdrawal('${item.id}','reject')">Recusar e devolver</button></td>
-    </tr>`).join('') : '<tr><td colspan="6" class="empty-state">Nenhum saque pendente.</td></tr>';
-
-    if (historyBody) historyBody.innerHTML = history.length ? history.map(item => {
-      const approved = item.status === 'approved';
-      const detail = approved ? (item.admin_note || 'Pagamento confirmado') : (item.rejection_reason || 'Saldo devolvido');
+    const items = this.withdrawals.filter(item => filter === 'all' || item.status === filter);
+    const labels = { pending: 'Pendente', blocked: 'Bloqueada', approved: 'Paga anteriormente', rejected: 'Recusada anteriormente' };
+    const badgeClasses = { pending: 'badge-pending', blocked: 'badge-danger', approved: 'badge-success', rejected: 'badge-danger' };
+    if (body) body.innerHTML = items.length ? items.map(item => {
+      const detail = item.block_reason || item.admin_note || item.rejection_reason || (item.status === 'pending' ? 'Solicitação registrada para consulta' : 'Registro histórico');
       return `<tr>
         <td data-label="Jogador"><div class="user-cell"><b>${this.escape(item.username || item.uid)}</b><span>${this.escape(item.email || item.phone || '')}</span></div></td>
         <td data-label="Origem">${this.renderOrigin(item.origin)}</td>
         <td data-label="Valor" class="mono">${app.formatBRL(item.amount)}</td>
         <td data-label="Chave PIX" class="pix-key-cell">${this.escape(item.pix_key || '-')}</td>
-        <td data-label="Solicitado em">${app.formatDate(item.created_at)}</td>
-        <td data-label="Processado em">${app.formatDate(item.processed_at || item.approved_at || item.rejected_at)}</td>
-        <td data-label="Status / motivo"><span class="badge ${approved ? 'badge-success' : 'badge-danger'}">${approved ? 'Pago' : 'Recusado'}</span><small class="withdrawal-detail">${this.escape(detail)}</small></td>
+        <td data-label="Tentativa em">${app.formatDate(item.created_at)}</td>
+        <td data-label="Status / detalhe"><span class="badge ${badgeClasses[item.status] || 'badge-pending'}">${labels[item.status] || 'Registrada'}</span><small class="withdrawal-detail">${this.escape(detail)}</small></td>
       </tr>`;
-    }).join('') : '<tr><td colspan="7" class="empty-state">Nenhum saque processado neste filtro.</td></tr>';
-  },
-
-  async resolveWithdrawal(id, action) {
-    const isApproval = action === 'approve';
-    if (isApproval && !confirm('Confirma que o PIX deste saque já foi pago ao jogador? Esta ação não envia o PIX automaticamente.')) return;
-    let reason = '';
-    if (!isApproval) {
-      reason = prompt('Informe o motivo da recusa. O valor será devolvido automaticamente ao saldo do jogador:', 'Dados PIX inválidos') || '';
-      if (!reason.trim()) return;
-      if (!confirm('Recusar este saque e devolver o valor ao saldo do jogador?')) return;
-    }
-    try {
-      await app.fetchAPI(`/api/admin/withdrawals/${id}/${action}`, { method: 'PUT', body: JSON.stringify(isApproval ? { note: 'PIX confirmado pelo administrador' } : { reason }) });
-      app.showToast(isApproval ? 'Pagamento confirmado e registrado no histórico.' : 'Saque recusado e saldo devolvido uma única vez.');
-      await Promise.all([this.loadWithdrawals(), this.loadOverview()]);
-    } catch (error) {
-      app.showToast(error.message || 'Não foi possível processar o saque.');
-    }
+    }).join('') : '<tr><td colspan="6" class="empty-state">Nenhuma tentativa de saque neste filtro.</td></tr>';
   },
 
   async banUser(id, name) {

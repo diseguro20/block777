@@ -126,9 +126,6 @@ const wallet = {
   async requestWithdraw() {
     const amount = Number(document.getElementById('with-amount-input').value);
     const pixKey = document.getElementById('with-key-input').value.trim();
-    if (this.data?.withdrawalsLocked) return app.showToast(`Complete o rollover de ${app.formatBRL(this.data.rolloverRemaining)} antes de sacar.`);
-    if (amount < 10) return app.showToast('O saque mínimo é de R$ 10.');
-    if (!pixKey) return app.showToast('Informe uma chave PIX.');
     try {
       const data = await app.fetchAPI('/api/wallet/withdraw', { method: 'POST', body: JSON.stringify({ amount: Math.round(amount * 100), pixKey }) });
       if (app.user && data.balance_after != null) app.user.balance = data.balance_after;

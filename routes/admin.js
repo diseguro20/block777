@@ -942,120 +942,54 @@ router.put('/deposits/:id/reject', async (req, res) => {
 });
 
 router.get('/withdrawals', async (req, res) => {
-  const cacheKey = tenantCacheKey(req, 'withdrawals');
-  const cached = getAdminCache(cacheKey);
-  if (cached) return res.json(cached);
   try {
-    const [snapshot, usersSnapshot] = await Promise.all([
+    const [snapshot, attemptsSnapshot, usersSnapshot] = await Promise.all([
       db.collection('withdrawal_requests').get(),
+      db.collection('withdrawal_attempts').get(),
       db.collection('users').get()
     ]);
     const usersById = new Map(usersSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(doc => [doc.id, { id: doc.id, ...doc.data() }]));
-    const withdrawals = snapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(doc => {
+    const mapWithdrawal = doc => {
       const data = doc.data();
       const user = usersById.get(data.uid) || {};
       return {
         id: doc.id,
         ...data,
-        status: ['approved', 'rejected'].includes(data.status) ? data.status : 'pending',
+        status: ['pending', 'approved', 'rejected', 'blocked'].includes(data.status) ? data.status : 'blocked',
         pix_key: data.pixKey || data.pix_key || '',
         username: user.username || data.username || data.uid,
         email: user.email || '',
         phone: user.phone || '',
         origin: buildLeadOrigin(user, usersById)
       };
-    }).sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at));
+    };
+    const withdrawals = [
+      ...snapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(mapWithdrawal),
+      ...attemptsSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(mapWithdrawal)
+    ].sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at));
     const summary = withdrawals.reduce((acc, item) => {
-      const status = item.status;
+      const status = ['pending', 'approved', 'rejected', 'blocked'].includes(item.status) ? item.status : 'blocked';
       acc[status].count++;
       acc[status].amount += Number(item.amount) || 0;
+      acc.total.count++;
+      acc.total.amount += Number(item.amount) || 0;
       return acc;
     }, {
+      total: { count: 0, amount: 0 },
       pending: { count: 0, amount: 0 },
       approved: { count: 0, amount: 0 },
-      rejected: { count: 0, amount: 0 }
+      rejected: { count: 0, amount: 0 },
+      blocked: { count: 0, amount: 0 }
     });
-    res.json(setAdminCache(cacheKey, { withdrawals, summary }));
+    res.json({ withdrawals, summary });
   } catch (error) {
     console.error('Admin withdrawals error:', error);
     res.status(503).json({ error: 'Não foi possível consultar os saques agora.' });
   }
 });
 
-router.put('/withdrawals/:id/approve', async (req, res) => {
-  try {
-    const withdrawalRef = db.collection('withdrawal_requests').doc(req.params.id);
-    await db.runTransaction(async transaction => {
-      const withdrawalDoc = await transaction.get(withdrawalRef);
-      if (!withdrawalDoc.exists || withdrawalDoc.data().status !== 'pending') throw new Error('Saque pendente não encontrado ou já processado.');
-      ensureTenantAccess(req, withdrawalDoc.data());
-      const txSnapshot = await transaction.get(db.collection('transactions').where('reference_id', '==', withdrawalRef.id).limit(1));
-      transaction.update(withdrawalRef, {
-        status: 'approved',
-        approved_at: FieldValue.serverTimestamp(),
-        processed_at: FieldValue.serverTimestamp(),
-        processed_by: req.user.uid,
-        admin_note: String(req.body.note || '').trim().slice(0, 240)
-      });
-      updateAdminSummary(transaction, req.adminTenantId, {
-        pendingWithdrawals: -1,
-        approvedWithdrawals: 1
-      });
-      txSnapshot.docs.forEach(doc => transaction.update(doc.ref, { status: 'approved', processed_at: FieldValue.serverTimestamp() }));
-    });
-    res.json({ success: true, status: 'approved' });
-  } catch (error) {
-    res.status(400).json({ error: error.message || 'Não foi possível aprovar o saque.' });
-  }
-});
-
-router.put('/withdrawals/:id/reject', async (req, res) => {
-  try {
-    const withdrawalRef = db.collection('withdrawal_requests').doc(req.params.id);
-    await db.runTransaction(async transaction => {
-      const withdrawalDoc = await transaction.get(withdrawalRef);
-      if (!withdrawalDoc.exists || withdrawalDoc.data().status !== 'pending') throw new Error('Saque pendente não encontrado');
-      const withdrawal = withdrawalDoc.data();
-      ensureTenantAccess(req, withdrawal);
-      const userRef = db.collection('users').doc(withdrawal.uid);
-      const userDoc = await transaction.get(userRef);
-      if (!userDoc.exists) throw new Error('Usuário não encontrado');
-      const txSnapshot = await transaction.get(db.collection('transactions').where('reference_id', '==', withdrawalRef.id).limit(1));
-      const wallet = getWalletBuckets(userDoc.data());
-      transaction.update(withdrawalRef, {
-        status: 'rejected',
-        rejected_at: FieldValue.serverTimestamp(),
-        processed_at: FieldValue.serverTimestamp(),
-        processed_by: req.user.uid,
-        rejection_reason: String(req.body.reason || 'Recusado pelo administrador').trim().slice(0, 240)
-      });
-      transaction.update(userRef, {
-        balance: wallet.balance + withdrawal.amount,
-        cash_balance: wallet.cashBalance + withdrawal.amount
-      });
-      updateAdminSummary(transaction, req.adminTenantId, {
-        pendingWithdrawals: -1,
-        rejectedWithdrawals: 1,
-        totalWalletBalance: withdrawal.amount
-      });
-      txSnapshot.docs.forEach(doc => transaction.update(doc.ref, { status: 'rejected', processed_at: FieldValue.serverTimestamp() }));
-      const refundRef = db.collection('transactions').doc();
-      transaction.set(refundRef, {
-        uid: withdrawal.uid,
-        type: 'withdraw_refund',
-        amount: Number(withdrawal.amount) || 0,
-        balance_after: wallet.balance + (Number(withdrawal.amount) || 0),
-        status: 'completed',
-        reference_id: withdrawalRef.id,
-        description: 'Estorno de saque recusado',
-        tenant_id: req.adminTenantId,
-        created_at: FieldValue.serverTimestamp()
-      });
-    });
-    res.json({ success: true, status: 'rejected' });
-  } catch (error) {
-    res.status(400).json({ error: error.message });
-  }
+router.put('/withdrawals/:id/:action', (req, res) => {
+  res.status(405).json({ error: 'O painel de saques é somente para visualização.' });
 });
 
 router.get('/banned-ips', async (req, res) => {

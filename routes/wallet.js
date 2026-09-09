@@ -447,20 +447,44 @@ router.get('/gateway/status', authenticateToken, (req, res) => {
   });
 });
 
-router.post('/withdraw', authenticateToken, async (req, res) => {
+async function recordBlockedWithdrawalAttempt({ uid, tenantId, amount, pixKey, reason }) {
   try {
-    const { amount, pixKey } = req.body;
+    await db.collection('withdrawal_attempts').add({
+      uid,
+      tenant_id: tenantId,
+      amount: Number.isFinite(amount) && amount > 0 ? amount : 0,
+      pixKey: String(pixKey || '').slice(0, 200),
+      status: 'blocked',
+      block_reason: String(reason || 'Solicitação não concluída').slice(0, 240),
+      created_at: FieldValue.serverTimestamp()
+    });
+  } catch (error) {
+    console.error('Withdrawal attempt audit error:', error);
+  }
+}
+
+router.post('/withdraw', authenticateToken, async (req, res) => {
+  const uid = req.user.uid;
+  const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
+  const amount = Math.round(Number(req.body?.amount) || 0);
+  const pixKey = String(req.body?.pixKey || '').trim();
+  try {
     let minWithdrawal = 1000;
     try {
       const settingsDoc = await tenantSettingsRef(req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID).get();
       if (settingsDoc.exists) minWithdrawal = settingsDoc.data().minWithdrawal ?? minWithdrawal;
     } catch (e) {}
     if (!amount || amount < minWithdrawal || !pixKey) {
+      await recordBlockedWithdrawalAttempt({
+        uid,
+        tenantId,
+        amount,
+        pixKey,
+        reason: `Dados incompletos ou valor abaixo do mínimo de R$ ${(minWithdrawal / 100).toFixed(2)}`
+      });
       return res.status(400).json({ error: `Informe uma chave PIX e saque no mínimo R$ ${(minWithdrawal / 100).toFixed(2)}.` });
     }
 
-    const uid = req.user.uid;
-    const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
     const withdrawalId = uuidv4();
 
     const result = await db.runTransaction(async (t) => {
@@ -516,6 +540,10 @@ router.post('/withdraw', authenticateToken, async (req, res) => {
     res.json(result);
   } catch (error) {
     console.error('Withdraw error:', error);
+    const knownRuleFailure = /demo|rollover|saldo sacável|não pertence|user not found/i.test(String(error.message || ''));
+    if (knownRuleFailure) {
+      await recordBlockedWithdrawalAttempt({ uid, tenantId, amount, pixKey, reason: error.message });
+    }
     res.status(400).json({ error: error.message || 'Internal server error' });
   }
 });
