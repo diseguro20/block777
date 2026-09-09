@@ -77,6 +77,7 @@ router.post('/start', authenticateToken, async (req, res) => {
       if (wallet.balance < amount) throw new Error('Saldo insuficiente para realizar a aposta.');
 
       const demoAccount = Boolean(userData.demo_account);
+      const influencerMode = Number(userData.is_influencer) === 1;
       let managerId = demoAccount ? null : (userData.manager_id || null);
       let managerGgrRate = defaultManagerGgrRate;
       if (managerId) {
@@ -88,7 +89,7 @@ router.post('/start', authenticateToken, async (req, res) => {
         }
       }
 
-      if (userData.is_influencer === 1) {
+      if (influencerMode) {
         difficulty = 'easy';
       } else {
         // Jogador normal: SEMPRE impossível
@@ -159,6 +160,7 @@ router.post('/start', authenticateToken, async (req, res) => {
         is_demo: demoAccount,
         multiplier_profile: demoAccount ? 'demo' : 'standard',
         reward_target_multiplier: REWARD_TARGET_MULTIPLIER,
+        early_cashout_enabled: influencerMode,
         manager_ggr_rate: managerGgrRate,
         rolloverCompleted,
         created_at: FieldValue.serverTimestamp()
@@ -202,6 +204,7 @@ router.post('/start', authenticateToken, async (req, res) => {
         startingMultiplier: 1,
         rewardTargetMultiplier: REWARD_TARGET_MULTIPLIER,
         rewardTargetPayout: amount * REWARD_TARGET_MULTIPLIER,
+        allowEarlyCashout: influencerMode,
         balance_after: newBalance,
         rollover_remaining: newRolloverRemaining,
         rollover_completed: rolloverCompleted
@@ -240,13 +243,18 @@ router.post('/end', authenticateToken, async (req, res) => {
     if (!belongsToTenant(betData, tenantId)) return res.status(404).json({ error: 'Aposta não encontrada nesta operação.' });
     const rewardTargetMultiplier = Math.max(1, Math.min(Number(betData.reward_target_multiplier) || REWARD_TARGET_MULTIPLIER, REWARD_TARGET_MULTIPLIER));
     const requestedMultiplier = Math.max(0, Number(multiplier) || 0);
-    if (requestedMultiplier > 0 && requestedMultiplier < rewardTargetMultiplier) {
+    // A permissão fica registrada no início da partida. O fallback por dificuldade
+    // mantém partidas de influenciadores abertas antes desta versão compatíveis.
+    const allowEarlyCashout = betData.early_cashout_enabled === true || betData.difficulty === 'easy';
+    if (requestedMultiplier > 0 && requestedMultiplier < rewardTargetMultiplier && !allowEarlyCashout) {
       return res.status(403).json({
         error: `O resgate é liberado somente ao atingir ${rewardTargetMultiplier.toFixed(2)}x.`,
         rewardTargetMultiplier
       });
     }
-    const finalMultiplier = requestedMultiplier >= rewardTargetMultiplier ? rewardTargetMultiplier : 0;
+    const finalMultiplier = requestedMultiplier >= rewardTargetMultiplier
+      ? rewardTargetMultiplier
+      : (allowEarlyCashout ? requestedMultiplier : 0);
     const payout = Math.floor(betData.amount * finalMultiplier);
     const safeLines = Math.max(0, Math.floor(Number(floorsReached) || 0));
     const safeBlocks = Math.max(0, Math.floor(Number(blocksPlaced) || 0));
@@ -279,6 +287,7 @@ router.post('/end', authenticateToken, async (req, res) => {
         score: safeScore,
         multiplier: finalMultiplier,
         rewardTargetMultiplier,
+        allowEarlyCashout,
         payout,
         manager_ggr: managerEntry.ggr,
         manager_platform_fee: managerEntry.platformFee,

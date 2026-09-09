@@ -73,17 +73,35 @@ try {
   assert.equal(gameStart.data.multiplierProfile, 'demo');
   assert.equal(gameStart.data.startingMultiplier, 1);
   assert.equal(gameStart.data.rewardTargetMultiplier, 10);
+  assert.equal(gameStart.data.allowEarlyCashout, true);
   const earlyCashout = await request('/api/game/end', {
     method: 'POST', headers: demoAuth,
-    body: JSON.stringify({ sessionId: gameStart.data.sessionId, multiplier: 9.99, floorsReached: 17, blocksPlaced: 68, score: 900 })
+    body: JSON.stringify({ sessionId: gameStart.data.sessionId, multiplier: 2.5, floorsReached: 3, blocksPlaced: 18, score: 250 })
   });
-  assert.equal(earlyCashout.response.status, 403);
-  const goalCashout = await request('/api/game/end', {
+  assert.equal(earlyCashout.response.status, 200);
+  assert.equal(earlyCashout.data.multiplier, 2.5);
+
+  const disabledForNormalRules = await request(`/api/manager/players/${playerId}/influencer`, {
+    method: 'PUT', headers: managerAuth, body: JSON.stringify({ enabled: false })
+  });
+  assert.equal(disabledForNormalRules.data.isInfluencer, false);
+  const normalGame = await request('/api/game/start', { method: 'POST', headers: demoAuth, body: JSON.stringify({ amount: 500 }) });
+  assert.equal(normalGame.response.status, 200);
+  assert.equal(normalGame.data.allowEarlyCashout, false);
+  const blockedCashout = await request('/api/game/end', {
     method: 'POST', headers: demoAuth,
-    body: JSON.stringify({ sessionId: gameStart.data.sessionId, multiplier: 10, floorsReached: 18, blocksPlaced: 72, score: 1000 })
+    body: JSON.stringify({ sessionId: normalGame.data.sessionId, multiplier: 9.99, floorsReached: 17, blocksPlaced: 68, score: 900 })
   });
-  assert.equal(goalCashout.response.status, 200);
-  assert.equal(goalCashout.data.multiplier, 10);
+  assert.equal(blockedCashout.response.status, 403);
+  const finishNormalGame = await request('/api/game/end', {
+    method: 'POST', headers: demoAuth,
+    body: JSON.stringify({ sessionId: normalGame.data.sessionId, multiplier: 0, floorsReached: 17, blocksPlaced: 68, score: 900 })
+  });
+  assert.equal(finishNormalGame.response.status, 200);
+  const enabledAgain = await request(`/api/manager/players/${playerId}/influencer`, {
+    method: 'PUT', headers: managerAuth, body: JSON.stringify({ enabled: true })
+  });
+  assert.equal(enabledAgain.data.isInfluencer, true);
   const dashboard = await request('/api/manager/dashboard', { headers: managerAuth });
   assert.equal(dashboard.data.current.ggr, 0);
   assert.equal(dashboard.data.current.platformFee, 0);

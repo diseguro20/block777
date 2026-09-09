@@ -99,6 +99,7 @@ const game = {
   betAmount: 200,
   multiplier: 1.0,
   rewardTargetMultiplier: 10,
+  allowEarlyCashout: false,
   linesCleared: 0,
   score: 0,
   blocksPlaced: 0,
@@ -716,6 +717,7 @@ const game = {
       this.difficulty = data.difficulty;
       this.multiplierProfile = data.multiplierProfile === 'demo' ? 'demo' : 'standard';
       this.rewardTargetMultiplier = Number(data.rewardTargetMultiplier) || 10;
+      this.allowEarlyCashout = data.allowEarlyCashout === true;
       this.multiplier = 1.0;
       this.linesCleared = 0;
       this.score = 0;
@@ -746,6 +748,7 @@ const game = {
     this.difficulty = 'easy';
     this.multiplierProfile = 'standard';
     this.rewardTargetMultiplier = 10;
+    this.allowEarlyCashout = false;
     this.multiplier = 1.0;
     this.linesCleared = 0;
     this.score = 0;
@@ -1049,9 +1052,10 @@ const game = {
     if (cashoutButton && this.mode === 'real') {
       const formattedPayout = app.formatBRL(payout);
       const goalReached = this.multiplier >= this.rewardTargetMultiplier;
-      cashoutButton.disabled = !goalReached;
-      cashoutButton.textContent = goalReached ? `Resgatar ${formattedPayout}` : 'Libera em 10x';
-      cashoutButton.setAttribute('aria-label', goalReached
+      const canCashout = goalReached || (this.allowEarlyCashout && this.multiplier > 0);
+      cashoutButton.disabled = !canCashout;
+      cashoutButton.textContent = canCashout ? `Resgatar ${formattedPayout}` : 'Libera em 10x';
+      cashoutButton.setAttribute('aria-label', canCashout
         ? `Resgatar recompensa de ${formattedPayout}`
         : `Resgate bloqueado. Multiplicador atual ${this.multiplier.toFixed(2)}x; alcance 10x para liberar.`);
     }
@@ -1068,7 +1072,7 @@ const game = {
 
   async cashout() {
     if (!this.isPlaying || this.mode !== 'real') return;
-    if (this.multiplier < this.rewardTargetMultiplier) {
+    if (!this.allowEarlyCashout && this.multiplier < this.rewardTargetMultiplier) {
       app.showToast(`O resgate será liberado quando você atingir ${this.rewardTargetMultiplier.toFixed(2)}x.`);
       return;
     }
