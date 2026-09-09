@@ -98,6 +98,7 @@ const game = {
   multiplierProfile: 'standard',
   betAmount: 200,
   multiplier: 1.0,
+  rewardTargetMultiplier: 10,
   linesCleared: 0,
   score: 0,
   blocksPlaced: 0,
@@ -654,7 +655,7 @@ const game = {
   updateArenaBet() {
     const value = Number(document.getElementById('arena-bet-input')?.value || 0);
     const label = document.getElementById('arena-return-value');
-    if (label) label.textContent = this.formatEntry(Math.max(0, value));
+    if (label) label.textContent = this.formatEntry(Math.max(0, value) * this.rewardTargetMultiplier);
   },
 
   startFromArena() {
@@ -678,7 +679,7 @@ const game = {
   updatePrepReward() {
     const value = Number(document.getElementById('bet-input-val')?.value || 0);
     const label = document.getElementById('prep-return-value');
-    if (label) label.textContent = this.formatEntry(Math.max(0, value));
+    if (label) label.textContent = this.formatEntry(Math.max(0, value) * this.rewardTargetMultiplier);
   },
 
   async startRealGame() {
@@ -714,6 +715,7 @@ const game = {
       this.sessionId = data.sessionId;
       this.difficulty = data.difficulty;
       this.multiplierProfile = data.multiplierProfile === 'demo' ? 'demo' : 'standard';
+      this.rewardTargetMultiplier = Number(data.rewardTargetMultiplier) || 10;
       this.multiplier = 1.0;
       this.linesCleared = 0;
       this.score = 0;
@@ -744,6 +746,7 @@ const game = {
     this.sessionId = 'demo-' + Date.now();
     this.difficulty = 'easy';
     this.multiplierProfile = 'standard';
+    this.rewardTargetMultiplier = 10;
     this.multiplier = 1.0;
     this.linesCleared = 0;
     this.score = 0;
@@ -826,7 +829,7 @@ const game = {
     const current = Number.isFinite(Number(this.multiplier)) ? Number(this.multiplier) : 1;
     const normalized = Math.max(1, Math.round(current * 2) / 2);
     const safeLines = Math.max(0, Math.floor(Number(completedLines) || 0));
-    this.multiplier = Math.min(10, normalized + safeLines * 0.50);
+    this.multiplier = Math.min(this.rewardTargetMultiplier, normalized + safeLines * 0.50);
     return this.multiplier;
   },
 
@@ -934,12 +937,12 @@ const game = {
         // Influencer: multiplicador sobe normalmente
         const baseIncrease = totalLines * 0.15;
         const comboBonus = Math.min(this.combo + totalLines, 5) * 0.10;
-        this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
+        this.multiplier = Math.min(this.rewardTargetMultiplier, parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2)));
       } else {
         // Normal/Impossível: multiplicador quase não sobe
         const baseIncrease = totalLines * 0.05;
         const comboBonus = Math.min(this.combo + totalLines, 5) * 0.01;
-        this.multiplier = parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2));
+        this.multiplier = Math.min(this.rewardTargetMultiplier, parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2)));
       }
       this.playLineCompleteSound(totalLines);
       
@@ -1046,11 +1049,18 @@ const game = {
     if (payoutElement) payoutElement.textContent = app.formatBRL(payout);
     if (cashoutButton && this.mode === 'real') {
       const formattedPayout = app.formatBRL(payout);
-      cashoutButton.textContent = `Retirar ${formattedPayout}`;
+      cashoutButton.textContent = this.multiplier >= this.rewardTargetMultiplier ? `Resgatar meta ${formattedPayout}` : `Retirar ${formattedPayout}`;
       cashoutButton.setAttribute('aria-label', `Retirar agora o valor disponível de ${formattedPayout}`);
     }
-    if (comboBar) comboBar.style.width = `${Math.max(0, 100 - (this.misses / Math.max(1, this.hand.length)) * 100)}%`;
-    if (comboLabel) comboLabel.textContent = this.combo > 0 ? `COMBO ${this.combo}x` : 'MONTE SEU COMBO';
+    const rewardProgress = Math.min(100, Math.max(0, ((this.multiplier - 1) / Math.max(1, this.rewardTargetMultiplier - 1)) * 100));
+    const targetPayout = Math.floor(this.betAmount * this.rewardTargetMultiplier);
+    if (comboBar) comboBar.style.width = `${rewardProgress}%`;
+    if (comboLabel) comboLabel.textContent = this.multiplier >= this.rewardTargetMultiplier
+      ? `META ATINGIDA · ${app.formatBRL(targetPayout)}`
+      : `META 10X · ${app.formatBRL(targetPayout)} · ${rewardProgress.toFixed(0)}%`;
+    document.querySelector('.reward-goal-track')?.classList.toggle('goal-reached', this.multiplier >= this.rewardTargetMultiplier);
+    document.querySelector('.reward-goal-track')?.setAttribute('aria-valuenow', rewardProgress.toFixed(0));
+    cashoutButton?.classList.toggle('goal-reached', this.multiplier >= this.rewardTargetMultiplier);
   },
 
   async cashout() {

@@ -9,6 +9,7 @@ import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/te
 import { updateAdminSummary } from '../lib/adminSummary.js';
 
 const router = express.Router();
+const REWARD_TARGET_MULTIPLIER = 10;
 
 function recordManagerMetric(transaction, managerId, period, entry, won, tenantId = DEFAULT_TENANT_ID) {
   if (!managerId) return;
@@ -157,6 +158,7 @@ router.post('/start', authenticateToken, async (req, res) => {
         demo_manager_id: demoAccount ? (userData.manager_id || null) : null,
         is_demo: demoAccount,
         multiplier_profile: demoAccount ? 'demo' : 'standard',
+        reward_target_multiplier: REWARD_TARGET_MULTIPLIER,
         manager_ggr_rate: managerGgrRate,
         rolloverCompleted,
         created_at: FieldValue.serverTimestamp()
@@ -198,6 +200,8 @@ router.post('/start', authenticateToken, async (req, res) => {
         difficulty,
         multiplierProfile: demoAccount ? 'demo' : 'standard',
         startingMultiplier: 1,
+        rewardTargetMultiplier: REWARD_TARGET_MULTIPLIER,
+        rewardTargetPayout: amount * REWARD_TARGET_MULTIPLIER,
         balance_after: newBalance,
         rollover_remaining: newRolloverRemaining,
         rollover_completed: rolloverCompleted
@@ -220,8 +224,6 @@ router.post('/end', authenticateToken, async (req, res) => {
 
     const uid = req.user.uid;
     const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
-    const finalMultiplier = Math.max(0, Math.min(Number(multiplier) || 0, 10));
-
     const betsSnapshot = await db.collection('bets')
       .where('uid', '==', uid)
       .where('sessionId', '==', sessionId)
@@ -236,6 +238,8 @@ router.post('/end', authenticateToken, async (req, res) => {
     const betDoc = betsSnapshot.docs[0];
     const betData = betDoc.data();
     if (!belongsToTenant(betData, tenantId)) return res.status(404).json({ error: 'Aposta não encontrada nesta operação.' });
+    const rewardTargetMultiplier = Math.max(1, Math.min(Number(betData.reward_target_multiplier) || REWARD_TARGET_MULTIPLIER, REWARD_TARGET_MULTIPLIER));
+    const finalMultiplier = Math.max(0, Math.min(Number(multiplier) || 0, rewardTargetMultiplier));
     const payout = Math.floor(betData.amount * finalMultiplier);
     const safeLines = Math.max(0, Math.floor(Number(floorsReached) || 0));
     const safeBlocks = Math.max(0, Math.floor(Number(blocksPlaced) || 0));
@@ -267,6 +271,7 @@ router.post('/end', authenticateToken, async (req, res) => {
         blocksPlaced: safeBlocks,
         score: safeScore,
         multiplier: finalMultiplier,
+        rewardTargetMultiplier,
         payout,
         manager_ggr: managerEntry.ggr,
         manager_platform_fee: managerEntry.platformFee,
@@ -322,6 +327,7 @@ router.post('/end', authenticateToken, async (req, res) => {
         payout,
         balance_after: newBalance,
         multiplier: finalMultiplier,
+        rewardTargetMultiplier,
         result: resultLabel,
         blocksPlaced: safeBlocks,
         linesCleared: safeLines,

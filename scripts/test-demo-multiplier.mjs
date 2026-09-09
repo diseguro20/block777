@@ -14,6 +14,7 @@ const context = {
 vm.runInNewContext(source, context);
 const game = windowStub.game;
 
+assert.equal(game.rewardTargetMultiplier, 10);
 game.multiplier = 1;
 const progression = [];
 for (let index = 0; index < 18; index++) progression.push(game.advanceDemoMultiplier());
