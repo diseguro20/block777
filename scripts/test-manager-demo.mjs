@@ -72,10 +72,18 @@ try {
   assert.equal(gameStart.data.difficulty, 'easy');
   assert.equal(gameStart.data.multiplierProfile, 'demo');
   assert.equal(gameStart.data.startingMultiplier, 1);
-  await request('/api/game/end', {
+  assert.equal(gameStart.data.rewardTargetMultiplier, 10);
+  const earlyCashout = await request('/api/game/end', {
     method: 'POST', headers: demoAuth,
-    body: JSON.stringify({ sessionId: gameStart.data.sessionId, multiplier: 2, floorsReached: 1, blocksPlaced: 4, score: 100 })
+    body: JSON.stringify({ sessionId: gameStart.data.sessionId, multiplier: 9.99, floorsReached: 17, blocksPlaced: 68, score: 900 })
   });
+  assert.equal(earlyCashout.response.status, 403);
+  const goalCashout = await request('/api/game/end', {
+    method: 'POST', headers: demoAuth,
+    body: JSON.stringify({ sessionId: gameStart.data.sessionId, multiplier: 10, floorsReached: 18, blocksPlaced: 72, score: 1000 })
+  });
+  assert.equal(goalCashout.response.status, 200);
+  assert.equal(goalCashout.data.multiplier, 10);
   const dashboard = await request('/api/manager/dashboard', { headers: managerAuth });
   assert.equal(dashboard.data.current.ggr, 0);
   assert.equal(dashboard.data.current.platformFee, 0);

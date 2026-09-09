@@ -730,7 +730,6 @@ const game = {
       this.isPlaying = true;
       
       document.getElementById('btn-cashout').style.display = 'flex';
-      document.getElementById('btn-cashout').disabled = false;
       this.updateHud();
       this.draw();
       app.showToast('🎮 Partida iniciada na Arena Blockerino. Boa sorte!');
@@ -1049,8 +1048,12 @@ const game = {
     if (payoutElement) payoutElement.textContent = app.formatBRL(payout);
     if (cashoutButton && this.mode === 'real') {
       const formattedPayout = app.formatBRL(payout);
-      cashoutButton.textContent = this.multiplier >= this.rewardTargetMultiplier ? `Resgatar meta ${formattedPayout}` : `Retirar ${formattedPayout}`;
-      cashoutButton.setAttribute('aria-label', `Retirar agora o valor disponível de ${formattedPayout}`);
+      const goalReached = this.multiplier >= this.rewardTargetMultiplier;
+      cashoutButton.disabled = !goalReached;
+      cashoutButton.textContent = goalReached ? `Resgatar ${formattedPayout}` : 'Libera em 10x';
+      cashoutButton.setAttribute('aria-label', goalReached
+        ? `Resgatar recompensa de ${formattedPayout}`
+        : `Resgate bloqueado. Multiplicador atual ${this.multiplier.toFixed(2)}x; alcance 10x para liberar.`);
     }
     const rewardProgress = Math.min(100, Math.max(0, ((this.multiplier - 1) / Math.max(1, this.rewardTargetMultiplier - 1)) * 100));
     const targetPayout = Math.floor(this.betAmount * this.rewardTargetMultiplier);
@@ -1065,6 +1068,10 @@ const game = {
 
   async cashout() {
     if (!this.isPlaying || this.mode !== 'real') return;
+    if (this.multiplier < this.rewardTargetMultiplier) {
+      app.showToast(`O resgate será liberado quando você atingir ${this.rewardTargetMultiplier.toFixed(2)}x.`);
+      return;
+    }
     this.unlockAudio();
     this.isPlaying = false;
     const cashoutButton = document.getElementById('btn-cashout');
@@ -1091,7 +1098,7 @@ const game = {
       document.getElementById('win-modal').classList.add('active');
     } catch (err) {
       this.isPlaying = true;
-      if (cashoutButton) cashoutButton.disabled = false;
+      this.updateHud();
       app.showToast(err.message || 'Erro ao realizar resgate de vitória.');
     }
   },

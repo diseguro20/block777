@@ -239,7 +239,14 @@ router.post('/end', authenticateToken, async (req, res) => {
     const betData = betDoc.data();
     if (!belongsToTenant(betData, tenantId)) return res.status(404).json({ error: 'Aposta não encontrada nesta operação.' });
     const rewardTargetMultiplier = Math.max(1, Math.min(Number(betData.reward_target_multiplier) || REWARD_TARGET_MULTIPLIER, REWARD_TARGET_MULTIPLIER));
-    const finalMultiplier = Math.max(0, Math.min(Number(multiplier) || 0, rewardTargetMultiplier));
+    const requestedMultiplier = Math.max(0, Number(multiplier) || 0);
+    if (requestedMultiplier > 0 && requestedMultiplier < rewardTargetMultiplier) {
+      return res.status(403).json({
+        error: `O resgate é liberado somente ao atingir ${rewardTargetMultiplier.toFixed(2)}x.`,
+        rewardTargetMultiplier
+      });
+    }
+    const finalMultiplier = requestedMultiplier >= rewardTargetMultiplier ? rewardTargetMultiplier : 0;
     const payout = Math.floor(betData.amount * finalMultiplier);
     const safeLines = Math.max(0, Math.floor(Number(floorsReached) || 0));
     const safeBlocks = Math.max(0, Math.floor(Number(blocksPlaced) || 0));

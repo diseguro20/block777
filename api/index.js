@@ -29,6 +29,7 @@ function getClientIp(req) {
 }
 
 const JWT_SECRET = getJwtSecret();
+const REWARD_TARGET_MULTIPLIER = 10;
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 const dataFile = process.env.BLOCKERINO_DATA_FILE || path.join(root, '.data', 'local-db.json');
@@ -376,17 +377,22 @@ app.post('/api/game/start', auth, (req, res) => {
   const demoAccount = Boolean(req.currentUser.demo_account);
   const managerUser = demoAccount ? null : store.users.find(user => user.id === req.currentUser.manager_id && user.role === 'manager' && user.status === 'active');
   const managerRate = normalizeGgrRate(managerUser?.manager_ggr_rate, store.settings.defaultManagerGgrRate);
-  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, cashStake: allocation.cashStake, bonusStake: allocation.bonusStake, rolloverCompleted: allocation.rolloverCompleted, manager_id: managerUser?.id || null, demo_manager_id: demoAccount ? req.currentUser.manager_id : null, is_demo: demoAccount, multiplier_profile: demoAccount ? 'demo' : 'standard', manager_ggr_rate: managerRate, created_at: now() });
+  store.bets.push({ id: uuid(), uid: req.currentUser.id, username: req.currentUser.username, amount, sessionId, seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', status: 'pending', result: 'pending', payout: 0, blocksPlaced: 0, linesCleared: 0, score: 0, cashStake: allocation.cashStake, bonusStake: allocation.bonusStake, rolloverCompleted: allocation.rolloverCompleted, manager_id: managerUser?.id || null, demo_manager_id: demoAccount ? req.currentUser.manager_id : null, is_demo: demoAccount, multiplier_profile: demoAccount ? 'demo' : 'standard', reward_target_multiplier: REWARD_TARGET_MULTIPLIER, manager_ggr_rate: managerRate, created_at: now() });
   addTransaction(req.currentUser.id, 'bet', -amount);
   if (allocation.rolloverCompleted) addTransaction(req.currentUser.id, 'bonus_unlock', 0, 'completed', { unlocked_amount: allocation.unlockedBonus });
   save();
-  res.json({ sessionId, seed: seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', multiplierProfile: demoAccount ? 'demo' : 'standard', startingMultiplier: 1, balance_after: req.currentUser.balance });
+  res.json({ sessionId, seed: seedHash, difficulty: req.currentUser.is_influencer ? 'easy' : 'impossible', multiplierProfile: demoAccount ? 'demo' : 'standard', startingMultiplier: 1, rewardTargetMultiplier: REWARD_TARGET_MULTIPLIER, rewardTargetPayout: amount * REWARD_TARGET_MULTIPLIER, balance_after: req.currentUser.balance });
 });
 
 app.post('/api/game/end', auth, (req, res) => {
   const bet = store.bets.find(item => item.uid === req.currentUser.id && item.sessionId === req.body.sessionId && item.status === 'pending');
   if (!bet) return res.status(409).json({ error: 'Esta partida já foi encerrada.' });
-  const multiplier = Math.max(0, Math.min(10, Number(req.body.multiplier) || 0));
+  const rewardTargetMultiplier = Math.max(1, Math.min(Number(bet.reward_target_multiplier) || REWARD_TARGET_MULTIPLIER, REWARD_TARGET_MULTIPLIER));
+  const requestedMultiplier = Math.max(0, Number(req.body.multiplier) || 0);
+  if (requestedMultiplier > 0 && requestedMultiplier < rewardTargetMultiplier) {
+    return res.status(403).json({ error: `O resgate é liberado somente ao atingir ${rewardTargetMultiplier.toFixed(2)}x.`, rewardTargetMultiplier });
+  }
+  const multiplier = requestedMultiplier >= rewardTargetMultiplier ? rewardTargetMultiplier : 0;
   const payout = Math.floor(bet.amount * multiplier);
   const linesCleared = Math.max(0, Math.floor(Number(req.body.floorsReached) || 0));
   const blocksPlaced = Math.max(0, Math.floor(Number(req.body.blocksPlaced) || 0));
@@ -402,7 +408,7 @@ app.post('/api/game/end', auth, (req, res) => {
     addTransaction(req.currentUser.id, 'win', payout, 'completed', { cash_amount: payoutAllocation.cashPayout, bonus_amount: payoutAllocation.bonusPayout });
   }
   save();
-  res.json({ payout, multiplier, result, blocksPlaced, linesCleared, score, balance_after: req.currentUser.balance, seedHash: bet.seedHash });
+  res.json({ payout, multiplier, rewardTargetMultiplier, result, blocksPlaced, linesCleared, score, balance_after: req.currentUser.balance, seedHash: bet.seedHash });
 });
 app.post('/api/game/demo/start', (_, res) => res.json({ sessionId: uuid(), seed: crypto.createHash('sha256').update(crypto.randomBytes(32)).digest('hex'), difficulty: 'easy' }));
 
