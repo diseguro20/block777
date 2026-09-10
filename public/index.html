@@ -188,10 +188,10 @@
   <div class="modal" id="prep-modal"><div class="modal-card prep-card arena-prep"><button class="modal-close" onclick="app.closeModal('prep-modal')">×</button><div class="prep-visual"><small>BLOCKERINO ARENA</small><h3>Encaixe os blocos<br><em>e multiplique</em></h3><div class="mini-blocks" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div></div><div class="prep-content"><label>VALOR DA ENTRADA</label><div class="quick-values prep-values"><button onclick="game.selectPrepBet(2,this)">R$ 2</button><button onclick="game.selectPrepBet(5,this)" class="active">R$ 5</button><button onclick="game.selectPrepBet(10,this)">R$ 10</button><button onclick="game.selectPrepBet(25,this)">R$ 25</button><button onclick="game.selectPrepBet(50,this)">R$ 50</button><button onclick="game.selectPrepBet(100,this)">R$ 100</button></div><div class="money-input"><span>R$</span><input id="bet-input-val" type="number" inputmode="decimal" min="1" max="100" value="5" oninput="game.updatePrepReward()"></div><div class="prep-return"><span>Meta de recompensa · 10x</span><strong id="prep-return-value">R$ 50,00</strong></div><div class="risk-note"><span>i</span><p>Complete fileiras até chegar a 10x. O resgate fica bloqueado antes da meta; sair ou ficar sem movimentos encerra a partida sem recompensa.</p></div><button class="btn btn-primary btn-wide" onclick="game.startRealGame()">Começar partida <span>→</span></button></div></div></div>
   <div class="modal" id="boost-modal"><div class="modal-card boost-card">
     <div id="boost-offer-stage">
-      <div class="boost-badge">META 10X CONCLUÍDA</div><div class="boost-bolt" aria-hidden="true">⚡</div>
+      <div class="boost-badge">3 LINHAS CONCLUÍDAS</div><div class="boost-bolt" aria-hidden="true">⚡</div>
       <small>UPGRADE DA PARTIDA</small><h3>Ative o Boost <em>300%</em></h3>
       <p>Por <strong>R$ 40,00 no PIX</strong>, cada aumento futuro do multiplicador passa a valer 3x. Exemplo: <b>+0,50x vira +1,50x</b>. Se continuar e ficar sem movimentos, a partida termina sem recompensa.</p>
-      <div class="boost-scale"><span>Multiplicador atual <b>10x</b></span><span>Novo limite <b>30x</b></span></div>
+      <div class="boost-scale"><span>Multiplicador atual <b id="boost-current-multiplier">1.00x</b></span><span>Novo limite <b>30x</b></span></div>
       <button class="btn btn-primary btn-wide" id="boost-accept-button" onclick="game.acceptBoost()">Ativar boost por R$ 40</button>
       <button class="boost-skip" type="button" onclick="game.closeBoostModal()">Continuar sem boost</button>
       <p class="boost-disclaimer">O pagamento ativa o aumento de 3x somente nas próximas progressões. Não multiplica o saldo atual e não garante recompensa.</p>
@@ -208,6 +208,6 @@
   <div class="modal" id="win-modal"><div class="modal-card result-card"><div class="result-icon">✓</div><small>RESGATE CONCLUÍDO</small><h3 id="win-modal-payout">R$ 0,00</h3><p>Multiplicador final: <b id="win-modal-mult">1.00x</b></p><button class="btn btn-primary btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="modal" id="gameover-modal"><div class="modal-card result-card"><div class="result-icon danger">×</div><small>FIM DE PARTIDA</small><h3>Sem movimentos</h3><p>A rodada foi encerrada. Revise sua estratégia e tente novamente.</p><button class="btn btn-primary btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260909-1"></script><script src="./js/wallet.js?v=20260909-1"></script><script src="./js/game.js?v=20260910-1"></script>
+  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260909-1"></script><script src="./js/wallet.js?v=20260909-1"></script><script src="./js/game.js?v=20260910-2"></script>
 </body>
 </html>

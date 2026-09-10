@@ -14,6 +14,7 @@ const REWARD_TARGET_MULTIPLIER = 10;
 const BOOST_PRICE = 4000;
 const BOOST_RATE = 3;
 const BOOST_MAX_MULTIPLIER = 30;
+const BOOST_TRIGGER_LINES = 3;
 
 async function findPendingBet(uid, sessionId) {
   const snapshot = await db.collection('bets')
@@ -288,7 +289,8 @@ router.post('/start', authenticateToken, async (req, res) => {
         boostOffer: {
           price: BOOST_PRICE,
           rate: BOOST_RATE,
-          maxMultiplier: BOOST_MAX_MULTIPLIER
+          maxMultiplier: BOOST_MAX_MULTIPLIER,
+          triggerLines: BOOST_TRIGGER_LINES
         },
         allowEarlyCashout: influencerMode,
         balance_after: newBalance,
@@ -309,7 +311,7 @@ router.post('/boost/create', authenticateToken, async (req, res) => {
   try {
     const uid = req.user.uid;
     const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
-    const { sessionId, currentMultiplier } = req.body || {};
+    const { sessionId, linesCleared } = req.body || {};
     if (!sessionId) return res.status(400).json({ error: 'Partida não informada.' });
 
     const betDoc = await findPendingBet(uid, sessionId);
@@ -318,8 +320,8 @@ router.post('/boost/create', authenticateToken, async (req, res) => {
     }
     const bet = betDoc.data();
     if (bet.is_demo) return res.status(403).json({ error: 'O boost não está disponível em contas demo.' });
-    if (Number(currentMultiplier) < REWARD_TARGET_MULTIPLIER) {
-      return res.status(403).json({ error: 'O boost é liberado somente após atingir a meta de 10x.' });
+    if (Math.floor(Number(linesCleared) || 0) < BOOST_TRIGGER_LINES) {
+      return res.status(403).json({ error: 'O boost é liberado somente após completar 3 linhas.' });
     }
 
     boostRef = db.collection('game_boost_requests').doc(`boost_${betDoc.id}`);
@@ -354,6 +356,7 @@ router.post('/boost/create', authenticateToken, async (req, res) => {
       amount: BOOST_PRICE,
       boost_rate: BOOST_RATE,
       boost_max_multiplier: BOOST_MAX_MULTIPLIER,
+      trigger_lines: BOOST_TRIGGER_LINES,
       status: 'creating',
       credit_applied: false,
       created_at: FieldValue.serverTimestamp()

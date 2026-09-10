@@ -102,6 +102,7 @@ const game = {
   boostActive: false,
   boostRate: 3,
   boostMaxMultiplier: 30,
+  boostTriggerLines: 3,
   boostOfferShown: false,
   boostId: null,
   boostCheckTimer: null,
@@ -726,6 +727,7 @@ const game = {
       this.boostActive = false;
       this.boostRate = Number(data.boostOffer?.rate) || 3;
       this.boostMaxMultiplier = Number(data.boostOffer?.maxMultiplier) || 30;
+      this.boostTriggerLines = Number(data.boostOffer?.triggerLines) || 3;
       this.boostOfferShown = false;
       this.boostId = null;
       this.stopBoostPolling();
@@ -763,6 +765,7 @@ const game = {
     this.boostActive = false;
     this.boostRate = 3;
     this.boostMaxMultiplier = 30;
+    this.boostTriggerLines = 3;
     this.boostOfferShown = false;
     this.boostId = null;
     this.stopBoostPolling();
@@ -948,6 +951,7 @@ const game = {
         for (let r = 0; r < this.gridSize; r++) this.board[r][c] = null;
       });
 
+      const previousLinesCleared = this.linesCleared;
       this.linesCleared += totalLines;
 
       const multiplierCeiling = this.boostActive ? this.boostMaxMultiplier : this.rewardTargetMultiplier;
@@ -973,7 +977,7 @@ const game = {
       this.triggerLineCelebration(rowsToClear, colsToClear, previousMultiplier);
 
       app.showToast(`🔥 ${totalLines} LINHA(S) QUEBRADA(S)! Multiplicador: ${this.multiplier.toFixed(2)}x`);
-      if (this.mode === 'real' && !this.boostActive && !this.boostOfferShown && previousMultiplier < this.rewardTargetMultiplier && this.multiplier >= this.rewardTargetMultiplier) {
+      if (this.mode === 'real' && !this.boostActive && !this.boostOfferShown && previousLinesCleared < this.boostTriggerLines && this.linesCleared >= this.boostTriggerLines) {
         this.boostOfferShown = true;
         window.setTimeout(() => this.showBoostOffer(), 650);
       }
@@ -1104,8 +1108,10 @@ const game = {
     if (!this.isPlaying || this.mode !== 'real' || this.boostActive) return;
     const offer = document.getElementById('boost-offer-stage');
     const pix = document.getElementById('boost-pix-stage');
+    const currentMultiplier = document.getElementById('boost-current-multiplier');
     if (offer) offer.hidden = false;
     if (pix) pix.hidden = true;
+    if (currentMultiplier) currentMultiplier.textContent = `${this.multiplier.toFixed(2)}x`;
     document.getElementById('boost-modal')?.classList.add('active');
   },
 
@@ -1123,7 +1129,7 @@ const game = {
     try {
       const data = await app.fetchAPI('/api/game/boost/create', {
         method: 'POST',
-        body: JSON.stringify({ sessionId: this.sessionId, currentMultiplier: this.multiplier })
+        body: JSON.stringify({ sessionId: this.sessionId, linesCleared: this.linesCleared, blocksPlaced: this.blocksPlaced })
       });
       this.boostId = data.boostId;
       if (data.status === 'approved') {
