@@ -13,6 +13,23 @@ const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 const PUBLIC_PROMOTION_CACHE_TTL_MS = 5 * 60 * 1000;
 const publicPromotionCache = new Map();
+const VIZZION_VERIFICATION_RETRY_DELAYS_MS = [0, 700, 1600, 3000];
+const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+
+async function verifyVizzionTransactionWithRetry({ gatewayId, referenceId }) {
+  let lastError = null;
+  for (const delay of VIZZION_VERIFICATION_RETRY_DELAYS_MS) {
+    if (delay > 0) await wait(delay);
+    try {
+      const lookup = await getVizzionTransaction({ gatewayId, referenceId });
+      const transaction = extractVizzionTransaction(lookup, { gatewayId, referenceId });
+      if (transaction) return { transaction, attemptsCompleted: VIZZION_VERIFICATION_RETRY_DELAYS_MS.indexOf(delay) + 1 };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  return { transaction: null, error: lastError, attemptsCompleted: VIZZION_VERIFICATION_RETRY_DELAYS_MS.length };
+}
 
 async function getPromotionSettings(tenantId = DEFAULT_TENANT_ID) {
   const settingsRef = tenantSettingsRef(tenantId);
@@ -328,20 +345,21 @@ router.post('/webhook/vizzionpay', async (req, res) => {
 
     // Nunca confie no status enviado pelo chamador. A confirmação é consultada
     // diretamente na Vizzion Pay usando as credenciais privadas do servidor.
-    let verifiedTransaction;
-    try {
-      const lookup = await getVizzionTransaction({
-        gatewayId: depositData.gatewayId || event.gatewayId,
-        referenceId: depositRef.id
-      });
-      verifiedTransaction = extractVizzionTransaction(lookup, { gatewayId: depositData.gatewayId || event.gatewayId, referenceId: depositRef.id });
-    } catch (verificationError) {
-      console.warn('[VizzionPay Webhook] Confirmação autenticada indisponível:', verificationError.message);
-      return res.status(202).json({ received: true, status: 'verification_pending' });
-    }
+    const verification = await verifyVizzionTransactionWithRetry({
+      gatewayId: depositData.gatewayId || event.gatewayId,
+      referenceId: depositRef.id
+    });
+    const verifiedTransaction = verification.transaction;
 
     if (!verifiedTransaction) {
-      return res.status(202).json({ received: true, status: 'transaction_not_verified' });
+      console.warn('[VizzionPay Webhook] Confirmação autenticada indisponível após novas tentativas:', verification.error?.message || 'transação ainda não propagada');
+      await depositRef.update({
+        gateway_status: event.status || depositData.gateway_status || 'PENDING',
+        verification_attempts: FieldValue.increment(verification.attemptsCompleted),
+        verification_pending_at: FieldValue.serverTimestamp(),
+        last_webhook_event: event.event || null
+      });
+      return res.status(202).json({ received: true, status: 'verification_pending' });
     }
     const verifiedStatus = vizzionTransactionStatus(verifiedTransaction);
     const isPaid = isVizzionPaid(verifiedTransaction);
