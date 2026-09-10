@@ -7,6 +7,7 @@ const windowStub = { addEventListener() {} };
 const context = {
   window: windowStub,
   document: { addEventListener() {} },
+  app: { showToast() {} },
   localStorage: { getItem() { return null; }, setItem() {} },
   setTimeout() {},
   console
@@ -26,4 +27,29 @@ assert.equal(game.advanceDemoMultiplier(), 3.5);
 game.multiplier = 1;
 assert.equal(game.advanceDemoMultiplier(0), 1);
 assert.equal(game.advanceDemoMultiplier(2), 2);
+
+game.playLineCompleteSound = () => {};
+game.triggerLineCelebration = () => {};
+game.gridSize = 8;
+game.multiplierProfile = 'standard';
+game.difficulty = 'impossible';
+game.mode = 'real';
+game.combo = 0;
+game.linesCleared = 0;
+game.score = 0;
+game.rewardTargetMultiplier = 10;
+game.board = Array.from({ length: 8 }, (_, row) => Array(8).fill(row === 0 ? '#fff' : null));
+game.multiplier = 1;
+game.boostActive = false;
+game.checkLines(8);
+assert.equal(game.multiplier, 1.06, 'A progressão normal deve continuar na velocidade original');
+
+game.board = Array.from({ length: 8 }, (_, row) => Array(8).fill(row === 0 ? '#fff' : null));
+game.multiplier = 10;
+game.combo = 0;
+game.boostActive = true;
+game.boostRate = 3;
+game.boostMaxMultiplier = 30;
+game.checkLines(8);
+assert.equal(game.multiplier, 10.18, 'O boost deve triplicar apenas o aumento futuro de 0,06x para 0,18x');
 console.log('Demo multiplier progression validated.');

@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
-import { createVizzionPix, extractVizzionTransaction, getVizzionTransaction, isVizzionPaid, parseVizzionWebhook, vizzionAmountMatches, vizzionPayStatus, vizzionTransactionStatus } from '../lib/vizzionpay.js';
+import { createVizzionPix, extractVizzionTransaction, getVizzionTransaction, isVizzionPaid, parseVizzionWebhook, verifyVizzionTransactionWithRetry, vizzionAmountMatches, vizzionPayStatus, vizzionTransactionStatus } from '../lib/vizzionpay.js';
 import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
 import { updateAdminSummary } from '../lib/adminSummary.js';
@@ -13,24 +13,6 @@ const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 const PUBLIC_PROMOTION_CACHE_TTL_MS = 5 * 60 * 1000;
 const publicPromotionCache = new Map();
-const VIZZION_VERIFICATION_RETRY_DELAYS_MS = [0, 700, 1600, 3000];
-const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
-
-async function verifyVizzionTransactionWithRetry({ gatewayId, referenceId }) {
-  let lastError = null;
-  for (const delay of VIZZION_VERIFICATION_RETRY_DELAYS_MS) {
-    if (delay > 0) await wait(delay);
-    try {
-      const lookup = await getVizzionTransaction({ gatewayId, referenceId });
-      const transaction = extractVizzionTransaction(lookup, { gatewayId, referenceId });
-      if (transaction) return { transaction, attemptsCompleted: VIZZION_VERIFICATION_RETRY_DELAYS_MS.indexOf(delay) + 1 };
-    } catch (error) {
-      lastError = error;
-    }
-  }
-  return { transaction: null, error: lastError, attemptsCompleted: VIZZION_VERIFICATION_RETRY_DELAYS_MS.length };
-}
-
 async function getPromotionSettings(tenantId = DEFAULT_TENANT_ID) {
   const settingsRef = tenantSettingsRef(tenantId);
   const settingsDoc = await settingsRef.get();
@@ -94,7 +76,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     const user = userDoc.exists ? userDoc.data() : {};
     if (!belongsToTenant(user, tenantId)) return res.status(403).json({ error: 'Conta não pertence a esta operação.' });
     if (user.demo_account) return res.status(403).json({ error: 'Contas demo utilizam saldo virtual e não aceitam depósitos.' });
-    const webhookUrl = `${req.protocol}://${req.get('host')}/api/wallet/webhook/vizzionpay`;
+    const webhookUrl = `${String(req.get('host') || '').includes('localhost') ? req.protocol : 'https'}://${req.get('host')}/api/wallet/webhook/vizzionpay`;
     const charge = await createVizzionPix({
       amountCents: amount,
       referenceId: docRef.id,

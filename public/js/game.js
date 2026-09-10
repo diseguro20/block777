@@ -99,6 +99,12 @@ const game = {
   betAmount: 200,
   multiplier: 1.0,
   rewardTargetMultiplier: 10,
+  boostActive: false,
+  boostRate: 3,
+  boostMaxMultiplier: 30,
+  boostOfferShown: false,
+  boostId: null,
+  boostCheckTimer: null,
   allowEarlyCashout: false,
   linesCleared: 0,
   score: 0,
@@ -717,6 +723,12 @@ const game = {
       this.difficulty = data.difficulty;
       this.multiplierProfile = data.multiplierProfile === 'demo' ? 'demo' : 'standard';
       this.rewardTargetMultiplier = Number(data.rewardTargetMultiplier) || 10;
+      this.boostActive = false;
+      this.boostRate = Number(data.boostOffer?.rate) || 3;
+      this.boostMaxMultiplier = Number(data.boostOffer?.maxMultiplier) || 30;
+      this.boostOfferShown = false;
+      this.boostId = null;
+      this.stopBoostPolling();
       this.allowEarlyCashout = data.allowEarlyCashout === true;
       this.multiplier = 1.0;
       this.linesCleared = 0;
@@ -748,6 +760,12 @@ const game = {
     this.difficulty = 'easy';
     this.multiplierProfile = 'standard';
     this.rewardTargetMultiplier = 10;
+    this.boostActive = false;
+    this.boostRate = 3;
+    this.boostMaxMultiplier = 30;
+    this.boostOfferShown = false;
+    this.boostId = null;
+    this.stopBoostPolling();
     this.allowEarlyCashout = false;
     this.multiplier = 1.0;
     this.linesCleared = 0;
@@ -932,6 +950,7 @@ const game = {
 
       this.linesCleared += totalLines;
 
+      const multiplierCeiling = this.boostActive ? this.boostMaxMultiplier : this.rewardTargetMultiplier;
       if (this.multiplierProfile === 'demo') {
         // O demo avança 0,50x somente por fileira concluída.
         this.advanceDemoMultiplier(totalLines);
@@ -939,12 +958,14 @@ const game = {
         // Influencer: multiplicador sobe normalmente
         const baseIncrease = totalLines * 0.15;
         const comboBonus = Math.min(this.combo + totalLines, 5) * 0.10;
-        this.multiplier = Math.min(this.rewardTargetMultiplier, parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2)));
+        const increase = (baseIncrease + comboBonus) * (this.boostActive ? this.boostRate : 1);
+        this.multiplier = Math.min(multiplierCeiling, parseFloat((this.multiplier + increase).toFixed(2)));
       } else {
         // Normal/Impossível: multiplicador quase não sobe
         const baseIncrease = totalLines * 0.05;
         const comboBonus = Math.min(this.combo + totalLines, 5) * 0.01;
-        this.multiplier = Math.min(this.rewardTargetMultiplier, parseFloat((this.multiplier + baseIncrease + comboBonus).toFixed(2)));
+        const increase = (baseIncrease + comboBonus) * (this.boostActive ? this.boostRate : 1);
+        this.multiplier = Math.min(multiplierCeiling, parseFloat((this.multiplier + increase).toFixed(2)));
       }
       this.playLineCompleteSound(totalLines);
       
@@ -952,6 +973,10 @@ const game = {
       this.triggerLineCelebration(rowsToClear, colsToClear, previousMultiplier);
 
       app.showToast(`🔥 ${totalLines} LINHA(S) QUEBRADA(S)! Multiplicador: ${this.multiplier.toFixed(2)}x`);
+      if (this.mode === 'real' && !this.boostActive && !this.boostOfferShown && previousMultiplier < this.rewardTargetMultiplier && this.multiplier >= this.rewardTargetMultiplier) {
+        this.boostOfferShown = true;
+        window.setTimeout(() => this.showBoostOffer(), 650);
+      }
     }
     return totalLines;
   },
@@ -1059,15 +1084,131 @@ const game = {
         ? `Resgatar recompensa de ${formattedPayout}`
         : `Resgate bloqueado. Multiplicador atual ${this.multiplier.toFixed(2)}x; alcance 10x para liberar.`);
     }
-    const rewardProgress = Math.min(100, Math.max(0, ((this.multiplier - 1) / Math.max(1, this.rewardTargetMultiplier - 1)) * 100));
+    const progressStart = this.boostActive ? this.rewardTargetMultiplier : 1;
+    const progressEnd = this.boostActive ? this.boostMaxMultiplier : this.rewardTargetMultiplier;
+    const rewardProgress = Math.min(100, Math.max(0, ((this.multiplier - progressStart) / Math.max(1, progressEnd - progressStart)) * 100));
     const targetPayout = Math.floor(this.betAmount * this.rewardTargetMultiplier);
     if (comboBar) comboBar.style.width = `${rewardProgress}%`;
-    if (comboLabel) comboLabel.textContent = this.multiplier >= this.rewardTargetMultiplier
+    if (comboLabel) comboLabel.textContent = this.boostActive
+      ? `BOOST 300% ATIVO · META ${this.boostMaxMultiplier.toFixed(0)}X · ${rewardProgress.toFixed(0)}%`
+      : this.multiplier >= this.rewardTargetMultiplier
       ? `META ATINGIDA · ${app.formatBRL(targetPayout)}`
       : `META 10X · ${app.formatBRL(targetPayout)} · ${rewardProgress.toFixed(0)}%`;
     document.querySelector('.reward-goal-track')?.classList.toggle('goal-reached', this.multiplier >= this.rewardTargetMultiplier);
     document.querySelector('.reward-goal-track')?.setAttribute('aria-valuenow', rewardProgress.toFixed(0));
     cashoutButton?.classList.toggle('goal-reached', this.multiplier >= this.rewardTargetMultiplier);
+    document.querySelector('.game-playfield')?.classList.toggle('boost-active', this.boostActive);
+  },
+
+  showBoostOffer() {
+    if (!this.isPlaying || this.mode !== 'real' || this.boostActive) return;
+    const offer = document.getElementById('boost-offer-stage');
+    const pix = document.getElementById('boost-pix-stage');
+    if (offer) offer.hidden = false;
+    if (pix) pix.hidden = true;
+    document.getElementById('boost-modal')?.classList.add('active');
+  },
+
+  closeBoostModal() {
+    document.getElementById('boost-modal')?.classList.remove('active');
+  },
+
+  async acceptBoost() {
+    if (!this.isPlaying || this.mode !== 'real' || this.boostActive) return;
+    const button = document.getElementById('boost-accept-button');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Gerando PIX seguro...';
+    }
+    try {
+      const data = await app.fetchAPI('/api/game/boost/create', {
+        method: 'POST',
+        body: JSON.stringify({ sessionId: this.sessionId, currentMultiplier: this.multiplier })
+      });
+      this.boostId = data.boostId;
+      if (data.status === 'approved') {
+        this.applyBoostActivation(data);
+        return;
+      }
+      if (!data.pixCode) throw new Error('O PIX ainda está sendo preparado. Tente novamente em instantes.');
+      const offer = document.getElementById('boost-offer-stage');
+      const pix = document.getElementById('boost-pix-stage');
+      const code = document.getElementById('boost-pix-code');
+      const image = document.getElementById('boost-pix-qr');
+      if (offer) offer.hidden = true;
+      if (pix) pix.hidden = false;
+      if (code) code.value = data.pixCode;
+      if (image) {
+        image.src = data.qrCodeUrl;
+        image.hidden = false;
+      }
+      this.startBoostPolling();
+    } catch (error) {
+      app.showToast(error.message || 'Não foi possível gerar o PIX do boost.');
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = 'Ativar boost por R$ 40';
+      }
+    }
+  },
+
+  copyBoostPix() {
+    const code = document.getElementById('boost-pix-code');
+    if (!code?.value) return;
+    navigator.clipboard?.writeText(code.value).then(() => app.showToast('Código PIX copiado.')).catch(() => {
+      code.select();
+      document.execCommand('copy');
+      app.showToast('Código PIX copiado.');
+    });
+  },
+
+  startBoostPolling() {
+    this.stopBoostPolling();
+    const check = async () => {
+      if (!this.boostId) return;
+      try {
+        const data = await app.fetchAPI(`/api/game/boost/check/${encodeURIComponent(this.boostId)}`);
+        if (data.status === 'approved') {
+          this.applyBoostActivation(data);
+          return;
+        }
+        if (data.status === 'refunded_to_wallet') {
+          this.stopBoostPolling();
+          if (data.balance != null && app.user) {
+            app.user.balance = data.balance;
+            app.updateBalanceDisplays();
+          }
+          this.closeBoostModal();
+          app.showToast('A partida terminou antes da confirmação. Os R$ 40 voltaram para sua carteira.');
+        }
+      } catch (error) {}
+    };
+    check();
+    this.boostCheckTimer = window.setInterval(check, 3000);
+  },
+
+  stopBoostPolling() {
+    if (this.boostCheckTimer) window.clearInterval(this.boostCheckTimer);
+    this.boostCheckTimer = null;
+  },
+
+  applyBoostActivation(data = {}) {
+    this.stopBoostPolling();
+    this.boostActive = true;
+    this.boostRate = Number(data.boostRate) || 3;
+    this.boostMaxMultiplier = Number(data.boostMaxMultiplier) || 30;
+    this.closeBoostModal();
+    const flash = document.getElementById('boost-activation-effect');
+    flash?.classList.remove('active');
+    if (flash) {
+      void flash.offsetWidth;
+      flash.classList.add('active');
+      window.setTimeout(() => flash.classList.remove('active'), 2200);
+    }
+    this.playCashoutSound(this.multiplier);
+    this.updateHud();
+    app.showToast('⚡ BOOST 300% ATIVO: cada aumento futuro agora vale 3x.');
   },
 
   async cashout() {
@@ -1100,6 +1241,7 @@ const game = {
       document.getElementById('win-modal-payout').textContent = app.formatBRL(data.payout);
       document.getElementById('win-modal-mult').textContent = `${data.multiplier.toFixed(2)}x`;
       document.getElementById('win-modal').classList.add('active');
+      this.stopBoostPolling();
     } catch (err) {
       this.isPlaying = true;
       this.updateHud();
@@ -1110,12 +1252,14 @@ const game = {
   async leaveGame() {
     if (!this.isPlaying) {
       app.showScreen('menu-screen');
+      this.stopBoostPolling();
       return;
     }
 
     if (this.mode === 'demo') {
       this.isPlaying = false;
       app.showScreen('menu-screen');
+      this.stopBoostPolling();
       return;
     }
 
@@ -1137,6 +1281,7 @@ const game = {
       }
       app.showToast('Partida encerrada. O valor apostado não foi resgatado.');
       app.showScreen('menu-screen');
+      this.stopBoostPolling();
       app.loadDashboard();
     } catch (err) {
       this.isPlaying = true;
@@ -1146,6 +1291,7 @@ const game = {
 
   async handleGameOver() {
     this.isPlaying = false;
+    this.closeBoostModal();
 
     if (this.mode === 'real') {
       try {
@@ -1167,6 +1313,7 @@ const game = {
     }
 
     document.getElementById('gameover-modal').classList.add('active');
+    this.stopBoostPolling();
   },
 
   draw(animationTime) {
