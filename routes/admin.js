@@ -653,7 +653,7 @@ router.post('/recalculate-rollovers', async (req, res) => {
     const settings = settingsDoc.exists ? settingsDoc.data() : {};
     const depositMultiplier = settings.depositRolloverMultiplier != null ? Number(settings.depositRolloverMultiplier) : 1;
     const bonusMultiplier = settings.rolloverMultiplier != null ? Number(settings.rolloverMultiplier) : 10;
-    const bonusMinDeposit = Number(settings.bonusMinDeposit) || 2000;
+    const bonusMinDeposit = Number(settings.bonusMinDeposit) || PROMOTION_DEFAULTS.bonusMinDeposit;
     const bonusPercent = Number(settings.bonusPercent) || 100;
     const promoEnabled = settings.promoEnabled !== false;
 

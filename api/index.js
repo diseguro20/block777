@@ -622,7 +622,7 @@ app.put('/api/admin/settings', auth, admin, (req, res) => {
 app.post('/api/admin/recalculate-rollovers', auth, admin, (req, res) => {
   const depositMultiplier = store.settings.depositRolloverMultiplier != null ? Number(store.settings.depositRolloverMultiplier) : 1;
   const bonusMultiplier = store.settings.rolloverMultiplier != null ? Number(store.settings.rolloverMultiplier) : 10;
-  const bonusMinDeposit = Number(store.settings.bonusMinDeposit) || 2000;
+  const bonusMinDeposit = Number(store.settings.bonusMinDeposit) || PROMOTION_DEFAULTS.bonusMinDeposit;
   const bonusPercent = Number(store.settings.bonusPercent) || 100;
   const promoEnabled = store.settings.promoEnabled !== false;
 

@@ -1,7 +1,7 @@
 const wallet = {
   pixCode: '',
   data: null,
-  promotion: { promoEnabled: true, bonusPercent: 100, bonusMinDeposit: 2000, rolloverMultiplier: 10 },
+  promotion: { promoEnabled: true, bonusPercent: 100, bonusMinDeposit: 5000, rolloverMultiplier: 10 },
   toggleTab(tab) {
     const deposit = tab === 'deposit';
     document.getElementById('dep-content').hidden = !deposit;
@@ -21,7 +21,9 @@ const wallet = {
     const amount = Number.isFinite(rawVal) && rawVal > 0 ? rawVal : 20;
     const safeAmount = Math.max(20, amount);
     const percent = Number(this.promotion?.bonusPercent) || 100;
-    const bonus = safeAmount * (percent / 100);
+    const bonusMinimum = Math.max(0, Number(this.promotion?.bonusMinDeposit) || 5000) / 100;
+    const eligible = this.promotion?.promoEnabled !== false && safeAmount >= bonusMinimum;
+    const bonus = eligible ? safeAmount * (percent / 100) : 0;
     const total = safeAmount + bonus;
 
     const depositValue = document.getElementById('promo-deposit-value');
@@ -32,9 +34,13 @@ const wallet = {
 
     if (depositValue) depositValue.textContent = app.formatBRL(safeAmount * 100);
     if (totalValue) totalValue.textContent = app.formatBRL(total * 100);
-    if (detail) detail.textContent = `${app.formatBRL(bonus * 100)} em bônus adicionados automaticamente após a confirmação do PIX (${app.formatBRL(safeAmount * 100)} viram ${app.formatBRL(total * 100)} para jogar).`;
-    if (badge) badge.textContent = `${percent}% DE BÔNUS`;
-    if (button) button.textContent = `Gerar PIX e ativar ${percent}% (${app.formatBRL(total * 100)} para jogar)`;
+    if (detail) detail.textContent = eligible
+      ? `${app.formatBRL(bonus * 100)} em bônus adicionados automaticamente após a confirmação do PIX (${app.formatBRL(safeAmount * 100)} viram ${app.formatBRL(total * 100)} para jogar).`
+      : `Este depósito será creditado sem bônus. Deposite a partir de ${app.formatBRL(bonusMinimum * 100)} para receber ${percent}% de bônus.`;
+    if (badge) badge.textContent = eligible ? `${percent}% DE BÔNUS ATIVADO` : `${percent}% DE BÔNUS A PARTIR DE ${app.formatBRL(bonusMinimum * 100)}`;
+    if (button) button.textContent = eligible
+      ? `Gerar PIX e ativar ${percent}% (${app.formatBRL(total * 100)} para jogar)`
+      : `Gerar PIX de ${app.formatBRL(safeAmount * 100)} sem bônus`;
   },
   async loadWallet() {
     try {

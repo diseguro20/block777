@@ -569,7 +569,7 @@ router.get('/history', authenticateToken, async (req, res) => {
       let totalBonus = 0;
       let totalRolloverTarget = 0;
       const promoEnabled = promotion.promoEnabled !== false;
-      const bonusMinDeposit = Number(promotion.bonusMinDeposit) || 2000;
+      const bonusMinDeposit = Number(promotion.bonusMinDeposit) || PROMOTION_DEFAULTS.bonusMinDeposit;
       const bonusPercent = Number(promotion.bonusPercent) || 100;
       const depositMultiplier = promotion.depositRolloverMultiplier != null ? Number(promotion.depositRolloverMultiplier) : 1;
       const bonusMultiplier = promotion.rolloverMultiplier != null ? Number(promotion.rolloverMultiplier) : 10;

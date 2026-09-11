@@ -7,8 +7,11 @@ assert.deepEqual(standard, { bonusAmount: 2000, rolloverRequired: 22000, credite
 const storedZero = resolveDepositCredit({ amount: 1000, bonusAmount: 0, rolloverRequired: 1000 }, { bonusPercent: 100 });
 assert.deepEqual(storedZero, { bonusAmount: 0, rolloverRequired: 1000, creditedAmount: 1000 });
 const calculated = resolveDepositCredit({ amount: 2000 }, {});
-assert.equal(calculated.creditedAmount, 4000);
-assert.equal(calculated.rolloverRequired, 22000);
+assert.equal(calculated.creditedAmount, 2000);
+assert.equal(calculated.rolloverRequired, 2000);
+const thresholdBonus = resolveDepositCredit({ amount: 5000 }, {});
+assert.equal(thresholdBonus.creditedAmount, 10000);
+assert.equal(thresholdBonus.rolloverRequired, 55000);
 const transaction = { id: 'tx-1', status: 'COMPLETED', identifier: 'dep-1' };
 assert.equal(extractVizzionTransaction({ data: [transaction] }, { gatewayId: 'tx-1', referenceId: 'dep-1' }), transaction);
 assert.equal(extractVizzionTransaction({ transactions: [transaction] }, { gatewayId: 'tx-1' }), transaction);

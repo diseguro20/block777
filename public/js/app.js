@@ -103,7 +103,7 @@ const app = {
       setText('hero-promo-eyebrow', `OFERTA ATIVA · ${percent}% DE BÔNUS`);
       const title = document.getElementById('hero-promo-title');
       if (title) title.innerHTML = `Deposite<br><em>${minLabel}.</em><br>Jogue com ${totalLabel}.`;
-      setText('hero-promo-copy', `Seu depósito vale mais. Deposite a partir de ${minLabel}, receba ${percent}% de bônus automático e entre no Blockerino com mais saldo para jogar.`);
+      setText('hero-promo-copy', `O depósito mínimo continua em R$ 20,00. A partir de ${minLabel}, receba ${percent}% de bônus automático e entre no Blockerino com mais saldo para jogar.`);
       setText('hero-promo-terms', `Bônus promocional sujeito a rollover de ${rollover}x sobre o valor do bônus. Saques ficam indisponíveis até a conclusão do requisito. Consulte as regras na carteira.`);
       const cta = document.getElementById('hero-promo-cta');
       if (cta) cta.innerHTML = percent === 100
