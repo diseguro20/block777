@@ -12,6 +12,7 @@ import { createVizzionPix, isVizzionPaid, parseVizzionWebhook, verifyVizzionTran
 const router = express.Router();
 const REWARD_TARGET_MULTIPLIER = 10;
 const BOOST_PRICE = 4000;
+const BOOST_DISCOUNT_PRICE = 3000;
 const BOOST_RATE = 3;
 const BOOST_MAX_MULTIPLIER = 30;
 const BOOST_TRIGGER_LINES = 3;
@@ -31,6 +32,7 @@ async function activatePaidBoost(boostRef, verifiedStatus = 'COMPLETED') {
     const boostDoc = await transaction.get(boostRef);
     if (!boostDoc.exists) throw new Error('Boost não encontrado.');
     const boost = boostDoc.data();
+    const boostAmount = [BOOST_PRICE, BOOST_DISCOUNT_PRICE].includes(Number(boost.amount)) ? Number(boost.amount) : BOOST_PRICE;
     if (boost.status === 'approved') return { status: 'approved', alreadyApproved: true, boostRate: boost.boost_rate || BOOST_RATE, boostMaxMultiplier: boost.boost_max_multiplier || BOOST_MAX_MULTIPLIER };
     const betRef = db.collection('bets').doc(boost.bet_id);
     const userRef = db.collection('users').doc(boost.uid);
@@ -39,13 +41,13 @@ async function activatePaidBoost(boostRef, verifiedStatus = 'COMPLETED') {
 
     if (!betDoc.exists || betDoc.data().status !== 'pending') {
       const wallet = getWalletBuckets(userDoc.data());
-      const refundedCash = wallet.cashBalance + BOOST_PRICE;
+      const refundedCash = wallet.cashBalance + boostAmount;
       const refundedBalance = refundedCash + wallet.bonusBalance;
       transaction.update(userRef, { balance: refundedBalance, cash_balance: refundedCash });
       transaction.update(boostRef, {
         status: 'refunded_to_wallet',
         gateway_status: verifiedStatus,
-        refunded_amount: BOOST_PRICE,
+        refunded_amount: boostAmount,
         refunded_balance: refundedBalance,
         refunded_at: FieldValue.serverTimestamp()
       });
@@ -53,13 +55,13 @@ async function activatePaidBoost(boostRef, verifiedStatus = 'COMPLETED') {
         uid: boost.uid,
         tenant_id: boost.tenant_id || DEFAULT_TENANT_ID,
         type: 'boost_refund',
-        amount: BOOST_PRICE,
+        amount: boostAmount,
         status: 'completed',
         balance_after: refundedBalance,
         reference_id: boostRef.id,
         created_at: FieldValue.serverTimestamp()
       });
-      updateAdminSummary(transaction, boost.tenant_id || DEFAULT_TENANT_ID, { totalWalletBalance: BOOST_PRICE });
+      updateAdminSummary(transaction, boost.tenant_id || DEFAULT_TENANT_ID, { totalWalletBalance: boostAmount });
       return { status: 'refunded_to_wallet', balance: refundedBalance };
     }
 
@@ -72,7 +74,7 @@ async function activatePaidBoost(boostRef, verifiedStatus = 'COMPLETED') {
     transaction.update(betRef, {
       boost_active: true,
       boost_rate: BOOST_RATE,
-      boost_amount: BOOST_PRICE,
+      boost_amount: boostAmount,
       boost_max_multiplier: BOOST_MAX_MULTIPLIER,
       boost_activated_at: FieldValue.serverTimestamp()
     });
@@ -81,7 +83,7 @@ async function activatePaidBoost(boostRef, verifiedStatus = 'COMPLETED') {
       tenant_id: boost.tenant_id || DEFAULT_TENANT_ID,
       type: 'game_boost_purchase',
       amount: 0,
-      external_amount: BOOST_PRICE,
+      external_amount: boostAmount,
       status: 'completed',
       reference_id: boostRef.id,
       created_at: FieldValue.serverTimestamp()
@@ -288,6 +290,7 @@ router.post('/start', authenticateToken, async (req, res) => {
         rewardTargetPayout: amount * REWARD_TARGET_MULTIPLIER,
         boostOffer: {
           price: BOOST_PRICE,
+          discountPrice: BOOST_DISCOUNT_PRICE,
           rate: BOOST_RATE,
           maxMultiplier: BOOST_MAX_MULTIPLIER,
           triggerLines: BOOST_TRIGGER_LINES
@@ -311,7 +314,9 @@ router.post('/boost/create', authenticateToken, async (req, res) => {
   try {
     const uid = req.user.uid;
     const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
-    const { sessionId, linesCleared } = req.body || {};
+    const { sessionId, linesCleared, offerType } = req.body || {};
+    const normalizedOfferType = offerType === 'downsell' ? 'downsell' : 'standard';
+    const boostPrice = normalizedOfferType === 'downsell' ? BOOST_DISCOUNT_PRICE : BOOST_PRICE;
     if (!sessionId) return res.status(400).json({ error: 'Partida não informada.' });
 
     const betDoc = await findPendingBet(uid, sessionId);
@@ -336,7 +341,7 @@ router.post('/boost/create', authenticateToken, async (req, res) => {
           status: boost.status,
           pixCode: boost.pixCode || null,
           qrCodeUrl: boost.qrCodeUrl || null,
-          amount: BOOST_PRICE,
+          amount: Number(boost.amount) || BOOST_PRICE,
           boostRate: BOOST_RATE,
           boostMaxMultiplier: BOOST_MAX_MULTIPLIER
         });
@@ -353,7 +358,8 @@ router.post('/boost/create', authenticateToken, async (req, res) => {
       tenant_id: tenantId,
       bet_id: betDoc.id,
       session_id: sessionId,
-      amount: BOOST_PRICE,
+      amount: boostPrice,
+      offer_type: normalizedOfferType,
       boost_rate: BOOST_RATE,
       boost_max_multiplier: BOOST_MAX_MULTIPLIER,
       trigger_lines: BOOST_TRIGGER_LINES,
@@ -367,7 +373,7 @@ router.post('/boost/create', authenticateToken, async (req, res) => {
     const protocol = String(req.get('host') || '').includes('localhost') ? req.protocol : 'https';
     const webhookUrl = `${protocol}://${req.get('host')}/api/game/boost/webhook/vizzionpay`;
     const charge = await createVizzionPix({
-      amountCents: BOOST_PRICE,
+      amountCents: boostPrice,
       referenceId: boostRef.id,
       webhookUrl,
       customer: {
@@ -391,7 +397,7 @@ router.post('/boost/create', authenticateToken, async (req, res) => {
       status: 'pending',
       pixCode: charge.pixCode,
       qrCodeUrl,
-      amount: BOOST_PRICE,
+      amount: boostPrice,
       boostRate: BOOST_RATE,
       boostMaxMultiplier: BOOST_MAX_MULTIPLIER
     });
@@ -432,7 +438,8 @@ router.post('/boost/webhook/vizzionpay', async (req, res) => {
       });
       return res.status(202).json({ received: true, status: 'verification_pending' });
     }
-    if (!vizzionAmountMatches(verification.transaction, BOOST_PRICE)) {
+    const expectedAmount = [BOOST_PRICE, BOOST_DISCOUNT_PRICE].includes(Number(boost.amount)) ? Number(boost.amount) : BOOST_PRICE;
+    if (!vizzionAmountMatches(verification.transaction, expectedAmount)) {
       return res.status(409).json({ received: true, status: 'amount_mismatch' });
     }
     if (!isVizzionPaid(verification.transaction)) {
@@ -469,7 +476,8 @@ router.get('/boost/check/:boostId', authenticateToken, async (req, res) => {
       retryDelaysMs: [0]
     });
     if (!verification.transaction || !isVizzionPaid(verification.transaction)) return res.json({ status: 'pending' });
-    if (!vizzionAmountMatches(verification.transaction, BOOST_PRICE)) return res.status(409).json({ error: 'O valor pago não corresponde ao boost.' });
+    const expectedAmount = [BOOST_PRICE, BOOST_DISCOUNT_PRICE].includes(Number(boost.amount)) ? Number(boost.amount) : BOOST_PRICE;
+    if (!vizzionAmountMatches(verification.transaction, expectedAmount)) return res.status(409).json({ error: 'O valor pago não corresponde ao boost.' });
     const activation = await activatePaidBoost(boostRef, vizzionTransactionStatus(verification.transaction));
     return res.json(activation);
   } catch (error) {
@@ -542,7 +550,7 @@ router.post('/end', authenticateToken, async (req, res) => {
       const payout = Math.floor(liveBet.amount * finalMultiplier);
       const resultLabel = payout > 0 ? 'win' : 'loss';
       const managerEntry = calculateGgrEntry({
-        betAmount: liveBet.amount + (boostActive ? BOOST_PRICE : 0),
+        betAmount: liveBet.amount + (boostActive ? (Number(liveBet.boost_amount) || BOOST_PRICE) : 0),
         payout,
         rate: liveBet.manager_ggr_rate ?? DEFAULT_MANAGER_GGR_RATE
       });

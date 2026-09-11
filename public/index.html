@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://block777-omega.vercel.app/og.png?v=20260803-1">
   <title>Blockerino — Deposite R$ 20 e jogue com R$ 40</title>
   <link rel="stylesheet" href="./css/style.css?v=20260831-2">
-  <link rel="stylesheet" href="./css/arena.css?v=20260910-1">
+  <link rel="stylesheet" href="./css/arena.css?v=20260910-2">
 </head>
 <body class="player-app">
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
@@ -193,11 +193,21 @@
       <p>Por <strong>R$ 40,00 no PIX</strong>, cada aumento futuro do multiplicador passa a valer 3x. Exemplo: <b>+0,50x vira +1,50x</b>. Se continuar e ficar sem movimentos, a partida termina sem recompensa.</p>
       <div class="boost-scale"><span>Multiplicador atual <b id="boost-current-multiplier">1.00x</b></span><span>Novo limite <b>30x</b></span></div>
       <button class="btn btn-primary btn-wide" id="boost-accept-button" onclick="game.acceptBoost()">Ativar boost por R$ 40</button>
-      <button class="boost-skip" type="button" onclick="game.closeBoostModal()">Continuar sem boost</button>
+      <button class="boost-skip" type="button" onclick="game.showBoostDownsell()">Continuar sem boost</button>
       <p class="boost-disclaimer">O pagamento ativa o aumento de 3x somente nas próximas progressões. Não multiplica o saldo atual e não garante recompensa.</p>
     </div>
+    <div id="boost-downsell-stage" hidden>
+      <div class="boost-badge boost-last-chance">DESCONTO LIBERADO AGORA</div><div class="boost-bolt" aria-hidden="true">⚡</div>
+      <small>ÚLTIMA CHANCE NESTA PARTIDA</small><h3>Tem certeza que vai <em>ficar sem?</em></h3>
+      <p>Você desbloqueou um desconto imediato de <strong>R$ 10,00</strong>. Ative o mesmo Boost 300% por apenas:</p>
+      <div class="boost-discount-price"><del>R$ 40,00</del><strong>R$ 30,00</strong><span>somente agora</span></div>
+      <p>Cada aumento futuro continua valendo 3x e o multiplicador pode chegar a 30x.</p>
+      <button class="btn btn-primary btn-wide" id="boost-discount-button" onclick="game.acceptBoost('downsell')">Sim, ativar por R$ 30</button>
+      <button class="boost-skip" type="button" onclick="game.closeBoostModal()">Não, continuar sem boost</button>
+      <p class="boost-disclaimer">Continuar jogando mantém o risco de encerrar a partida sem recompensa. O boost não garante ganhos.</p>
+    </div>
     <div id="boost-pix-stage" hidden>
-      <div class="boost-badge">PIX DE R$ 40,00</div><h3>Escaneie para ativar</h3><p>O boost será liberado automaticamente após a confirmação do pagamento.</p>
+      <div class="boost-badge">PIX DE <span id="boost-pix-price">R$ 40,00</span></div><h3>Escaneie para ativar</h3><p>O boost será liberado automaticamente após a confirmação do pagamento.</p>
       <img id="boost-pix-qr" class="boost-pix-qr" alt="QR Code PIX para ativar o boost" hidden>
       <textarea id="boost-pix-code" readonly aria-label="Código PIX copia e cola"></textarea>
       <button class="btn btn-primary btn-wide" onclick="game.copyBoostPix()">Copiar código PIX</button>
@@ -208,6 +218,6 @@
   <div class="modal" id="win-modal"><div class="modal-card result-card"><div class="result-icon">✓</div><small>RESGATE CONCLUÍDO</small><h3 id="win-modal-payout">R$ 0,00</h3><p>Multiplicador final: <b id="win-modal-mult">1.00x</b></p><button class="btn btn-primary btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="modal" id="gameover-modal"><div class="modal-card result-card"><div class="result-icon danger">×</div><small>FIM DE PARTIDA</small><h3>Sem movimentos</h3><p>A rodada foi encerrada. Revise sua estratégia e tente novamente.</p><button class="btn btn-primary btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260909-1"></script><script src="./js/wallet.js?v=20260909-1"></script><script src="./js/game.js?v=20260910-2"></script>
+  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260909-1"></script><script src="./js/wallet.js?v=20260909-1"></script><script src="./js/game.js?v=20260910-3"></script>
 </body>
 </html>

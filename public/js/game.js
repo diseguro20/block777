@@ -1108,9 +1108,11 @@ const game = {
     if (!this.isPlaying || this.mode !== 'real' || this.boostActive) return;
     const offer = document.getElementById('boost-offer-stage');
     const pix = document.getElementById('boost-pix-stage');
+    const downsell = document.getElementById('boost-downsell-stage');
     const currentMultiplier = document.getElementById('boost-current-multiplier');
     if (offer) offer.hidden = false;
     if (pix) pix.hidden = true;
+    if (downsell) downsell.hidden = true;
     if (currentMultiplier) currentMultiplier.textContent = `${this.multiplier.toFixed(2)}x`;
     document.getElementById('boost-modal')?.classList.add('active');
   },
@@ -1119,9 +1121,20 @@ const game = {
     document.getElementById('boost-modal')?.classList.remove('active');
   },
 
-  async acceptBoost() {
+  showBoostDownsell() {
     if (!this.isPlaying || this.mode !== 'real' || this.boostActive) return;
-    const button = document.getElementById('boost-accept-button');
+    const offer = document.getElementById('boost-offer-stage');
+    const pix = document.getElementById('boost-pix-stage');
+    const downsell = document.getElementById('boost-downsell-stage');
+    if (offer) offer.hidden = true;
+    if (pix) pix.hidden = true;
+    if (downsell) downsell.hidden = false;
+  },
+
+  async acceptBoost(offerType = 'standard') {
+    if (!this.isPlaying || this.mode !== 'real' || this.boostActive) return;
+    const normalizedOfferType = offerType === 'downsell' ? 'downsell' : 'standard';
+    const button = document.getElementById(normalizedOfferType === 'downsell' ? 'boost-discount-button' : 'boost-accept-button');
     if (button) {
       button.disabled = true;
       button.textContent = 'Gerando PIX seguro...';
@@ -1129,7 +1142,7 @@ const game = {
     try {
       const data = await app.fetchAPI('/api/game/boost/create', {
         method: 'POST',
-        body: JSON.stringify({ sessionId: this.sessionId, linesCleared: this.linesCleared, blocksPlaced: this.blocksPlaced })
+        body: JSON.stringify({ sessionId: this.sessionId, linesCleared: this.linesCleared, blocksPlaced: this.blocksPlaced, offerType: normalizedOfferType })
       });
       this.boostId = data.boostId;
       if (data.status === 'approved') {
@@ -1141,8 +1154,11 @@ const game = {
       const pix = document.getElementById('boost-pix-stage');
       const code = document.getElementById('boost-pix-code');
       const image = document.getElementById('boost-pix-qr');
+      const pixPrice = document.getElementById('boost-pix-price');
       if (offer) offer.hidden = true;
+      document.getElementById('boost-downsell-stage')?.setAttribute('hidden', '');
       if (pix) pix.hidden = false;
+      if (pixPrice) pixPrice.textContent = app.formatBRL(Number(data.amount) || (normalizedOfferType === 'downsell' ? 3000 : 4000));
       if (code) code.value = data.pixCode;
       if (image) {
         image.src = data.qrCodeUrl;
@@ -1154,7 +1170,7 @@ const game = {
     } finally {
       if (button) {
         button.disabled = false;
-        button.textContent = 'Ativar boost por R$ 40';
+        button.textContent = normalizedOfferType === 'downsell' ? 'Sim, ativar por R$ 30' : 'Ativar boost por R$ 40';
       }
     }
   },
