@@ -18,7 +18,7 @@
   <meta name="twitter:image" content="https://block777-omega.vercel.app/og.png?v=20260803-1">
   <title>Blockerino — 100% de bônus a partir de R$ 50</title>
   <link rel="stylesheet" href="./css/style.css?v=20260831-2">
-  <link rel="stylesheet" href="./css/arena.css?v=20260910-2">
+  <link rel="stylesheet" href="./css/arena.css?v=20260910-3">
 </head>
 <body class="player-app">
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
@@ -123,7 +123,7 @@
 
     <section class="screen play-screen" id="game-screen">
       <div class="game-shell">
-        <div class="game-head"><button class="back-link" onclick="game.leaveGame()">← Sair da mesa</button><div><small>PARTIDA EM ANDAMENTO</small><b id="game-session-label">BLOCKERINO ORIGINAL</b></div><div class="game-actions"><button id="btn-game-sound" class="game-sound-toggle" type="button" aria-pressed="true" onclick="game.toggleSound()">🔊 Som</button><button id="btn-cashout" class="btn btn-success" type="button" onclick="game.cashout()" aria-label="Resgate bloqueado até atingir dez vezes" disabled>Libera em 10x</button></div></div>
+        <div class="game-head"><button class="back-link" onclick="game.leaveGame()">← Sair da mesa</button><div><small>PARTIDA EM ANDAMENTO</small><b id="game-session-label">BLOCKERINO ORIGINAL</b></div><div class="game-actions"><button id="btn-boost-corner" class="boost-corner-button" type="button" onclick="game.reopenBoostOffer()" aria-label="Comprar Boost 300%" hidden><b aria-hidden="true">⚡</b><span>Boost</span></button><button id="btn-game-sound" class="game-sound-toggle" type="button" aria-pressed="true" onclick="game.toggleSound()">🔊 Som</button><button id="btn-cashout" class="btn btn-success" type="button" onclick="game.cashout()" aria-label="Resgate bloqueado até atingir dez vezes" disabled>Libera em 10x</button></div></div>
         <div class="game-playfield">
           <div class="game-hud-bar"><div class="game-hud-stat"><span>Multiplicador</span><b id="hud-multiplier">1.00x</b></div><div class="game-hud-stat"><span>Pontuação</span><b id="hud-score">0</b></div><div class="game-hud-stat"><span>Linhas</span><b id="hud-lines">0</b></div><div class="game-hud-stat"><span>Retorno potencial</span><b id="hud-payout">R$ 0,00</b></div></div>
           <div class="combo-track reward-goal-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Progresso até a meta de recompensa de dez vezes a aposta"><i id="hud-combo-bar"></i><span id="hud-combo-label">META 10X</span></div>
@@ -203,7 +203,7 @@
       <div class="boost-discount-price"><del>R$ 40,00</del><strong>R$ 30,00</strong><span>somente agora</span></div>
       <p>Cada aumento futuro continua valendo 3x e o multiplicador pode chegar a 30x.</p>
       <button class="btn btn-primary btn-wide" id="boost-discount-button" onclick="game.acceptBoost('downsell')">Sim, ativar por R$ 30</button>
-      <button class="boost-skip" type="button" onclick="game.closeBoostModal()">Não, continuar sem boost</button>
+      <button class="boost-skip" type="button" onclick="game.declineBoostOffer()">Não, continuar sem boost</button>
       <p class="boost-disclaimer">Continuar jogando mantém o risco de encerrar a partida sem recompensa. O boost não garante ganhos.</p>
     </div>
     <div id="boost-pix-stage" hidden>
@@ -212,12 +212,12 @@
       <textarea id="boost-pix-code" readonly aria-label="Código PIX copia e cola"></textarea>
       <button class="btn btn-primary btn-wide" onclick="game.copyBoostPix()">Copiar código PIX</button>
       <div class="boost-wait"><i></i><span>Aguardando confirmação segura...</span></div>
-      <button class="boost-skip" type="button" onclick="game.closeBoostModal()">Continuar jogando enquanto confirma</button>
+      <button class="boost-skip" type="button" onclick="game.minimizeBoostPayment()">Continuar jogando enquanto confirma</button>
     </div>
   </div></div>
   <div class="modal" id="win-modal"><div class="modal-card result-card"><div class="result-icon">✓</div><small>RESGATE CONCLUÍDO</small><h3 id="win-modal-payout">R$ 0,00</h3><p>Multiplicador final: <b id="win-modal-mult">1.00x</b></p><button class="btn btn-primary btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="modal" id="gameover-modal"><div class="modal-card result-card"><div class="result-icon danger">×</div><small>FIM DE PARTIDA</small><h3>Sem movimentos</h3><p>A rodada foi encerrada. Revise sua estratégia e tente novamente.</p><button class="btn btn-primary btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260910-1"></script><script src="./js/wallet.js?v=20260910-1"></script><script src="./js/game.js?v=20260910-3"></script>
+  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260910-1"></script><script src="./js/wallet.js?v=20260910-1"></script><script src="./js/game.js?v=20260910-4"></script>
 </body>
 </html>

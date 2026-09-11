@@ -104,6 +104,7 @@ const game = {
   boostMaxMultiplier: 30,
   boostTriggerLines: 3,
   boostOfferShown: false,
+  boostOfferDeclined: false,
   boostId: null,
   boostCheckTimer: null,
   allowEarlyCashout: false,
@@ -729,6 +730,7 @@ const game = {
       this.boostMaxMultiplier = Number(data.boostOffer?.maxMultiplier) || 30;
       this.boostTriggerLines = Number(data.boostOffer?.triggerLines) || 3;
       this.boostOfferShown = false;
+      this.boostOfferDeclined = false;
       this.boostId = null;
       this.stopBoostPolling();
       this.allowEarlyCashout = data.allowEarlyCashout === true;
@@ -767,6 +769,7 @@ const game = {
     this.boostMaxMultiplier = 30;
     this.boostTriggerLines = 3;
     this.boostOfferShown = false;
+    this.boostOfferDeclined = false;
     this.boostId = null;
     this.stopBoostPolling();
     this.allowEarlyCashout = false;
@@ -1102,6 +1105,7 @@ const game = {
     document.querySelector('.reward-goal-track')?.setAttribute('aria-valuenow', rewardProgress.toFixed(0));
     cashoutButton?.classList.toggle('goal-reached', this.multiplier >= this.rewardTargetMultiplier);
     document.querySelector('.game-playfield')?.classList.toggle('boost-active', this.boostActive);
+    this.updateBoostCornerButton();
   },
 
   showBoostOffer() {
@@ -1119,6 +1123,45 @@ const game = {
 
   closeBoostModal() {
     document.getElementById('boost-modal')?.classList.remove('active');
+  },
+
+  declineBoostOffer() {
+    this.boostOfferDeclined = true;
+    this.closeBoostModal();
+    this.updateBoostCornerButton();
+    app.showToast('O Boost 300% continua disponível no canto da partida.');
+  },
+
+  minimizeBoostPayment() {
+    this.boostOfferDeclined = true;
+    this.closeBoostModal();
+    this.updateBoostCornerButton();
+  },
+
+  reopenBoostOffer() {
+    if (!this.isPlaying || this.mode !== 'real' || this.boostActive || this.linesCleared < this.boostTriggerLines) return;
+    const modal = document.getElementById('boost-modal');
+    const offer = document.getElementById('boost-offer-stage');
+    const pix = document.getElementById('boost-pix-stage');
+    const downsell = document.getElementById('boost-downsell-stage');
+    if (this.boostId) {
+      if (offer) offer.hidden = true;
+      if (downsell) downsell.hidden = true;
+      if (pix) pix.hidden = false;
+      modal?.classList.add('active');
+      return;
+    }
+    this.showBoostOffer();
+  },
+
+  updateBoostCornerButton() {
+    const button = document.getElementById('btn-boost-corner');
+    if (!button) return;
+    const visible = this.isPlaying && this.mode === 'real' && !this.boostActive && this.boostOfferDeclined && this.linesCleared >= this.boostTriggerLines;
+    button.hidden = !visible;
+    const label = button.querySelector('span');
+    if (label) label.textContent = this.boostId ? 'PIX' : 'Boost';
+    button.setAttribute('aria-label', this.boostId ? 'Reabrir PIX pendente do Boost 300%' : 'Comprar Boost 300%');
   },
 
   showBoostDownsell() {
@@ -1218,6 +1261,7 @@ const game = {
   applyBoostActivation(data = {}) {
     this.stopBoostPolling();
     this.boostActive = true;
+    this.boostOfferDeclined = false;
     this.boostRate = Number(data.boostRate) || 3;
     this.boostMaxMultiplier = Number(data.boostMaxMultiplier) || 30;
     this.closeBoostModal();
