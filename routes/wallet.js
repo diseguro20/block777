@@ -12,6 +12,7 @@ import { resolveDepositCredit } from '../lib/depositCredit.js';
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 const PUBLIC_PROMOTION_CACHE_TTL_MS = 5 * 60 * 1000;
+const DEPOSIT_REUSE_WINDOW_MS = 10 * 60 * 1000;
 const publicPromotionCache = new Map();
 async function getPromotionSettings(tenantId = DEFAULT_TENANT_ID) {
   const settingsRef = tenantSettingsRef(tenantId);
@@ -55,6 +56,7 @@ router.get('/promotion', async (req, res) => {
 });
 
 router.post('/deposit', authenticateToken, async (req, res) => {
+  let creationContext = null;
   try {
     const { amount } = req.body;
     const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
@@ -69,13 +71,79 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     if (!amount || amount < minDeposit || amount > 100000) {
       return res.status(400).json({ error: `O depósito mínimo é de R$ ${(minDeposit / 100).toFixed(2).replace('.', ',')}.` });
     }
-    const depositId = uuidv4();
     const promotion = calculateDepositPromotion(amount, settings);
     const docRef = db.collection('deposit_requests').doc();
     const userDoc = await db.collection('users').doc(req.user.uid).get();
     const user = userDoc.exists ? userDoc.data() : {};
     if (!belongsToTenant(user, tenantId)) return res.status(403).json({ error: 'Conta não pertence a esta operação.' });
     if (user.demo_account) return res.status(403).json({ error: 'Contas demo utilizam saldo virtual e não aceitam depósitos.' });
+
+    // Uma trava transacional por usuário impede que toques simultâneos criem
+    // cobranças diferentes. Um PIX pendente do mesmo valor é reutilizado.
+    const lockId = crypto.createHash('sha256').update(`${tenantId}:${req.user.uid}`).digest('hex');
+    const lockRef = db.collection('deposit_creation_locks').doc(lockId);
+    const nowMs = Date.now();
+    const depositId = uuidv4();
+    const acquisition = await db.runTransaction(async transaction => {
+      const lockDoc = await transaction.get(lockRef);
+      if (lockDoc.exists) {
+        const lock = lockDoc.data();
+        if (Number(lock.amount) === Number(amount) && Number(lock.expires_at_ms) > nowMs && lock.deposit_ref_id) {
+          const linkedRef = db.collection('deposit_requests').doc(lock.deposit_ref_id);
+          const linkedDoc = await transaction.get(linkedRef);
+          if (linkedDoc.exists && ['creating', 'pending'].includes(String(linkedDoc.data().status || '').toLowerCase())) {
+            return { owner: false, refId: linkedRef.id, data: linkedDoc.data() };
+          }
+        }
+      }
+
+      transaction.set(docRef, {
+        uid: req.user.uid,
+        tenant_id: tenantId,
+        username: user.username || '',
+        amount,
+        status: 'creating',
+        depositId,
+        gateway: 'vizzionpay',
+        bonusAmount: promotion.bonusAmount,
+        rolloverRequired: promotion.rolloverRequired,
+        bonusPercent: promotion.bonusPercent,
+        rolloverMultiplier: promotion.rolloverMultiplier,
+        promotionEligible: promotion.eligible,
+        credit_applied: false,
+        created_at: FieldValue.serverTimestamp()
+      });
+      transaction.set(lockRef, {
+        uid: req.user.uid,
+        tenant_id: tenantId,
+        amount,
+        deposit_ref_id: docRef.id,
+        status: 'creating',
+        expires_at_ms: nowMs + DEPOSIT_REUSE_WINDOW_MS,
+        updated_at: FieldValue.serverTimestamp()
+      });
+      return { owner: true, refId: docRef.id };
+    });
+
+    if (!acquisition.owner) {
+      const existing = acquisition.data || {};
+      if (String(existing.status).toLowerCase() === 'creating' || !existing.pixCode) {
+        return res.status(409).json({ error: 'Seu PIX já está sendo gerado. Aguarde alguns segundos.', status: 'creating' });
+      }
+      return res.json({
+        depositId: existing.depositId || acquisition.refId,
+        pixCode: existing.pixCode,
+        qrCodeUrl: existing.qrCodeUrl,
+        gateway: existing.gateway || 'vizzionpay',
+        status: existing.status || 'pending',
+        bonusAmount: Number(existing.bonusAmount) || 0,
+        totalAfterPayment: Number(existing.amount) + (Number(existing.bonusAmount) || 0),
+        rolloverRequired: Number(existing.rolloverRequired) || 0,
+        reused: true
+      });
+    }
+    creationContext = { owner: true, docRef, lockRef };
+
     const webhookUrl = `${String(req.get('host') || '').includes('localhost') ? req.protocol : 'https'}://${req.get('host')}/api/wallet/webhook/vizzionpay`;
     const charge = await createVizzionPix({
       amountCents: amount,
@@ -86,31 +154,22 @@ router.post('/deposit', authenticateToken, async (req, res) => {
         email: user.email || req.user.email
       }
     });
+    creationContext.gatewayCharge = charge;
 
     const transactionRef = db.collection('transactions').doc();
-    await docRef.set({
-      uid: req.user.uid,
-      tenant_id: tenantId,
-      username: user.username || '',
-      amount,
+    await docRef.update({
       pixCode: charge.pixCode,
       qrCodeUrl: charge.qrCodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(charge.pixCode)}`,
       status: 'pending',
-      depositId,
-      gateway: 'vizzionpay',
       gatewayId: charge.gatewayId,
       gateway_status: charge.status,
       gateway_fee: charge.fee,
       gateway_order_id: charge.orderId,
-      bonusAmount: promotion.bonusAmount,
-      rolloverRequired: promotion.rolloverRequired,
-      bonusPercent: promotion.bonusPercent,
-      rolloverMultiplier: promotion.rolloverMultiplier,
-      promotionEligible: promotion.eligible,
       transaction_id: transactionRef.id,
-      credit_applied: false,
-      created_at: FieldValue.serverTimestamp()
+      ready_at: FieldValue.serverTimestamp()
     });
+    creationContext.ready = true;
+    await lockRef.set({ status: 'pending', updated_at: FieldValue.serverTimestamp() }, { merge: true });
 
     await transactionRef.set({
       uid: req.user.uid,
@@ -138,6 +197,12 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       rolloverRequired: promotion.rolloverRequired
     });
   } catch (error) {
+    if (creationContext?.owner && !creationContext.ready) {
+      await Promise.allSettled([
+        creationContext.docRef.set({ status: 'failed', error: String(error.message || error).slice(0, 240), failed_at: FieldValue.serverTimestamp() }, { merge: true }),
+        creationContext.lockRef.set({ status: 'failed', expires_at_ms: 0, updated_at: FieldValue.serverTimestamp() }, { merge: true })
+      ]);
+    }
     console.error('Deposit error:', error);
     res.status(error.statusCode || 500).json({ error: error.message || 'Não foi possível gerar o PIX.' });
   }

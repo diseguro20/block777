@@ -1,6 +1,7 @@
 const wallet = {
   pixCode: '',
   data: null,
+  isCreatingDeposit: false,
   promotion: { promoEnabled: true, bonusPercent: 100, bonusMinDeposit: 5000, rolloverMultiplier: 10 },
   toggleTab(tab) {
     const deposit = tab === 'deposit';
@@ -100,8 +101,16 @@ const wallet = {
     }, 2500);
   },
   async requestDeposit() {
+    if (this.isCreatingDeposit) return;
     const amount = Number(document.getElementById('dep-amount-input').value);
     if (amount < 20 || amount > 1000) return app.showToast('O depósito mínimo é de R$ 20.');
+    const button = document.getElementById('deposit-promo-button');
+    this.isCreatingDeposit = true;
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Gerando seu PIX seguro...';
+      button.setAttribute('aria-busy', 'true');
+    }
     try {
       const data = await app.fetchAPI('/api/wallet/deposit', {
         method: 'POST',
@@ -115,14 +124,24 @@ const wallet = {
       }
       document.getElementById('pix-code-display').value = data.pixCode;
       document.getElementById('pix-result-container').style.display = 'block';
-      app.showToast(data.bonusAmount > 0
-        ? `PIX gerado. Após pagar, você recebe ${app.formatBRL(data.bonusAmount)} de bônus.`
-        : 'PIX gerado. Aguardando confirmação do pagamento.');
+      app.showToast(data.reused
+        ? 'Seu PIX pendente foi reaberto. Não geramos uma nova cobrança.'
+        : data.bonusAmount > 0
+          ? `PIX gerado. Após pagar, você recebe ${app.formatBRL(data.bonusAmount)} de bônus.`
+          : 'PIX gerado. Aguardando confirmação do pagamento.');
       if (data.depositId) {
         this.startDepositPolling(data.depositId);
       }
       await this.loadWallet();
-    } catch (_) {}
+    } catch (_) {
+    } finally {
+      this.isCreatingDeposit = false;
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
+      }
+      this.updatePromoPreview();
+    }
   },
   async copyPixCode() {
     if (!this.pixCode) return;

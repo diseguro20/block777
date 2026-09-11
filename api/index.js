@@ -421,8 +421,26 @@ app.get('/api/branding', (req, res) => {
 app.get('/api/wallet/promotion', (_, res) => res.json(normalizePromotionSettings(store.settings)));
 app.post('/api/wallet/deposit', auth, (req, res) => {
   if (req.currentUser.demo_account) return res.status(403).json({ error: 'Contas demo utilizam saldo virtual e não aceitam depósitos.' });
+  const amount = Math.round(Number(req.body.amount) || 0);
   const minDeposit = Math.max(2000, Number(store.settings.minDeposit) || 2000);
   if (amount < minDeposit || amount > 100000) return res.status(400).json({ error: `O depósito mínimo é de R$ ${(minDeposit / 100).toFixed(2).replace('.', ',')}.` });
+  const reusableDeposit = store.deposits.find(deposit =>
+    deposit.uid === req.currentUser.id &&
+    Number(deposit.amount) === amount &&
+    deposit.status === 'pending' &&
+    Date.now() - new Date(deposit.created_at || 0).getTime() < 10 * 60 * 1000
+  );
+  if (reusableDeposit) {
+    return res.json({
+      depositId: reusableDeposit.id,
+      pixCode: reusableDeposit.pixCode,
+      status: reusableDeposit.status,
+      bonusAmount: reusableDeposit.bonusAmount || 0,
+      totalAfterPayment: reusableDeposit.amount + (reusableDeposit.bonusAmount || 0),
+      rolloverRequired: reusableDeposit.rolloverRequired || 0,
+      reused: true
+    });
+  }
   const promotion = calculateDepositPromotion(amount, store.settings);
   const depositId = uuid();
   const pixCode = `00020101021226890014BR.GOV.BCB.PIX2567pix.blockerino.app/${depositId}520400005303986540${(amount / 100).toFixed(2)}5802BR5910BLOCKERINO6009SAO PAULO62070503***6304B777`;

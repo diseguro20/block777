@@ -20,6 +20,7 @@
     "test:security": "node scripts/test-security.mjs",
     "test:password-reset": "node scripts/test-password-reset.mjs",
     "test:deposit-credit": "node scripts/test-deposit-credit.mjs",
+    "test:deposit-idempotency": "node scripts/test-deposit-idempotency.mjs",
     "deploy": "gh-pages --nojekyll -d dist",
     "predeploy": "expo export -p web"
   },
