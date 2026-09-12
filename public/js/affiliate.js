@@ -40,11 +40,17 @@ const affiliate = {
       const registration = await navigator.serviceWorker.register('/affiliate-sw.js');
       const subscription = await registration.pushManager.getSubscription();
       const active = Boolean(subscription && Notification.permission === 'granted');
+      if (active) {
+        await app.fetchAPI('/api/affiliate/notifications/subscribe', {
+          method: 'POST',
+          body: JSON.stringify({ subscription: subscription.toJSON() })
+        });
+      }
       status.textContent = active
-        ? 'Ativas: você receberá alertas de PIX gerado e venda confirmada.'
+        ? 'Ativas e sincronizadas neste celular. Faça um teste agora.'
         : 'Ative para acompanhar PIX e pagamentos dos seus indicados.';
-      button.textContent = active ? 'Notificações ativadas ✓' : 'Ativar notificações';
-      button.disabled = active;
+      button.textContent = active ? 'Enviar teste' : 'Ativar notificações';
+      button.disabled = false;
     } catch (_) {
       status.textContent = 'Não foi possível verificar as notificações agora.';
     }
@@ -55,21 +61,27 @@ const affiliate = {
     const button = document.getElementById('affiliate-notification-button');
     try {
       button.disabled = true;
+      if (!this.notificationConfig) {
+        this.notificationConfig = await app.fetchAPI('/api/affiliate/notifications/config');
+      }
       const permission = await Notification.requestPermission();
       if (permission !== 'granted') throw new Error('Permissão de notificações não concedida.');
       const registration = await navigator.serviceWorker.register('/affiliate-sw.js');
       await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: this.base64ToBytes(this.notificationConfig.publicKey)
-      });
+      const subscription = await registration.pushManager.getSubscription() || await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: this.base64ToBytes(this.notificationConfig.publicKey)
+        });
       await app.fetchAPI('/api/affiliate/notifications/subscribe', {
         method: 'POST',
         body: JSON.stringify({ subscription: subscription.toJSON() })
       });
-      status.textContent = 'Ativas: você receberá alertas de PIX gerado e venda confirmada.';
-      button.textContent = 'Notificações ativadas ✓';
-      app.showToast('Notificações de vendas ativadas neste celular.');
+      const test = await app.fetchAPI('/api/affiliate/notifications/test', { method: 'POST' });
+      if (!test.sent) throw new Error('O teste não foi aceito pelo serviço do celular.');
+      status.textContent = 'Teste enviado. Este celular está pronto para receber vendas.';
+      button.textContent = 'Testar novamente';
+      button.disabled = false;
+      app.showToast('Notificação de teste enviada para este celular.');
     } catch (error) {
       button.disabled = false;
       status.textContent = error.message || 'Não foi possível ativar as notificações.';

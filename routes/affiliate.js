@@ -2,7 +2,7 @@ import express from 'express';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { DEFAULT_TENANT_ID, belongsToTenant } from '../lib/tenant.js';
-import { pushStatus, removePushSubscription, savePushSubscription } from '../lib/pushNotifications.js';
+import { pushStatus, removePushSubscription, savePushSubscription, sendAffiliateTestNotification } from '../lib/pushNotifications.js';
 
 const router = express.Router();
 
@@ -35,6 +35,18 @@ router.post('/notifications/subscribe', authenticateToken, async (req, res) => {
 router.post('/notifications/unsubscribe', authenticateToken, async (req, res) => {
   await removePushSubscription({ uid: req.user.uid, endpoint: req.body?.endpoint });
   res.json({ success: true, active: false });
+});
+
+router.post('/notifications/test', authenticateToken, async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
+    const result = await sendAffiliateTestNotification({ affiliateId: req.user.uid, tenantId });
+    if (!result.subscriptions) return res.status(409).json({ error: 'Este celular ainda não está inscrito.' });
+    if (!result.sent) return res.status(502).json({ error: 'O serviço do celular recusou o teste. Reative as notificações.' });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Não foi possível enviar a notificação de teste.' });
+  }
 });
 
 router.get('/stats', authenticateToken, async (req, res) => {
