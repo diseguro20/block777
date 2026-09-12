@@ -8,6 +8,7 @@ import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
 import { updateAdminSummary } from '../lib/adminSummary.js';
 import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
+import { sendAffiliateDepositNotification } from '../lib/pushNotifications.js';
 
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
@@ -201,6 +202,15 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     updateAdminSummary(null, tenantId, { pendingDeposits: 1 }).catch(error => {
       console.warn('Admin summary deposit update:', error.message);
     });
+    if (user.referred_by) {
+      await sendAffiliateDepositNotification({
+        affiliateId: user.referred_by,
+        tenantId,
+        depositId: docRef.id,
+        event: 'pix_created',
+        amount
+      }).catch(error => console.warn('[Push] PIX gerado:', error.message));
+    }
 
     res.json({
       depositId,
@@ -234,7 +244,7 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
     const transactionSnapshot = await db.collection('transactions').where('reference_id', '==', depositRef.id).limit(1).get();
     transactionRef = transactionSnapshot.empty ? null : transactionSnapshot.docs[0].ref;
   }
-  return db.runTransaction(async transaction => {
+  const result = await db.runTransaction(async transaction => {
     const depositDoc = await transaction.get(depositRef);
     if (!depositDoc.exists) throw new Error('Depósito não encontrado.');
     const deposit = depositDoc.data();
@@ -362,9 +372,23 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       balance: newBalance,
       cashBalance: newCashBalance,
       bonusBalance: newBonusBalance,
-      creditedAmount
+      creditedAmount,
+      notification: user.referred_by ? {
+        affiliateId: user.referred_by,
+        tenantId,
+        depositId: depositRef.id,
+        amount: deposit.amount
+      } : null
     };
   });
+  if (result.notification) {
+    await sendAffiliateDepositNotification({
+      ...result.notification,
+      event: 'deposit_paid'
+    }).catch(error => console.warn('[Push] Depósito pago:', error.message));
+    delete result.notification;
+  }
+  return result;
 }
 
 router.post('/webhook/vizzionpay', async (req, res) => {

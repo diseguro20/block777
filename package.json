@@ -21,6 +21,7 @@
     "test:password-reset": "node scripts/test-password-reset.mjs",
     "test:deposit-credit": "node scripts/test-deposit-credit.mjs",
     "test:deposit-idempotency": "node scripts/test-deposit-idempotency.mjs",
+    "test:push-notifications": "node scripts/test-push-notifications.mjs",
     "deploy": "gh-pages --nojekyll -d dist",
     "predeploy": "expo export -p web"
   },
@@ -72,7 +73,8 @@
     "react-native-svg": "15.8.0",
     "react-native-web": "~0.19.13",
     "react-native-webview": "^13.12.5",
-    "uuid": "^14.0.1"
+    "uuid": "^14.0.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

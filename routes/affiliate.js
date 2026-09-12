@@ -2,8 +2,40 @@ import express from 'express';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { DEFAULT_TENANT_ID, belongsToTenant } from '../lib/tenant.js';
+import { pushStatus, removePushSubscription, savePushSubscription } from '../lib/pushNotifications.js';
 
 const router = express.Router();
+
+router.get('/notifications/config', authenticateToken, async (req, res) => {
+  const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
+  const snapshot = await db.collection('push_subscriptions').where('affiliate_id', '==', req.user.uid).get();
+  const active = snapshot.docs.some(doc => doc.data().active !== false && belongsToTenant(doc.data(), tenantId));
+  res.json({ configured: pushStatus.configured, publicKey: pushStatus.publicKey, active });
+});
+
+router.post('/notifications/subscribe', authenticateToken, async (req, res) => {
+  try {
+    const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
+    const userDoc = await db.collection('users').doc(req.user.uid).get();
+    if (!userDoc.exists || !belongsToTenant(userDoc.data(), tenantId) || !userDoc.data().ref_code) {
+      return res.status(403).json({ error: 'Conta de afiliado inválida.' });
+    }
+    await savePushSubscription({
+      uid: req.user.uid,
+      tenantId,
+      subscription: req.body?.subscription,
+      userAgent: req.headers['user-agent'] || ''
+    });
+    res.json({ success: true, active: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Não foi possível ativar as notificações.' });
+  }
+});
+
+router.post('/notifications/unsubscribe', authenticateToken, async (req, res) => {
+  await removePushSubscription({ uid: req.user.uid, endpoint: req.body?.endpoint });
+  res.json({ success: true, active: false });
+});
 
 router.get('/stats', authenticateToken, async (req, res) => {
   try {

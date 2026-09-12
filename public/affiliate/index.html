@@ -4,6 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="theme-color" content="#06174a">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="/manifest.webmanifest">
   <title>Afiliados — Blockerino</title>
   <link rel="stylesheet" href="../css/style.css?v=20260831-2">
   <link rel="stylesheet" href="../css/affiliate.css?v=20260730-1">
@@ -48,6 +50,15 @@
         <article class="metric"><small>TOTAL DE COMISSÕES</small><strong id="stat-commissions">R$ 0,00</strong><span>histórico acumulado</span></article>
         <article class="metric"><small>ALCANCE TOTAL</small><strong id="stat-total">0</strong><span>pessoas na sua rede</span></article>
       </div>
+
+      <article class="panel" style="margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:18px;flex-wrap:wrap">
+        <div>
+          <small class="eyebrow">ALERTAS EM TEMPO REAL</small>
+          <h3 style="margin:7px 0">Receba cada venda no celular</h3>
+          <p id="affiliate-notification-status" style="margin:0;color:var(--color-text-muted)">Verificando compatibilidade…</p>
+        </div>
+        <button id="affiliate-notification-button" class="btn btn-primary" type="button" onclick="affiliate.enableNotifications()">Ativar notificações</button>
+      </article>
 
       <article class="panel commission-table" style="margin-bottom:24px">
         <div class="panel-title"><div><small>LEADS E DEPOSITANTES</small><h3>Seus indicados</h3></div></div>
@@ -110,6 +121,6 @@
   <div class="toast-container" id="toast-container"></div>
   <script src="../js/branding.js?v=20260831-5"></script>
   <script src="../js/app.js?v=20260831-5"></script>
-  <script src="../js/affiliate.js?v=20260831-3"></script>
+  <script src="../js/affiliate.js?v=20260912-1"></script>
 </body>
 </html>

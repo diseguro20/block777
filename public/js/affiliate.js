@@ -5,8 +5,75 @@ const affiliate = {
       await app.fetchUserDataOnly();
       if (!app.user) return this.showAuth();
       await this.loadAffiliateStats();
+      await this.loadNotificationStatus();
     } catch (_) {
       this.showAuth();
+    }
+  },
+
+  notificationConfig: null,
+
+  base64ToBytes(value) {
+    const padding = '='.repeat((4 - value.length % 4) % 4);
+    const raw = atob((value + padding).replace(/-/g, '+').replace(/_/g, '/'));
+    return Uint8Array.from([...raw].map(char => char.charCodeAt(0)));
+  },
+
+  async loadNotificationStatus() {
+    const status = document.getElementById('affiliate-notification-status');
+    const button = document.getElementById('affiliate-notification-button');
+    if (!status || !button) return;
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+      status.textContent = /iPhone|iPad/i.test(navigator.userAgent)
+        ? 'No iPhone, adicione este painel à Tela de Início e abra pelo novo ícone para ativar os alertas.'
+        : 'Seu navegador não oferece notificações push.';
+      button.hidden = true;
+      return;
+    }
+    try {
+      this.notificationConfig = await app.fetchAPI('/api/affiliate/notifications/config');
+      if (!this.notificationConfig.configured) {
+        status.textContent = 'Notificações temporariamente indisponíveis.';
+        button.disabled = true;
+        return;
+      }
+      const registration = await navigator.serviceWorker.register('/affiliate-sw.js');
+      const subscription = await registration.pushManager.getSubscription();
+      const active = Boolean(subscription && Notification.permission === 'granted');
+      status.textContent = active
+        ? 'Ativas: você receberá alertas de PIX gerado e venda confirmada.'
+        : 'Ative para acompanhar PIX e pagamentos dos seus indicados.';
+      button.textContent = active ? 'Notificações ativadas ✓' : 'Ativar notificações';
+      button.disabled = active;
+    } catch (_) {
+      status.textContent = 'Não foi possível verificar as notificações agora.';
+    }
+  },
+
+  async enableNotifications() {
+    const status = document.getElementById('affiliate-notification-status');
+    const button = document.getElementById('affiliate-notification-button');
+    try {
+      button.disabled = true;
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted') throw new Error('Permissão de notificações não concedida.');
+      const registration = await navigator.serviceWorker.register('/affiliate-sw.js');
+      await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: this.base64ToBytes(this.notificationConfig.publicKey)
+      });
+      await app.fetchAPI('/api/affiliate/notifications/subscribe', {
+        method: 'POST',
+        body: JSON.stringify({ subscription: subscription.toJSON() })
+      });
+      status.textContent = 'Ativas: você receberá alertas de PIX gerado e venda confirmada.';
+      button.textContent = 'Notificações ativadas ✓';
+      app.showToast('Notificações de vendas ativadas neste celular.');
+    } catch (error) {
+      button.disabled = false;
+      status.textContent = error.message || 'Não foi possível ativar as notificações.';
+      app.showToast(status.textContent);
     }
   },
 
