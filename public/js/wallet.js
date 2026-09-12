@@ -98,7 +98,7 @@ const wallet = {
           await this.loadWallet();
         }
       } catch (_) {}
-    }, 2500);
+    }, 5000);
   },
   async requestDeposit() {
     if (this.isCreatingDeposit) return;

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { resolveDepositCredit } from '../lib/depositCredit.js';
+import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
 import { extractVizzionTransaction, isVizzionPaid, vizzionAmountMatches, vizzionTransactionStatus } from '../lib/vizzionpay.js';
 
 const standard = resolveDepositCredit({ amount: 2000, bonusAmount: 2000, rolloverRequired: 22000 }, {});
@@ -12,6 +12,8 @@ assert.equal(calculated.rolloverRequired, 2000);
 const thresholdBonus = resolveDepositCredit({ amount: 5000 }, {});
 assert.equal(thresholdBonus.creditedAmount, 10000);
 assert.equal(thresholdBonus.rolloverRequired, 55000);
+assert.equal(rolloverForUser({ is_influencer: 0 }, 55000), 55000);
+assert.equal(rolloverForUser({ is_influencer: 1 }, 55000), 0);
 const transaction = { id: 'tx-1', status: 'COMPLETED', identifier: 'dep-1' };
 assert.equal(extractVizzionTransaction({ data: [transaction] }, { gatewayId: 'tx-1', referenceId: 'dep-1' }), transaction);
 assert.equal(extractVizzionTransaction({ transactions: [transaction] }, { gatewayId: 'tx-1' }), transaction);

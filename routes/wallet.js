@@ -7,13 +7,29 @@ import { createVizzionPix, extractVizzionTransaction, getVizzionTransaction, isV
 import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
 import { updateAdminSummary } from '../lib/adminSummary.js';
-import { resolveDepositCredit } from '../lib/depositCredit.js';
+import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
 
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 const PUBLIC_PROMOTION_CACHE_TTL_MS = 5 * 60 * 1000;
 const DEPOSIT_REUSE_WINDOW_MS = 10 * 60 * 1000;
+const VIZZION_LOOKUP_INTERVAL_MS = 60 * 1000;
+const VIZZION_RATE_LIMIT_BACKOFF_MS = 5 * 60 * 1000;
 const publicPromotionCache = new Map();
+
+async function claimVizzionDepositLookup(depositRef) {
+  const now = Date.now();
+  return db.runTransaction(async transaction => {
+    const freshDoc = await transaction.get(depositRef);
+    if (!freshDoc.exists || freshDoc.data().status !== 'pending') return false;
+    if (Number(freshDoc.data().gateway_check_after_ms || 0) > now) return false;
+    transaction.update(depositRef, {
+      gateway_check_after_ms: now + VIZZION_LOOKUP_INTERVAL_MS,
+      gateway_check_claimed_at: FieldValue.serverTimestamp()
+    });
+    return true;
+  });
+}
 async function getPromotionSettings(tenantId = DEFAULT_TENANT_ID) {
   const settingsRef = tenantSettingsRef(tenantId);
   const settingsDoc = await settingsRef.get();
@@ -240,13 +256,17 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
 
     const settingsDoc = await transaction.get(tenantSettingsRef(deposit.tenant_id || DEFAULT_TENANT_ID));
     const settings = settingsDoc.exists ? settingsDoc.data() : {};
-    const { bonusAmount, rolloverRequired, creditedAmount } = resolveDepositCredit(deposit, settings);
+    const resolvedCredit = resolveDepositCredit(deposit, settings);
+    const bonusAmount = resolvedCredit.bonusAmount;
+    const creditedAmount = resolvedCredit.creditedAmount;
+    const rolloverRequired = rolloverForUser(user, resolvedCredit.rolloverRequired);
 
     const newCashBalance = wallet.cashBalance + deposit.amount;
     const newBonusBalance = wallet.bonusBalance + bonusAmount;
     const newBalance = newCashBalance + newBonusBalance;
-    const newRolloverRemaining = wallet.rolloverRemaining + rolloverRequired;
-    const newRolloverTarget = (wallet.rolloverTarget || wallet.rolloverRemaining) + rolloverRequired;
+    const influencerMode = Number(user.is_influencer) === 1;
+    const newRolloverRemaining = influencerMode ? 0 : wallet.rolloverRemaining + rolloverRequired;
+    const newRolloverTarget = influencerMode ? 0 : (wallet.rolloverTarget || wallet.rolloverRemaining) + rolloverRequired;
 
     let affiliateRef = null;
     let affiliateDoc = null;
@@ -406,7 +426,9 @@ router.post('/webhook/vizzionpay', async (req, res) => {
         verification_pending_at: FieldValue.serverTimestamp(),
         last_webhook_event: event.event || null
       });
-      return res.status(202).json({ received: true, status: 'verification_pending' });
+      // Um status 5xx faz a gateway reenviar o webhook. Responder 202 aqui
+      // confirmava o recebimento sem garantir que o saldo fosse creditado.
+      return res.status(503).json({ received: true, status: 'verification_pending' });
     }
     const verifiedStatus = vizzionTransactionStatus(verifiedTransaction);
     const isPaid = isVizzionPaid(verifiedTransaction);
@@ -432,7 +454,7 @@ router.post('/webhook/vizzionpay', async (req, res) => {
     res.json({ received: true, status: event.status || 'pending' });
   } catch (error) {
     console.error('Vizzion webhook error:', error);
-    res.status(200).json({ received: true, error: error.message });
+    res.status(500).json({ received: false, error: 'Falha temporária ao processar pagamento.' });
   }
 });
 
@@ -471,7 +493,7 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
       });
     }
 
-    if (deposit.gatewayId || depositRef.id) {
+    if ((deposit.gatewayId || depositRef.id) && await claimVizzionDepositLookup(depositRef)) {
       try {
         const lookup = await getVizzionTransaction({
           gatewayId: deposit.gatewayId,
@@ -492,6 +514,9 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
         }
       } catch (err) {
         console.warn('Vizzion Pay polling lookup info:', err.message);
+        if (err.gatewayStatus === 429) {
+          await depositRef.update({ gateway_check_after_ms: Date.now() + VIZZION_RATE_LIMIT_BACKOFF_MS });
+        }
       }
     }
 
@@ -629,7 +654,15 @@ router.get('/history', authenticateToken, async (req, res) => {
     const promotion = normalizePromotionSettings(settingsDoc || {});
 
     // Sincronização automática do rollover para usuários com depósitos aprovados
-    if (!approvedDepsSnap.empty && !user.demo_account) {
+    if (Number(user.is_influencer) === 1 && (wallet.rolloverRemaining > 0 || wallet.rolloverTarget > 0)) {
+      await userDoc.ref.update({
+        rollover_remaining: 0,
+        rollover_target: 0,
+        rollover_completed_at: FieldValue.serverTimestamp()
+      });
+      wallet.rolloverRemaining = 0;
+      wallet.rolloverTarget = 0;
+    } else if (!approvedDepsSnap.empty && !user.demo_account) {
       let totalDeposited = 0;
       let totalBonus = 0;
       let totalRolloverTarget = 0;

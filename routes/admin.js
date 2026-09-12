@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { requireAdmin } from '../middleware/admin.js';
-import { calculateDepositPromotion, getWalletBuckets, PROMOTION_DEFAULTS } from '../lib/promotion.js';
+import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 import { buildManagerCode, DEFAULT_MANAGER_GGR_RATE, managerPeriod, normalizeGgrRate } from '../lib/ggr.js';
 import { BRANDING_DEFAULTS, normalizeBranding } from '../lib/branding.js';
 import { authTokenTtl, getJwtSecret } from '../lib/security.js';
@@ -13,7 +13,7 @@ import { BANNER_DEFAULTS, normalizeBanners } from '../lib/banners.js';
 import { findTenantUser } from '../lib/userLookup.js';
 import { adminSummaryRef, emptyAdminSummary, normalizeAdminSummary, updateAdminSummary } from '../lib/adminSummary.js';
 import { createPasswordResetCode, hashPasswordResetCode, PASSWORD_RESET_MAX_ATTEMPTS, passwordResetExpiry } from '../lib/passwordReset.js';
-import { resolveDepositCredit } from '../lib/depositCredit.js';
+import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
 import { extractVizzionTransaction, getVizzionTransaction, isVizzionPaid, vizzionAmountMatches, vizzionTransactionStatus } from '../lib/vizzionpay.js';
 import { approveAndCreditDeposit } from './wallet.js';
 
@@ -298,7 +298,14 @@ router.put('/users/:id', async (req, res) => {
       updateData.role = role;
     }
     if (status !== undefined) updateData.status = status;
-    if (is_influencer !== undefined) updateData.is_influencer = is_influencer;
+    if (is_influencer !== undefined) {
+      updateData.is_influencer = Number(is_influencer) === 1 ? 1 : 0;
+      if (updateData.is_influencer === 1) {
+        updateData.rollover_remaining = 0;
+        updateData.rollover_target = 0;
+        updateData.rollover_completed_at = FieldValue.serverTimestamp();
+      }
+    }
     if (affiliate_rate !== undefined) updateData.affiliate_rate = Number(affiliate_rate);
     if (sub_affiliate_rate !== undefined) updateData.sub_affiliate_rate = Number(sub_affiliate_rate);
     if (req.body.manager_ggr_rate !== undefined) updateData.manager_ggr_rate = normalizeGgrRate(req.body.manager_ggr_rate);
@@ -320,30 +327,63 @@ router.put('/users/:id', async (req, res) => {
 router.put('/users/:id/balance', async (req, res) => {
   try {
     const { amount, type, description } = req.body;
-    if (!amount || !type) return res.status(400).json({ error: 'Informe valor e tipo.' });
+    const numAmount = Math.round(Number(amount));
+    if (!Number.isFinite(numAmount) || numAmount <= 0 || !['credit', 'debit'].includes(type)) {
+      return res.status(400).json({ error: 'Informe um valor positivo e um tipo válido.' });
+    }
 
     const uid = req.params.id;
-    const numAmount = Number(amount);
     const adjustment = type === 'credit' ? numAmount : -numAmount;
+    const result = await db.runTransaction(async (t) => {
+      const userRef = db.collection('users').doc(uid);
+      const settingsRef = tenantSettingsRef(req.adminTenantId);
+      const [userDoc, settingsDoc] = await Promise.all([t.get(userRef), t.get(settingsRef)]);
+      if (!userDoc.exists) throw new Error('Usuário não encontrado.');
+      const user = userDoc.data();
+      ensureTenantAccess(req, user);
+      const wallet = getWalletBuckets(user);
+      const newCashBalance = wallet.cashBalance + adjustment;
+      const newBalance = wallet.balance + adjustment;
+      if (newCashBalance < 0 || newBalance < 0) throw new Error('Saldo insuficiente para este débito.');
 
-    try {
-      await db.runTransaction(async (t) => {
-        const userRef = db.collection('users').doc(uid);
-        const userDoc = await t.get(userRef);
-        if (userDoc.exists) {
-          ensureTenantAccess(req, userDoc.data());
-          const wallet = getWalletBuckets(userDoc.data());
-          const newCashBalance = wallet.cashBalance + adjustment;
-          const newBalance = wallet.balance + adjustment;
-          t.update(userRef, { balance: newBalance, cash_balance: newCashBalance });
-        }
+      const settings = normalizePromotionSettings(settingsDoc.exists ? settingsDoc.data() : {});
+      const requestedRollover = type === 'credit'
+        ? Math.ceil(numAmount * settings.depositRolloverMultiplier)
+        : 0;
+      const rolloverRequired = rolloverForUser(user, requestedRollover);
+      const influencerMode = Number(user.is_influencer) === 1;
+      const newRolloverRemaining = influencerMode ? 0 : wallet.rolloverRemaining + rolloverRequired;
+      const newRolloverTarget = influencerMode ? 0 : wallet.rolloverTarget + rolloverRequired;
+
+      t.update(userRef, {
+        balance: newBalance,
+        cash_balance: newCashBalance,
+        rollover_remaining: newRolloverRemaining,
+        rollover_target: newRolloverTarget
       });
-    } catch (e) {}
+      t.set(db.collection('transactions').doc(), {
+        uid,
+        tenant_id: req.adminTenantId,
+        type: type === 'credit' ? 'admin_credit' : 'admin_debit',
+        amount: adjustment,
+        status: 'approved',
+        description: String(description || 'Ajuste manual de saldo').slice(0, 240),
+        rollover_required: rolloverRequired,
+        balance_after: newBalance,
+        created_by: req.user.uid,
+        created_at: FieldValue.serverTimestamp()
+      });
+      updateAdminSummary(t, req.adminTenantId, {
+        totalWalletBalance: adjustment,
+        activeRolloverUsers: wallet.rolloverRemaining === 0 && newRolloverRemaining > 0 ? 1 : 0
+      });
+      return { newBalance, newCashBalance, rolloverRequired, rolloverRemaining: newRolloverRemaining };
+    });
 
-    res.json({ success: true, newBalance: 100000 });
+    res.json({ success: true, ...result });
   } catch (error) {
     console.error('Admin adjust balance error:', error);
-    res.json({ success: true });
+    res.status(400).json({ error: error.message || 'Não foi possível ajustar o saldo.' });
   }
 });
 
@@ -887,17 +927,21 @@ router.put('/deposits/:id/approve', async (req, res) => {
       const deposit = depositDoc.data();
       ensureTenantAccess(req, deposit);
       const settingsDoc = await transaction.get(tenantSettingsRef(req.adminTenantId));
-      const { bonusAmount, rolloverRequired, creditedAmount } = resolveDepositCredit(deposit, settingsDoc.exists ? settingsDoc.data() : {});
       const userRef = db.collection('users').doc(deposit.uid);
       const userDoc = await transaction.get(userRef);
       if (!userDoc.exists) throw new Error('Usuário não encontrado');
       const user = userDoc.data();
+      const resolvedCredit = resolveDepositCredit(deposit, settingsDoc.exists ? settingsDoc.data() : {});
+      const bonusAmount = resolvedCredit.bonusAmount;
+      const creditedAmount = resolvedCredit.creditedAmount;
+      const rolloverRequired = rolloverForUser(user, resolvedCredit.rolloverRequired);
       const wallet = getWalletBuckets(user);
       const newCashBalance = wallet.cashBalance + deposit.amount;
       const newBonusBalance = wallet.bonusBalance + bonusAmount;
       const newBalance = newCashBalance + newBonusBalance;
-      const newRolloverRemaining = wallet.rolloverRemaining + rolloverRequired;
-      const newRolloverTarget = wallet.rolloverTarget + rolloverRequired;
+      const influencerMode = Number(user.is_influencer) === 1;
+      const newRolloverRemaining = influencerMode ? 0 : wallet.rolloverRemaining + rolloverRequired;
+      const newRolloverTarget = influencerMode ? 0 : wallet.rolloverTarget + rolloverRequired;
       let affiliateRef = null;
       let affiliateDoc = null;
       let upperRef = null;
