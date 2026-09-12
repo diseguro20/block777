@@ -1,7 +1,7 @@
 self.addEventListener('push', event => {
   let data = {};
   try { data = event.data ? event.data.json() : {}; } catch (_) {}
-  event.waitUntil(self.registration.showNotification(data.title || 'Blockerino Partners', {
+  event.waitUntil(self.registration.showNotification(data.title || 'Sua Plataforma', {
     body: data.body || 'Você tem uma nova atualização.',
     icon: '/icon-192.png',
     badge: '/icon-192.png',
