@@ -312,9 +312,12 @@ router.post('/register-manager', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const tenantId = req.tenant?.id || DEFAULT_TENANT_ID;
-    const rawIdentifier = String(req.body.email || req.body.phone || req.body.username || '').trim();
-    const cleanDigits = rawIdentifier.replace(/\D/g, '');
-    const isPhone = cleanDigits.length >= 10 && !rawIdentifier.includes('@');
+    const rawIdentifier = String(req.body.identifier || req.body.email || req.body.phone || req.body.username || '').trim();
+    const inputDigits = rawIdentifier.replace(/\D/g, '');
+    const cleanDigits = inputDigits.startsWith('55') && [12, 13].includes(inputDigits.length)
+      ? inputDigits.slice(2)
+      : inputDigits;
+    const isPhone = [10, 11].includes(cleanDigits.length) && !rawIdentifier.includes('@');
     const emailIdent = isPhone ? `${cleanDigits}@block777.com` : String(rawIdentifier).toLowerCase();
     const password = String(req.body.password || '');
     const ip = getClientIp(req);
@@ -338,7 +341,7 @@ router.post('/login', async (req, res) => {
     if (!user) {
       try {
         const lookupPromise = (async () => {
-          const docKey = cleanDigits.length >= 10 ? `${tenantId}_phone_${cleanDigits}` : (emailIdent.includes('@') ? `${tenantId}_email_${emailIdent}` : `${tenantId}_user_${rawIdentifier.toLowerCase()}`);
+          const docKey = isPhone ? `${tenantId}_phone_${cleanDigits}` : (emailIdent.includes('@') ? `${tenantId}_email_${emailIdent}` : `${tenantId}_user_${rawIdentifier.toLowerCase()}`);
           try {
             const docSnap = await db.collection('users').doc(docKey).get();
             if (docSnap.exists) return { user: docSnap.data(), id: docSnap.id };
