@@ -108,12 +108,15 @@ const affiliate = {
     document.getElementById('affiliate-register-form').onsubmit = async (event) => {
       event.preventDefault();
       const payload = Object.fromEntries(new FormData(event.currentTarget));
-      payload.referred_by = localStorage.getItem('ref') || null;
+      const attribution = app.getAttribution();
+      payload.referred_by = attribution.refCode || null;
+      payload.manager_code = attribution.managerCode || null;
       try {
         const data = await app.fetchAPI('/api/auth/register', {
           method: 'POST',
           body: JSON.stringify(payload)
         });
+        app.clearAttribution();
         this.completeAuth(data, 'Conta de afiliado criada.');
       } catch (_) {}
     };
@@ -139,8 +142,8 @@ const affiliate = {
 
     const firstField = isRegister
       ? document.getElementById('aff-username')
-      : document.getElementById('aff-email');
-    firstField.focus();
+      : document.getElementById('aff-identifier');
+    firstField?.focus();
   },
 
   completeAuth(data, message) {

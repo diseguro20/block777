@@ -9,6 +9,7 @@ import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/te
 import { updateAdminSummary } from '../lib/adminSummary.js';
 import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
 import { sendAffiliateDepositNotification } from '../lib/pushNotifications.js';
+import { affiliateIdsForDeposit, attributionFromUser } from '../lib/attribution.js';
 
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
@@ -94,6 +95,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     const user = userDoc.exists ? userDoc.data() : {};
     if (!belongsToTenant(user, tenantId)) return res.status(403).json({ error: 'Conta não pertence a esta operação.' });
     if (user.demo_account) return res.status(403).json({ error: 'Contas demo utilizam saldo virtual e não aceitam depósitos.' });
+    const depositAttribution = attributionFromUser(user);
 
     // Uma trava transacional por usuário impede que toques simultâneos criem
     // cobranças diferentes. Um PIX pendente do mesmo valor é reutilizado.
@@ -128,6 +130,10 @@ router.post('/deposit', authenticateToken, async (req, res) => {
         rolloverMultiplier: promotion.rolloverMultiplier,
         promotionEligible: promotion.eligible,
         credit_applied: false,
+        attribution: depositAttribution,
+        referred_by: depositAttribution.affiliate_id,
+        sub_referred_by: depositAttribution.sub_affiliate_id,
+        manager_id: depositAttribution.manager_id,
         created_at: FieldValue.serverTimestamp()
       });
       transaction.set(lockRef, {
@@ -202,9 +208,9 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     updateAdminSummary(null, tenantId, { pendingDeposits: 1 }).catch(error => {
       console.warn('Admin summary deposit update:', error.message);
     });
-    if (user.referred_by) {
+    if (depositAttribution.affiliate_id) {
       await sendAffiliateDepositNotification({
-        affiliateId: user.referred_by,
+        affiliateId: depositAttribution.affiliate_id,
         tenantId,
         depositId: docRef.id,
         event: 'pix_created',
@@ -282,12 +288,15 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
     let affiliateDoc = null;
     let upperRef = null;
     let upperDoc = null;
-    if (user.referred_by) {
-      affiliateRef = db.collection('users').doc(user.referred_by);
+    const attributionIds = affiliateIdsForDeposit(deposit, user);
+    const effectiveAttribution = Number(deposit.attribution?.version) >= 1 ? deposit.attribution : attributionFromUser(user);
+    if (attributionIds.affiliateId) {
+      affiliateRef = db.collection('users').doc(attributionIds.affiliateId);
       affiliateDoc = await transaction.get(affiliateRef);
       if (affiliateDoc.exists && !belongsToTenant(affiliateDoc.data(), tenantId)) affiliateDoc = null;
-      if (affiliateDoc?.exists && affiliateDoc.data().referred_by) {
-        upperRef = db.collection('users').doc(affiliateDoc.data().referred_by);
+      const upperId = attributionIds.subAffiliateId || affiliateDoc?.data()?.referred_by;
+      if (affiliateDoc?.exists && upperId && upperId !== attributionIds.affiliateId) {
+        upperRef = db.collection('users').doc(upperId);
         upperDoc = await transaction.get(upperRef);
         if (upperDoc.exists && !belongsToTenant(upperDoc.data(), tenantId)) upperDoc = null;
       }
@@ -295,6 +304,10 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
 
     transaction.update(depositRef, {
       status: 'approved',
+      attribution: effectiveAttribution,
+      referred_by: effectiveAttribution.affiliate_id,
+      sub_referred_by: effectiveAttribution.sub_affiliate_id,
+      manager_id: effectiveAttribution.manager_id,
       gateway_status: verifiedStatus,
       bonusAmount,
       rolloverRequired,
@@ -373,8 +386,8 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       cashBalance: newCashBalance,
       bonusBalance: newBonusBalance,
       creditedAmount,
-      notification: user.referred_by ? {
-        affiliateId: user.referred_by,
+      notification: attributionIds.affiliateId ? {
+        affiliateId: attributionIds.affiliateId,
         tenantId,
         depositId: depositRef.id,
         amount: deposit.amount

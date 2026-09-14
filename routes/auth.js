@@ -10,6 +10,7 @@ import { DEFAULT_TENANT_ID, belongsToTenant, tenantBannedIpsId, tenantSettingsRe
 import { findTenantUser } from '../lib/userLookup.js';
 import { updateAdminSummary } from '../lib/adminSummary.js';
 import { createPasswordResetCode, hashPasswordResetCode, isPasswordResetExpired, maskResetContact, PASSWORD_RESET_MAX_ATTEMPTS, passwordResetExpiry, safeCodeMatch } from '../lib/passwordReset.js';
+import { buildRegistrationAttribution } from '../lib/attribution.js';
 
 const router = express.Router();
 const JWT_SECRET = getJwtSecret();
@@ -150,6 +151,10 @@ router.post('/register', async (req, res) => {
       if (!manager) return res.status(400).json({ error: 'Código de gerente inválido ou indisponível.' });
     }
 
+    const referrerData = referrer?.data?.() || {};
+    const managerData = manager?.data?.() || {};
+    const attribution = buildRegistrationAttribution({ referrerId: referrer?.id, referrer: referrerData, managerId: manager?.id, manager: managerData });
+    attribution.registered_at = FieldValue.serverTimestamp();
     const newUser = {
       username,
       tenant_id: tenantId,
@@ -166,8 +171,11 @@ router.post('/register', async (req, res) => {
       last_ip: ip,
       ref_code,
       referred_by: referrer?.id || null,
-      sub_referred_by: referrer?.data()?.referred_by || null,
+      sub_referred_by: referrerData.referred_by || null,
       manager_id: manager?.id || null,
+      signup_ref_code: attribution.affiliate_code,
+      signup_manager_code: attribution.manager_code,
+      attribution,
       is_influencer: 0,
       affiliate_balance: 0,
       affiliate_rate: null,

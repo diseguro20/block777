@@ -17,6 +17,7 @@ import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
 import { extractVizzionTransaction, getVizzionTransaction, isVizzionPaid, vizzionAmountMatches, vizzionTransactionStatus } from '../lib/vizzionpay.js';
 import { approveAndCreditDeposit } from './wallet.js';
 import { buildAffiliateReport } from '../lib/affiliateReporting.js';
+import { affiliateIdsForDeposit, attributionFromUser } from '../lib/attribution.js';
 
 const JWT_SECRET = getJwtSecret();
 const router = express.Router();
@@ -81,6 +82,29 @@ const buildLeadOrigin = (user = {}, usersById = new Map()) => {
   };
 };
 
+const buildDepositOrigin = (deposit = {}, user = {}, usersById = new Map()) => {
+  const snapshot = deposit.attribution || {};
+  const immutable = Number(snapshot.version) >= 1;
+  const affiliateId = immutable ? snapshot.affiliate_id : (deposit.referred_by || user.referred_by);
+  const managerId = immutable ? snapshot.manager_id : (deposit.manager_id || user.manager_id);
+  const affiliate = affiliateId ? usersById.get(affiliateId) : null;
+  const manager = managerId ? usersById.get(managerId) : null;
+  return {
+    affiliate: affiliateId ? {
+      id: affiliateId,
+      username: snapshot.affiliate_name || affiliate?.username || affiliate?.email || 'Conta de indicação removida',
+      code: snapshot.affiliate_code || affiliate?.ref_code || '',
+      type: Number(affiliate?.is_influencer) === 1 ? 'influencer' : 'affiliate'
+    } : null,
+    manager: managerId ? {
+      id: managerId,
+      username: snapshot.manager_name || manager?.username || manager?.email || 'Gerente removido',
+      code: snapshot.manager_code || manager?.manager_code || ''
+    } : null,
+    direct: !affiliateId && !managerId
+  };
+};
+
 router.use((req, _res, next) => {
   if (req.method !== 'GET') adminResponseCache.clear();
   next();
@@ -88,8 +112,6 @@ router.use((req, _res, next) => {
 
 router.get('/affiliates', async (req, res) => {
   const cacheKey = tenantCacheKey(req, 'affiliates');
-  const cached = req.query.refresh === '1' ? null : getAdminCache(cacheKey);
-  if (cached) return res.json(cached);
   try {
     const [usersSnapshot, depositsSnapshot, commissionsSnapshot] = await Promise.all([
       db.collection('users').get(),
@@ -834,7 +856,7 @@ router.get('/deposits', async (req, res) => {
         username: user.username || deposit.username || deposit.uid,
         email: user.email || '',
         phone: user.phone || '',
-        origin: buildLeadOrigin(user, usersById)
+        origin: buildDepositOrigin(deposit, user, usersById)
       };
     };
     const pending = pendingSnapshot.docs.filter(doc => belongsToTenant(doc.data(), req.adminTenantId)).map(mapDeposit)
@@ -975,17 +997,24 @@ router.put('/deposits/:id/approve', async (req, res) => {
       let affiliateDoc = null;
       let upperRef = null;
       let upperDoc = null;
-      if (user.referred_by) {
-        affiliateRef = db.collection('users').doc(user.referred_by);
+      const attributionIds = affiliateIdsForDeposit(deposit, user);
+      const effectiveAttribution = Number(deposit.attribution?.version) >= 1 ? deposit.attribution : attributionFromUser(user);
+      if (attributionIds.affiliateId) {
+        affiliateRef = db.collection('users').doc(attributionIds.affiliateId);
         affiliateDoc = await transaction.get(affiliateRef);
-        if (affiliateDoc.exists && affiliateDoc.data().referred_by) {
-          upperRef = db.collection('users').doc(affiliateDoc.data().referred_by);
+        const upperId = attributionIds.subAffiliateId || affiliateDoc.data()?.referred_by;
+        if (affiliateDoc.exists && upperId && upperId !== attributionIds.affiliateId) {
+          upperRef = db.collection('users').doc(upperId);
           upperDoc = await transaction.get(upperRef);
         }
       }
 
       transaction.update(depositRef, {
         status: 'approved',
+        attribution: effectiveAttribution,
+        referred_by: effectiveAttribution.affiliate_id,
+        sub_referred_by: effectiveAttribution.sub_affiliate_id,
+        manager_id: effectiveAttribution.manager_id,
         bonusAmount,
         rolloverRequired,
         creditedAmount,

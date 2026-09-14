@@ -64,8 +64,13 @@ const app = {
 
   captureRef() {
     const params = new URLSearchParams(location.search);
-    if (params.get('ref')) localStorage.setItem('ref', params.get('ref'));
-    if (params.get('manager')) localStorage.setItem('manager_code', params.get('manager').trim().toLowerCase());
+    const refCode = String(params.get('ref') || '').trim().toLowerCase().slice(0, 100);
+    const managerCode = String(params.get('manager') || '').trim().toLowerCase().slice(0, 100);
+    if (refCode || managerCode) {
+      localStorage.setItem(`attribution:${this.sessionScope()}`, JSON.stringify({ refCode: refCode || null, managerCode: managerCode || null, capturedAt: Date.now(), landingPath: `${location.pathname}${location.search}`.slice(0, 500) }));
+    }
+    localStorage.removeItem('ref');
+    localStorage.removeItem('manager_code');
     const impersonateToken = params.get('impersonate_token') || params.get('auth_token');
     if (impersonateToken) {
       localStorage.setItem(`token:${this.sessionScope()}`, impersonateToken);
@@ -73,6 +78,20 @@ const app = {
       this.token = impersonateToken;
       window.history.replaceState({}, document.title, window.location.pathname);
     }
+  },
+
+  getAttribution() {
+    const key = `attribution:${this.sessionScope()}`;
+    try {
+      const saved = JSON.parse(localStorage.getItem(key) || 'null');
+      const maxAge = 30 * 24 * 60 * 60 * 1000;
+      if (!saved?.capturedAt || Date.now() - Number(saved.capturedAt) > maxAge) { localStorage.removeItem(key); return {}; }
+      return saved;
+    } catch (_) { localStorage.removeItem(key); return {}; }
+  },
+
+  clearAttribution() {
+    localStorage.removeItem(`attribution:${this.sessionScope()}`);
   },
 
   async loadPublicPromotion() {
@@ -163,14 +182,16 @@ const app = {
       const payload = Object.fromEntries(new FormData(register));
       const btn = register.querySelector('button[type="submit"]');
       if (btn) { btn.disabled = true; btn.textContent = 'Criando conta...'; }
-      payload.referred_by = localStorage.getItem('ref') || null;
-      payload.manager_code = localStorage.getItem('manager_code') || null;
+      const attribution = this.getAttribution();
+      payload.referred_by = attribution.refCode || null;
+      payload.manager_code = attribution.managerCode || null;
       if (payload.phone) {
         payload.phone = String(payload.phone).trim();
       }
       try {
         const data = await this.fetchAPI('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
         this.setSession(data);
+        this.clearAttribution();
         this.showToast('Conta criada com sucesso! Bem-vindo ao Blockerino!');
       } catch (e) {
         this.showToast(e.message || 'Falha ao criar conta.');
