@@ -433,8 +433,16 @@ router.put('/users/:id', async (req, res) => {
         updateData.rollover_completed_at = FieldValue.serverTimestamp();
       }
     }
-    if (affiliate_rate !== undefined) updateData.affiliate_rate = Number(affiliate_rate);
-    if (sub_affiliate_rate !== undefined) updateData.sub_affiliate_rate = Number(sub_affiliate_rate);
+    if (affiliate_rate !== undefined) {
+      const directRate = Number(affiliate_rate);
+      if (!Number.isFinite(directRate) || directRate < 0 || directRate > 100) return res.status(400).json({ error: 'A comissão direta deve ficar entre 0% e 100%.' });
+      updateData.affiliate_rate = directRate;
+    }
+    if (sub_affiliate_rate !== undefined) {
+      const subRate = Number(sub_affiliate_rate);
+      if (!Number.isFinite(subRate) || subRate < 0 || subRate > 100) return res.status(400).json({ error: 'A subcomissão deve ficar entre 0% e 100%.' });
+      updateData.sub_affiliate_rate = subRate;
+    }
     if (req.body.manager_ggr_rate !== undefined) updateData.manager_ggr_rate = normalizeGgrRate(req.body.manager_ggr_rate);
 
     const userRef = db.collection('users').doc(req.params.id);
@@ -447,7 +455,7 @@ router.put('/users/:id', async (req, res) => {
     res.json({ id: req.params.id, ...updateData, success: true });
   } catch (error) {
     console.error('Admin update user error:', error);
-    res.json({ success: true });
+    res.status(error.status || 400).json({ error: error.message || 'Não foi possível atualizar o afiliado.' });
   }
 });
 

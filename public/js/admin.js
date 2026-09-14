@@ -206,9 +206,15 @@ const admin = {
         <td data-label="Pago via PIX" class="mono positive">${app.formatBRL(item.paid_total || 0)}<small style="display:block;color:var(--color-text-muted)">${Number(item.payout_count || 0)} pagamento(s)</small></td>
         <td data-label="Taxas" class="mono">${Number(item.affiliate_rate || 0).toFixed(1)}% · ${Number(item.sub_affiliate_rate || 0).toFixed(1)}%</td>
         <td data-label="Último depósito">${item.last_deposit_at ? app.formatDate(item.last_deposit_at) : '—'}</td>
-        <td data-label="Ação"><button class="table-action" onclick="admin.openAffiliatePayout('${item.id}')">Registrar pago</button></td>
+        <td data-label="Ação"><div style="display:flex;gap:6px;flex-wrap:wrap"><button class="table-action" onclick="admin.openAffiliateCommission('${item.id}')">Editar taxas</button><button class="table-action" onclick="admin.openAffiliatePayout('${item.id}')">Registrar pago</button></div></td>
       </tr>`;
     }).join('') : '<tr><td colspan="13" class="empty-state">Nenhum afiliado encontrado.</td></tr>';
+  },
+
+  openAffiliateCommission(id) {
+    const item = (this.affiliates || []).find(affiliateItem => affiliateItem.id === id);
+    if (!item) return app.showToast('Afiliado não encontrado.');
+    this.openCommissionModal(item.id, item.username || 'Afiliado', item.affiliate_rate, item.sub_affiliate_rate, 'affiliates');
   },
 
   openAffiliatePayout(id) {
@@ -593,9 +599,10 @@ const admin = {
     catch (_) { app.showToast(`Código: ${this.currentResetCode}`); }
   },
 
-  openCommissionModal(id, username, level1, level2) {
+  openCommissionModal(id, username, level1, level2, source = 'users') {
     this.selectedCommissionUserId = id;
     this.selectedCommissionUsername = username;
+    this.selectedCommissionSource = source;
     const nameEl = document.getElementById('commission-modal-user');
     if (nameEl) nameEl.textContent = username;
     const l1Input = document.getElementById('comm-level1-input');
@@ -610,6 +617,8 @@ const admin = {
     if (!this.selectedCommissionUserId) return;
     const level1 = Number(document.getElementById('comm-level1-input').value);
     const level2 = Number(document.getElementById('comm-level2-input').value);
+    if (!Number.isFinite(level1) || level1 < 0 || level1 > 100) return app.showToast('A comissão direta deve ficar entre 0% e 100%.');
+    if (!Number.isFinite(level2) || level2 < 0 || level2 > 100) return app.showToast('A subcomissão deve ficar entre 0% e 100%.');
     try {
       await app.fetchAPI(`/api/admin/users/${encodeURIComponent(this.selectedCommissionUserId)}`, {
         method: 'PUT',
@@ -620,7 +629,9 @@ const admin = {
       });
       app.closeModal('commission-modal');
       app.showToast(`Comissão de ${this.selectedCommissionUsername || 'usuário'} atualizada para ${level1}% (Nível 1) e ${level2}% (Nível 2).`);
-      await this.loadUsers();
+      if (this.selectedCommissionSource === 'affiliates') await this.loadAffiliates(true);
+      else await this.loadUsers();
+      this.selectedCommissionSource = null;
     } catch (error) {
       app.showToast(error.message || 'Erro ao salvar comissão.');
     }
