@@ -154,7 +154,7 @@ router.post('/affiliates/:id/payout', async (req, res) => {
       .digest('hex');
     const payoutRef = db.collection('affiliate_payouts').doc(payoutId);
     const affiliateRef = db.collection('users').doc(affiliateId);
-    const description = normalizePayoutDescription(req.body?.description) || 'Comissão paga via PIX';
+    const requestedDescription = normalizePayoutDescription(req.body?.description);
     const requestedAmount = req.body?.amount;
 
     const result = await db.runTransaction(async transaction => {
@@ -165,7 +165,7 @@ router.post('/affiliates/:id/payout', async (req, res) => {
       if (existingPayout.exists) {
         const saved = existingPayout.data();
         ensureTenantAccess(req, saved);
-        return { replayed: true, amount: saved.amount, balanceAfter: saved.balance_after, payoutId };
+        return { replayed: true, amount: saved.amount, balanceAfter: saved.balance_after, adjustmentAmount: saved.adjustment_amount || 0, payoutId };
       }
       if (!affiliateDoc.exists) {
         const error = new Error('Afiliado não encontrado.');
@@ -174,7 +174,12 @@ router.post('/affiliates/:id/payout', async (req, res) => {
       }
       const affiliate = affiliateDoc.data();
       ensureTenantAccess(req, affiliate);
-      const payout = resolveAffiliatePayout({ amount: requestedAmount, availableBalance: affiliate.affiliate_balance });
+      const payout = resolveAffiliatePayout({ amount: requestedAmount, availableBalance: affiliate.affiliate_balance, allowAdjustment: true });
+      if (payout.adjustmentAmount > 0 && !requestedDescription) {
+        const error = new Error('Informe o motivo do ajuste acima do saldo disponível.');
+        error.status = 400;
+        throw error;
+      }
       const record = {
         tenant_id: req.adminTenantId,
         affiliate_id: affiliateId,
@@ -182,9 +187,11 @@ router.post('/affiliates/:id/payout', async (req, res) => {
         amount: payout.amount,
         balance_before: payout.balanceBefore,
         balance_after: payout.balanceAfter,
+        adjustment_amount: payout.adjustmentAmount,
+        is_historical_adjustment: payout.adjustmentAmount > 0,
         method: 'pix',
         status: 'paid',
-        description,
+        description: requestedDescription || 'Comissão paga via PIX',
         paid_by: req.user.uid,
         idempotency_key: idempotencyKey,
         paid_at: FieldValue.serverTimestamp(),
@@ -196,7 +203,7 @@ router.post('/affiliates/:id/payout', async (req, res) => {
         last_affiliate_payout_at: FieldValue.serverTimestamp()
       });
       transaction.set(payoutRef, record);
-      return { replayed: false, amount: payout.amount, balanceAfter: payout.balanceAfter, payoutId };
+      return { replayed: false, amount: payout.amount, balanceAfter: payout.balanceAfter, adjustmentAmount: payout.adjustmentAmount, payoutId };
     });
     res.json({ success: true, ...result });
   } catch (error) {

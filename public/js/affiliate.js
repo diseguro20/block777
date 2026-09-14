@@ -202,7 +202,7 @@ const affiliate = {
     if (payoutBody) {
       const payouts = data.payouts || [];
       payoutBody.innerHTML = payouts.length
-        ? payouts.map(item => `<tr><td data-label="Data">${app.formatDate(item.paid_at || item.created_at)}</td><td data-label="Valor" class="positive mono"><b>${app.formatBRL(item.amount)}</b></td><td data-label="Descrição">${this.escape(item.description || 'Comissão paga via PIX')}</td><td data-label="Status"><span class="badge badge-success">Pago</span></td></tr>`).join('')
+        ? payouts.map(item => `<tr><td data-label="Data">${app.formatDate(item.paid_at || item.created_at)}</td><td data-label="Valor" class="positive mono"><b>${app.formatBRL(item.amount)}</b></td><td data-label="Descrição">${this.escape(item.description || 'Comissão paga via PIX')}</td><td data-label="Status"><span class="badge badge-success">${item.is_historical_adjustment ? 'Pago · ajuste' : 'Pago'}</span></td></tr>`).join('')
         : '<tr><td colspan="4" class="empty-state">Nenhum pagamento via PIX registrado ainda.</td></tr>';
     }
 

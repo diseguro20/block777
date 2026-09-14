@@ -206,7 +206,7 @@ const admin = {
         <td data-label="Pago via PIX" class="mono positive">${app.formatBRL(item.paid_total || 0)}<small style="display:block;color:var(--color-text-muted)">${Number(item.payout_count || 0)} pagamento(s)</small></td>
         <td data-label="Taxas" class="mono">${Number(item.affiliate_rate || 0).toFixed(1)}% · ${Number(item.sub_affiliate_rate || 0).toFixed(1)}%</td>
         <td data-label="Último depósito">${item.last_deposit_at ? app.formatDate(item.last_deposit_at) : '—'}</td>
-        <td data-label="Ação"><button class="table-action" ${Number(item.affiliate_balance || 0) > 0 ? '' : 'disabled'} onclick="admin.openAffiliatePayout('${item.id}')">${Number(item.affiliate_balance || 0) > 0 ? 'Marcar pago' : 'Sem saldo'}</button></td>
+        <td data-label="Ação"><button class="table-action" onclick="admin.openAffiliatePayout('${item.id}')">Registrar pago</button></td>
       </tr>`;
     }).join('') : '<tr><td colspan="13" class="empty-state">Nenhum afiliado encontrado.</td></tr>';
   },
@@ -214,14 +214,14 @@ const admin = {
   openAffiliatePayout(id) {
     const item = (this.affiliates || []).find(affiliateItem => affiliateItem.id === id);
     const balance = Number(item?.affiliate_balance || 0);
-    if (!item || balance <= 0) return app.showToast('Este afiliado não possui comissão disponível.');
+    if (!item) return app.showToast('Afiliado não encontrado.');
     this.selectedAffiliatePayout = { id: item.id, username: item.username || 'Afiliado', balance };
     this.affiliatePayoutKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
     document.getElementById('affiliate-payout-user').textContent = item.username || 'Afiliado';
     document.getElementById('affiliate-payout-available').textContent = app.formatBRL(balance);
     const amount = document.getElementById('affiliate-payout-amount');
-    amount.value = (balance / 100).toFixed(2);
-    amount.max = (balance / 100).toFixed(2);
+    amount.value = balance > 0 ? (balance / 100).toFixed(2) : '';
+    amount.removeAttribute('max');
     document.getElementById('affiliate-payout-description').value = '';
     document.getElementById('affiliate-payout-modal').classList.add('active');
     setTimeout(() => amount.focus(), 50);
@@ -233,15 +233,16 @@ const admin = {
     const value = Number(document.getElementById('affiliate-payout-amount')?.value);
     const amount = Math.round(value * 100);
     if (!selected || !Number.isFinite(value) || amount <= 0) return app.showToast('Informe o valor exato pago via PIX.');
-    if (amount > selected.balance) return app.showToast('O valor não pode ser maior que o saldo disponível.');
+    const description = document.getElementById('affiliate-payout-description')?.value?.trim() || '';
+    if (amount > selected.balance && !description) return app.showToast('Informe o motivo da correção acima do saldo.');
     if (button) { button.disabled = true; button.textContent = 'Registrando...'; }
     try {
       const result = await app.fetchAPI(`/api/admin/affiliates/${encodeURIComponent(selected.id)}/payout`, {
         method: 'POST',
-        body: JSON.stringify({ amount, description: document.getElementById('affiliate-payout-description')?.value || '', idempotency_key: this.affiliatePayoutKey })
+        body: JSON.stringify({ amount, description, idempotency_key: this.affiliatePayoutKey })
       });
       app.closeModal('affiliate-payout-modal');
-      app.showToast(`${app.formatBRL(result.amount)} marcados como pagos via PIX.`);
+      app.showToast(`${app.formatBRL(result.amount)} marcados como pagos via PIX${result.adjustmentAmount > 0 ? ' com ajuste histórico' : ''}.`);
       this.selectedAffiliatePayout = null;
       this.affiliatePayoutKey = null;
       await this.loadAffiliates(true);
