@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import express from 'express';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
@@ -18,6 +19,7 @@ import { extractVizzionTransaction, getVizzionTransaction, isVizzionPaid, vizzio
 import { approveAndCreditDeposit } from './wallet.js';
 import { buildAffiliateReport } from '../lib/affiliateReporting.js';
 import { affiliateIdsForDeposit, attributionFromUser } from '../lib/attribution.js';
+import { normalizePayoutDescription, resolveAffiliatePayout } from '../lib/affiliatePayout.js';
 
 const JWT_SECRET = getJwtSecret();
 const router = express.Router();
@@ -113,10 +115,11 @@ router.use((req, _res, next) => {
 router.get('/affiliates', async (req, res) => {
   const cacheKey = tenantCacheKey(req, 'affiliates');
   try {
-    const [usersSnapshot, depositsSnapshot, commissionsSnapshot] = await Promise.all([
+    const [usersSnapshot, depositsSnapshot, commissionsSnapshot, payoutsSnapshot] = await Promise.all([
       db.collection('users').get(),
       db.collection('deposit_requests').where('status', '==', 'approved').get(),
-      db.collection('affiliate_commissions').get()
+      db.collection('affiliate_commissions').get(),
+      db.collection('affiliate_payouts').get()
     ]);
     const users = usersSnapshot.docs
       .filter(doc => belongsToTenant(doc.data(), req.adminTenantId))
@@ -127,12 +130,78 @@ router.get('/affiliates', async (req, res) => {
     const commissions = commissionsSnapshot.docs
       .filter(doc => belongsToTenant(doc.data(), req.adminTenantId))
       .map(doc => ({ id: doc.id, ...doc.data() }));
-    res.json(setAdminCache(cacheKey, buildAffiliateReport({ users, deposits, commissions })));
+    const payouts = payoutsSnapshot.docs
+      .filter(doc => belongsToTenant(doc.data(), req.adminTenantId))
+      .map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json(setAdminCache(cacheKey, buildAffiliateReport({ users, deposits, commissions, payouts })));
   } catch (error) {
     console.error('Admin affiliates error:', error);
     const stale = getStaleAdminCache(cacheKey);
     if (stale) return res.json({ ...stale, stale: true });
     res.status(503).json({ error: 'Não foi possível carregar o relatório de afiliados agora.' });
+  }
+});
+
+router.post('/affiliates/:id/payout', async (req, res) => {
+  try {
+    const affiliateId = String(req.params.id || '').trim();
+    const idempotencyKey = String(req.body?.idempotency_key || '').trim();
+    if (!affiliateId || !/^[a-zA-Z0-9_-]{8,100}$/.test(idempotencyKey)) {
+      return res.status(400).json({ error: 'Pagamento inválido. Atualize o painel e tente novamente.' });
+    }
+    const payoutId = createHash('sha256')
+      .update(`${req.adminTenantId}:${affiliateId}:${idempotencyKey}`)
+      .digest('hex');
+    const payoutRef = db.collection('affiliate_payouts').doc(payoutId);
+    const affiliateRef = db.collection('users').doc(affiliateId);
+    const description = normalizePayoutDescription(req.body?.description) || 'Comissão paga via PIX';
+    const requestedAmount = req.body?.amount;
+
+    const result = await db.runTransaction(async transaction => {
+      const [existingPayout, affiliateDoc] = await Promise.all([
+        transaction.get(payoutRef),
+        transaction.get(affiliateRef)
+      ]);
+      if (existingPayout.exists) {
+        const saved = existingPayout.data();
+        ensureTenantAccess(req, saved);
+        return { replayed: true, amount: saved.amount, balanceAfter: saved.balance_after, payoutId };
+      }
+      if (!affiliateDoc.exists) {
+        const error = new Error('Afiliado não encontrado.');
+        error.status = 404;
+        throw error;
+      }
+      const affiliate = affiliateDoc.data();
+      ensureTenantAccess(req, affiliate);
+      const payout = resolveAffiliatePayout({ amount: requestedAmount, availableBalance: affiliate.affiliate_balance });
+      const record = {
+        tenant_id: req.adminTenantId,
+        affiliate_id: affiliateId,
+        affiliate_name: affiliate.username || affiliate.email || 'Afiliado',
+        amount: payout.amount,
+        balance_before: payout.balanceBefore,
+        balance_after: payout.balanceAfter,
+        method: 'pix',
+        status: 'paid',
+        description,
+        paid_by: req.user.uid,
+        idempotency_key: idempotencyKey,
+        paid_at: FieldValue.serverTimestamp(),
+        created_at: FieldValue.serverTimestamp()
+      };
+      transaction.update(affiliateRef, {
+        affiliate_balance: payout.balanceAfter,
+        affiliate_paid_total: FieldValue.increment(payout.amount),
+        last_affiliate_payout_at: FieldValue.serverTimestamp()
+      });
+      transaction.set(payoutRef, record);
+      return { replayed: false, amount: payout.amount, balanceAfter: payout.balanceAfter, payoutId };
+    });
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Admin affiliate payout error:', error);
+    res.status(error.status || 400).json({ error: error.message || 'Não foi possível registrar o pagamento.' });
   }
 });
 

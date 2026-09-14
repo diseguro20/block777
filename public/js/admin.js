@@ -5,6 +5,8 @@ const admin = {
   searchTimer: null,
   withdrawals: [],
   affiliates: [],
+  selectedAffiliatePayout: null,
+  affiliatePayoutKey: null,
 
   async init() {
     if (!app.token) return this.requireLogin();
@@ -158,7 +160,7 @@ const admin = {
   async loadAffiliates(force = false) {
     const body = document.getElementById('affiliates-table');
     if (!body) return;
-    body.innerHTML = '<tr><td colspan="11" class="empty-state">Calculando receita confirmada por afiliado...</td></tr>';
+    body.innerHTML = '<tr><td colspan="13" class="empty-state">Calculando receita confirmada por afiliado...</td></tr>';
     try {
       const data = await app.fetchAPI(`/api/admin/affiliates${force ? '?refresh=1' : ''}`);
       this.affiliates = data.affiliates || [];
@@ -169,10 +171,12 @@ const admin = {
       setText('affiliate-stat-deposits', Number(summary.approved_deposits || 0).toLocaleString('pt-BR'));
       setText('affiliate-stat-revenue', app.formatBRL(summary.attributed_revenue || 0));
       setText('affiliate-stat-commissions', app.formatBRL(summary.commissions_generated || 0));
+      setText('affiliate-stat-paid', app.formatBRL(summary.paid_total || 0));
+      setText('affiliate-stat-payable', app.formatBRL(summary.payable_total || 0));
       this.renderAffiliates(document.getElementById('search-affiliates')?.value || '');
       if (data.stale) app.showToast('Exibindo o último relatório disponível.');
     } catch (error) {
-      body.innerHTML = `<tr><td colspan="11" class="empty-state">${this.escape(error.message || 'Não foi possível carregar os afiliados.')}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="13" class="empty-state">${this.escape(error.message || 'Não foi possível carregar os afiliados.')}</td></tr>`;
     }
   },
 
@@ -198,11 +202,54 @@ const admin = {
         <td data-label="Entrou direto" class="mono positive"><b>${app.formatBRL(item.direct_deposited || 0)}</b></td>
         <td data-label="Rede 2º nível" class="mono">${app.formatBRL(item.second_level_deposited || 0)}</td>
         <td data-label="Comissão gerada" class="mono">${app.formatBRL(item.commissions_generated || 0)}</td>
-        <td data-label="Saldo comissão" class="mono">${app.formatBRL(item.affiliate_balance || 0)}</td>
+        <td data-label="Disponível" class="mono"><b>${app.formatBRL(item.affiliate_balance || 0)}</b></td>
+        <td data-label="Pago via PIX" class="mono positive">${app.formatBRL(item.paid_total || 0)}<small style="display:block;color:var(--color-text-muted)">${Number(item.payout_count || 0)} pagamento(s)</small></td>
         <td data-label="Taxas" class="mono">${Number(item.affiliate_rate || 0).toFixed(1)}% · ${Number(item.sub_affiliate_rate || 0).toFixed(1)}%</td>
         <td data-label="Último depósito">${item.last_deposit_at ? app.formatDate(item.last_deposit_at) : '—'}</td>
+        <td data-label="Ação"><button class="table-action" ${Number(item.affiliate_balance || 0) > 0 ? '' : 'disabled'} onclick="admin.openAffiliatePayout('${item.id}')">${Number(item.affiliate_balance || 0) > 0 ? 'Marcar pago' : 'Sem saldo'}</button></td>
       </tr>`;
-    }).join('') : '<tr><td colspan="11" class="empty-state">Nenhum afiliado encontrado.</td></tr>';
+    }).join('') : '<tr><td colspan="13" class="empty-state">Nenhum afiliado encontrado.</td></tr>';
+  },
+
+  openAffiliatePayout(id) {
+    const item = (this.affiliates || []).find(affiliateItem => affiliateItem.id === id);
+    const balance = Number(item?.affiliate_balance || 0);
+    if (!item || balance <= 0) return app.showToast('Este afiliado não possui comissão disponível.');
+    this.selectedAffiliatePayout = { id: item.id, username: item.username || 'Afiliado', balance };
+    this.affiliatePayoutKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    document.getElementById('affiliate-payout-user').textContent = item.username || 'Afiliado';
+    document.getElementById('affiliate-payout-available').textContent = app.formatBRL(balance);
+    const amount = document.getElementById('affiliate-payout-amount');
+    amount.value = (balance / 100).toFixed(2);
+    amount.max = (balance / 100).toFixed(2);
+    document.getElementById('affiliate-payout-description').value = '';
+    document.getElementById('affiliate-payout-modal').classList.add('active');
+    setTimeout(() => amount.focus(), 50);
+  },
+
+  async confirmAffiliatePayout() {
+    const selected = this.selectedAffiliatePayout;
+    const button = document.getElementById('affiliate-payout-confirm');
+    const value = Number(document.getElementById('affiliate-payout-amount')?.value);
+    const amount = Math.round(value * 100);
+    if (!selected || !Number.isFinite(value) || amount <= 0) return app.showToast('Informe o valor exato pago via PIX.');
+    if (amount > selected.balance) return app.showToast('O valor não pode ser maior que o saldo disponível.');
+    if (button) { button.disabled = true; button.textContent = 'Registrando...'; }
+    try {
+      const result = await app.fetchAPI(`/api/admin/affiliates/${encodeURIComponent(selected.id)}/payout`, {
+        method: 'POST',
+        body: JSON.stringify({ amount, description: document.getElementById('affiliate-payout-description')?.value || '', idempotency_key: this.affiliatePayoutKey })
+      });
+      app.closeModal('affiliate-payout-modal');
+      app.showToast(`${app.formatBRL(result.amount)} marcados como pagos via PIX.`);
+      this.selectedAffiliatePayout = null;
+      this.affiliatePayoutKey = null;
+      await this.loadAffiliates(true);
+    } catch (error) {
+      app.showToast(error.message || 'Não foi possível registrar o pagamento.');
+    } finally {
+      if (button) { button.disabled = false; button.textContent = 'Marcar como pago'; }
+    }
   },
 
   async loadOverview(silent = false, force = false) {

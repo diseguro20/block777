@@ -41,8 +41,8 @@
         <article class="affiliate-balance-card">
           <small>SALDO DE COMISSÕES</small>
           <strong id="stat-balance">R$ 0,00</strong>
-          <p>Disponível para resgate imediato</p>
-          <button class="btn btn-wide" onclick="affiliate.redeemCommissions()">Transferir para carteira →</button>
+          <p>Aguardando pagamento via PIX pelo administrador</p>
+          <span class="badge">Pagamento externo auditado</span>
         </article>
       </div>
 
@@ -51,6 +51,7 @@
         <article class="metric"><small>REDE DE 2º NÍVEL</small><strong id="stat-level2">0</strong><span id="rate-level2">2% por depósito</span></article>
         <article class="metric metric-main"><small>TOTAL DEPOSITADO PELOS LEADS</small><strong id="stat-deposited" style="color:#60e49c">R$ 0,00</strong><span>volume depositado pelos indicados</span></article>
         <article class="metric"><small>TOTAL DE COMISSÕES</small><strong id="stat-commissions">R$ 0,00</strong><span>histórico acumulado</span></article>
+        <article class="metric"><small>TOTAL PAGO VIA PIX</small><strong id="stat-paid" style="color:#60e49c">R$ 0,00</strong><span>pagamentos confirmados</span></article>
         <article class="metric"><small>ALCANCE TOTAL</small><strong id="stat-total">0</strong><span>pessoas na sua rede</span></article>
       </div>
 
@@ -73,7 +74,7 @@
         </div>
       </article>
 
-      <article class="panel commission-table">
+      <article class="panel commission-table" style="margin-bottom:24px">
         <div class="panel-title"><div><small>HISTÓRICO</small><h3>Comissões recebidas</h3></div></div>
         <div class="table-wrap">
           <table>
@@ -81,6 +82,10 @@
             <tbody id="commission-history"></tbody>
           </table>
         </div>
+      </article>
+      <article class="panel commission-table">
+        <div class="panel-title"><div><small>PAGAMENTOS</small><h3>PIX recebidos</h3></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Data</th><th>Valor</th><th>Descrição</th><th>Status</th></tr></thead><tbody id="affiliate-payout-history"></tbody></table></div>
       </article>
     </section>
 
@@ -124,6 +129,6 @@
   <div class="toast-container" id="toast-container"></div>
   <script src="../js/branding.js?v=20260831-5"></script>
   <script src="../js/app.js?v=20260914-1"></script>
-  <script src="../js/affiliate.js?v=20260914-1"></script>
+  <script src="../js/affiliate.js?v=20260914-2"></script>
 </body>
 </html>

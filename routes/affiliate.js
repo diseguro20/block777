@@ -1,5 +1,5 @@
 import express from 'express';
-import { db, FieldValue } from '../lib/firebase.js';
+import { db } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { DEFAULT_TENANT_ID, belongsToTenant } from '../lib/tenant.js';
 import { pushStatus, removePushSubscription, savePushSubscription, sendAffiliateTestNotification } from '../lib/pushNotifications.js';
@@ -90,6 +90,17 @@ router.get('/stats', authenticateToken, async (req, res) => {
       })
       .slice(0, 20);
 
+    const payoutsQuery = await db.collection('affiliate_payouts').where('affiliate_id', '==', uid).get();
+    const payouts = payoutsQuery.docs
+      .map(doc => ({ id: doc.id, ...doc.data() }))
+      .filter(item => item.status === 'paid' && belongsToTenant(item, tenantId))
+      .sort((a, b) => {
+        const aTime = a.paid_at?.toMillis?.() || a.created_at?.toMillis?.() || 0;
+        const bTime = b.paid_at?.toMillis?.() || b.created_at?.toMillis?.() || 0;
+        return bTime - aTime;
+      });
+    const totalPaid = payouts.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+
     const allReferredDocs = [...level1Docs, ...level2Docs];
 
     let totalDeposited = 0;
@@ -123,11 +134,13 @@ router.get('/stats', authenticateToken, async (req, res) => {
       totalCommissions,
       totalDeposited,
       affiliateBalance: userData.affiliate_balance || 0,
+      totalPaid,
       rates: {
         level1: userData.affiliate_rate ?? 10,
         level2: userData.sub_affiliate_rate ?? 2
       },
       commissions,
+      payouts: payouts.slice(0, 20),
       leads: leads.slice(0, 50)
     });
   } catch (error) {
@@ -136,46 +149,8 @@ router.get('/stats', authenticateToken, async (req, res) => {
   }
 });
 
-router.post('/redeem', authenticateToken, async (req, res) => {
-  try {
-    const uid = req.user.uid;
-    const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
-    
-    const result = await db.runTransaction(async (t) => {
-      const userRef = db.collection('users').doc(uid);
-      const userDoc = await t.get(userRef);
-      if (!userDoc.exists || !belongsToTenant(userDoc.data(), tenantId)) throw new Error('User not found');
-      
-      const userData = userDoc.data();
-      const affiliateBal = userData.affiliate_balance || 0;
-      
-      if (affiliateBal <= 0) throw new Error('No affiliate balance to redeem');
-      
-      const newMainBalance = (userData.balance || 0) + affiliateBal;
-      
-      t.update(userRef, {
-        balance: FieldValue.increment(affiliateBal),
-        affiliate_balance: 0
-      });
-      
-      const txRef = db.collection('transactions').doc();
-      t.set(txRef, {
-        uid,
-        tenant_id: tenantId,
-        type: 'affiliate_redeem',
-        amount: affiliateBal,
-        balance_after: newMainBalance,
-        created_at: FieldValue.serverTimestamp()
-      });
-      
-      return { redeemed: affiliateBal, newBalance: newMainBalance };
-    });
-    
-    res.json(result);
-  } catch (error) {
-    console.error('Affiliate redeem error:', error);
-    res.status(400).json({ error: error.message || 'Internal server error' });
-  }
+router.post('/redeem', authenticateToken, (_req, res) => {
+  res.status(409).json({ error: 'As comissões são pagas via PIX e confirmadas pelo administrador.' });
 });
 
 export default router;

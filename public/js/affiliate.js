@@ -161,6 +161,8 @@ const affiliate = {
     const depEl = document.getElementById('stat-deposited');
     if (depEl) depEl.textContent = app.formatBRL(data.totalDeposited || 0);
     document.getElementById('stat-commissions').textContent = app.formatBRL(data.totalCommissions);
+    const paidEl = document.getElementById('stat-paid');
+    if (paidEl) paidEl.textContent = app.formatBRL(data.totalPaid || 0);
     document.getElementById('stat-balance').textContent = app.formatBRL(data.affiliateBalance);
     document.getElementById('nav-balance').textContent = app.formatBRL(data.affiliateBalance);
     document.getElementById('rate-level1').textContent = `${data.rates.level1}% por depósito`;
@@ -196,6 +198,14 @@ const affiliate = {
       ? data.commissions.map((item) => `<tr><td data-label="Data">${app.formatDate(item.created_at)}</td><td data-label="Nível"><span class="badge">Nível ${item.level}</span></td><td data-label="Origem">${String(item.source_user_id).slice(0, 8)}…</td><td data-label="Comissão" class="positive mono">+${app.formatBRL(item.amount)}</td></tr>`).join('')
       : '<tr><td colspan="4" class="empty-state">Compartilhe seu link para receber a primeira comissão.</td></tr>';
 
+    const payoutBody = document.getElementById('affiliate-payout-history');
+    if (payoutBody) {
+      const payouts = data.payouts || [];
+      payoutBody.innerHTML = payouts.length
+        ? payouts.map(item => `<tr><td data-label="Data">${app.formatDate(item.paid_at || item.created_at)}</td><td data-label="Valor" class="positive mono"><b>${app.formatBRL(item.amount)}</b></td><td data-label="Descrição">${this.escape(item.description || 'Comissão paga via PIX')}</td><td data-label="Status"><span class="badge badge-success">Pago</span></td></tr>`).join('')
+        : '<tr><td colspan="4" class="empty-state">Nenhum pagamento via PIX registrado ainda.</td></tr>';
+    }
+
     const authMessage = sessionStorage.getItem('affiliate-auth-message');
     if (authMessage) {
       sessionStorage.removeItem('affiliate-auth-message');
@@ -210,14 +220,6 @@ const affiliate = {
   async copyReferralLink() {
     await navigator.clipboard.writeText(document.getElementById('ref-link').value);
     app.showToast('Link de indicação copiado.');
-  },
-
-  async redeemCommissions() {
-    try {
-      const data = await app.fetchAPI('/api/affiliate/redeem', { method: 'POST' });
-      app.showToast(`${app.formatBRL(data.redeemed)} transferidos para sua carteira.`);
-      await this.loadAffiliateStats();
-    } catch (_) {}
   }
 };
 

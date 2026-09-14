@@ -9,8 +9,8 @@ assert.equal(attributionFromUser({ referred_by: 'legacy' }).affiliate_id, 'legac
 
 const report = buildAffiliateReport({
   users: [
-    { id: 'a', username: 'Afiliado A', ref_code: 'a1' },
-    { id: 'b', username: 'Afiliado B', ref_code: 'b1' },
+    { id: 'a', username: 'Afiliado A', ref_code: 'a1', affiliate_balance: 440 },
+    { id: 'b', username: 'Afiliado B', ref_code: 'b1', affiliate_balance: 200 },
     { id: 'l1', referred_by: 'a' },
     { id: 'l2', referred_by: 'b', sub_referred_by: 'a' },
     { id: 'l3', referred_by: 'b' }
@@ -26,6 +26,10 @@ const report = buildAffiliateReport({
     { affiliate_id: 'a', amount: 1000 },
     { affiliate_id: 'a', amount: 40 },
     { affiliate_id: 'b', amount: 200 }
+  ],
+  payouts: [
+    { affiliate_id: 'a', amount: 600, status: 'paid', paid_at: '2026-09-14' },
+    { affiliate_id: 'a', amount: 100, status: 'cancelled' }
   ]
 });
 
@@ -36,4 +40,8 @@ assert.equal(report.affiliates[0].direct_depositors, 2);
 assert.equal(report.summary.approved_deposits, 4);
 assert.equal(report.summary.attributed_revenue, 12300);
 assert.equal(report.summary.commissions_generated, 1240);
+assert.equal(report.affiliates[0].paid_total, 600);
+assert.equal(report.affiliates[0].payout_count, 1);
+assert.equal(report.summary.paid_total, 600);
+assert.equal(report.summary.payable_total, 640);
 console.log('Affiliate revenue report validated.');
