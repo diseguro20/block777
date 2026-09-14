@@ -16,6 +16,7 @@ import { createPasswordResetCode, hashPasswordResetCode, PASSWORD_RESET_MAX_ATTE
 import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
 import { extractVizzionTransaction, getVizzionTransaction, isVizzionPaid, vizzionAmountMatches, vizzionTransactionStatus } from '../lib/vizzionpay.js';
 import { approveAndCreditDeposit } from './wallet.js';
+import { buildAffiliateReport } from '../lib/affiliateReporting.js';
 
 const JWT_SECRET = getJwtSecret();
 const router = express.Router();
@@ -83,6 +84,34 @@ const buildLeadOrigin = (user = {}, usersById = new Map()) => {
 router.use((req, _res, next) => {
   if (req.method !== 'GET') adminResponseCache.clear();
   next();
+});
+
+router.get('/affiliates', async (req, res) => {
+  const cacheKey = tenantCacheKey(req, 'affiliates');
+  const cached = req.query.refresh === '1' ? null : getAdminCache(cacheKey);
+  if (cached) return res.json(cached);
+  try {
+    const [usersSnapshot, depositsSnapshot, commissionsSnapshot] = await Promise.all([
+      db.collection('users').get(),
+      db.collection('deposit_requests').where('status', '==', 'approved').get(),
+      db.collection('affiliate_commissions').get()
+    ]);
+    const users = usersSnapshot.docs
+      .filter(doc => belongsToTenant(doc.data(), req.adminTenantId))
+      .map(doc => ({ id: doc.id, ...doc.data() }));
+    const deposits = depositsSnapshot.docs
+      .filter(doc => belongsToTenant(doc.data(), req.adminTenantId))
+      .map(doc => ({ id: doc.id, ...doc.data() }));
+    const commissions = commissionsSnapshot.docs
+      .filter(doc => belongsToTenant(doc.data(), req.adminTenantId))
+      .map(doc => ({ id: doc.id, ...doc.data() }));
+    res.json(setAdminCache(cacheKey, buildAffiliateReport({ users, deposits, commissions })));
+  } catch (error) {
+    console.error('Admin affiliates error:', error);
+    const stale = getStaleAdminCache(cacheKey);
+    if (stale) return res.json({ ...stale, stale: true });
+    res.status(503).json({ error: 'Não foi possível carregar o relatório de afiliados agora.' });
+  }
 });
 
 router.get('/stats', async (req, res) => {

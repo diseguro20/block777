@@ -17,6 +17,7 @@
       <nav class="side-nav">
         <button class="active" data-view="overview" onclick="admin.showView('overview',this)"><b>⌂</b><span>Visão geral</span></button>
         <button data-view="players" onclick="admin.showView('players',this)"><b>◎</b><span>Jogadores</span></button>
+        <button data-view="affiliates" onclick="admin.showView('affiliates',this)"><b>↗</b><span>Afiliados</span></button>
         <button data-view="managers" onclick="admin.showView('managers',this)"><b>G</b><span>Gerentes</span></button>
         <button data-view="games" onclick="admin.showView('games',this)"><b>▦</b><span>Partidas</span></button>
         <button data-view="finance" onclick="admin.showView('finance',this)"><b>R$</b><span>Financeiro</span></button>
@@ -77,6 +78,23 @@
           <table class="responsive-table"><thead><tr><th>Jogador / WhatsApp</th><th>Origem do cadastro</th><th>Saldo</th><th>Bônus</th><th>Rollover</th><th>Partidas</th><th>V / D</th><th>Blocos</th><th>Linhas</th><th>Status</th><th>Influencer</th><th>Ação</th></tr></thead><tbody id="users-table"></tbody></table>
         </article>
         <article class="panel table-wrap password-reset-panel"><div class="panel-title"><div><small>RECUPERAÇÃO DE ACESSO</small><h3>Solicitações de nova senha</h3></div><button class="btn btn-ghost" onclick="admin.loadPasswordResets()">Atualizar</button></div><p class="section-copy">Gere um código temporário e envie ao titular pelo contato já conhecido. O código vence em 15 minutos e funciona uma única vez.</p><table class="responsive-table"><thead><tr><th>Jogador</th><th>Contato</th><th>Solicitado em</th><th>Status</th><th>Ação</th></tr></thead><tbody id="password-resets-table"></tbody></table></article>
+      </section>
+
+      <section class="admin-view" id="view-affiliates">
+        <div class="admin-section-head">
+          <div><small>RECEITA POR INDICAÇÃO</small><h3>Afiliados e influenciadores</h3><p class="section-copy">Valores calculados somente com PIX aprovados e vinculados ao link de cada afiliado.</p></div>
+          <div style="display:flex;gap:8px;align-items:center"><button class="btn btn-ghost" onclick="admin.loadAffiliates(true)">Atualizar</button><input id="search-affiliates" placeholder="Buscar afiliado ou código" oninput="admin.scheduleAffiliateSearch(this.value)"></div>
+        </div>
+        <div class="metrics admin-stats manager-stats">
+          <article class="metric"><span>AFILIADOS</span><strong id="affiliate-stat-count">0</strong><small>com indicações ou comissão</small></article>
+          <article class="metric"><span>GERARAM RECEITA</span><strong id="affiliate-stat-active">0</strong><small>com PIX aprovado</small></article>
+          <article class="metric"><span>PIX APROVADOS</span><strong id="affiliate-stat-deposits">0</strong><small>dos indicados diretos</small></article>
+          <article class="metric"><span>RECEITA ATRIBUÍDA</span><strong id="affiliate-stat-revenue">R$ 0,00</strong><small>entrada direta confirmada</small></article>
+          <article class="metric"><span>COMISSÕES GERADAS</span><strong id="affiliate-stat-commissions">R$ 0,00</strong><small>níveis 1 e 2</small></article>
+        </div>
+        <article class="panel table-wrap">
+          <table class="responsive-table"><thead><tr><th>Afiliado</th><th>Código</th><th>Leads</th><th>Depositantes</th><th>PIX aprovados</th><th>Entrou direto</th><th>Rede 2º nível</th><th>Comissão gerada</th><th>Saldo comissão</th><th>Taxas</th><th>Último depósito</th></tr></thead><tbody id="affiliates-table"></tbody></table>
+        </article>
       </section>
 
       <section class="admin-view" id="view-games">
@@ -228,6 +246,6 @@
   <div class="toast-container" id="toast-container"></div>
   <script src="/js/branding.js?v=20260831-5"></script>
   <script src="/js/app.js?v=20260831-5"></script>
-  <script src="/js/admin.js?v=20260909-3"></script>
+  <script src="/js/admin.js?v=20260914-1"></script>
 </body>
 </html>

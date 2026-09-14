@@ -22,6 +22,7 @@
     "test:deposit-credit": "node scripts/test-deposit-credit.mjs",
     "test:deposit-idempotency": "node scripts/test-deposit-idempotency.mjs",
     "test:push-notifications": "node scripts/test-push-notifications.mjs",
+    "test:affiliate-report": "node scripts/test-affiliate-report.mjs",
     "deploy": "gh-pages --nojekyll -d dist",
     "predeploy": "expo export -p web"
   },

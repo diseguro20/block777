@@ -4,6 +4,7 @@ const admin = {
   refreshTimer: null,
   searchTimer: null,
   withdrawals: [],
+  affiliates: [],
 
   async init() {
     if (!app.token) return this.requireLogin();
@@ -96,6 +97,7 @@ const admin = {
     document.getElementById('admin-page-title').textContent = ({
       overview: 'Visão geral',
       players: 'Jogadores',
+      affiliates: 'Afiliados',
       managers: 'Gerentes',
       games: 'Partidas',
       finance: 'Financeiro',
@@ -103,6 +105,7 @@ const admin = {
       tenants: 'Clientes white label'
     })[name];
     if (name === 'players') { this.loadUsers(); this.loadPasswordResets(); }
+    if (name === 'affiliates') this.loadAffiliates();
     if (name === 'managers') this.loadManagers();
     if (name === 'games') this.loadGameLogs();
     if (name === 'finance') {
@@ -145,6 +148,61 @@ const admin = {
   scheduleGameSearch(value = '') {
     clearTimeout(this.searchTimer);
     this.searchTimer = setTimeout(() => this.loadGameLogs(value), 450);
+  },
+
+  scheduleAffiliateSearch(value = '') {
+    clearTimeout(this.searchTimer);
+    this.searchTimer = setTimeout(() => this.renderAffiliates(value), 250);
+  },
+
+  async loadAffiliates(force = false) {
+    const body = document.getElementById('affiliates-table');
+    if (!body) return;
+    body.innerHTML = '<tr><td colspan="11" class="empty-state">Calculando receita confirmada por afiliado...</td></tr>';
+    try {
+      const data = await app.fetchAPI(`/api/admin/affiliates${force ? '?refresh=1' : ''}`);
+      this.affiliates = data.affiliates || [];
+      const summary = data.summary || {};
+      const setText = (id, value) => { const element = document.getElementById(id); if (element) element.textContent = value; };
+      setText('affiliate-stat-count', Number(summary.affiliates || 0).toLocaleString('pt-BR'));
+      setText('affiliate-stat-active', Number(summary.affiliates_with_deposits || 0).toLocaleString('pt-BR'));
+      setText('affiliate-stat-deposits', Number(summary.approved_deposits || 0).toLocaleString('pt-BR'));
+      setText('affiliate-stat-revenue', app.formatBRL(summary.attributed_revenue || 0));
+      setText('affiliate-stat-commissions', app.formatBRL(summary.commissions_generated || 0));
+      this.renderAffiliates(document.getElementById('search-affiliates')?.value || '');
+      if (data.stale) app.showToast('Exibindo o último relatório disponível.');
+    } catch (error) {
+      body.innerHTML = `<tr><td colspan="11" class="empty-state">${this.escape(error.message || 'Não foi possível carregar os afiliados.')}</td></tr>`;
+    }
+  },
+
+  renderAffiliates(search = '') {
+    const body = document.getElementById('affiliates-table');
+    if (!body) return;
+    const term = String(search || '').trim().toLowerCase();
+    const digits = term.replace(/\D/g, '');
+    const affiliates = (this.affiliates || []).filter(item => !term
+      || String(item.username || '').toLowerCase().includes(term)
+      || String(item.email || '').toLowerCase().includes(term)
+      || String(item.ref_code || '').toLowerCase().includes(term)
+      || (digits && String(item.phone || '').replace(/\D/g, '').includes(digits)));
+    body.innerHTML = affiliates.length ? affiliates.map(item => {
+      const contact = item.phone ? this.formatPhone(item.phone) : item.email;
+      const kind = item.is_influencer ? 'Influenciador' : 'Afiliado';
+      return `<tr>
+        <td data-label="Afiliado"><div class="user-cell"><b>${this.escape(item.username || 'Afiliado')}</b><span>${this.escape(contact || '')}</span><span class="badge ${item.is_influencer ? 'badge-success' : ''}">${kind}</span></div></td>
+        <td data-label="Código"><span class="badge">${this.escape(item.ref_code || '-')}</span></td>
+        <td data-label="Leads" class="mono">${Number(item.direct_leads || 0).toLocaleString('pt-BR')} diretos · ${Number(item.second_level_leads || 0).toLocaleString('pt-BR')} nível 2</td>
+        <td data-label="Depositantes" class="mono">${Number(item.direct_depositors || 0).toLocaleString('pt-BR')}</td>
+        <td data-label="PIX aprovados" class="mono">${Number(item.approved_deposits || 0).toLocaleString('pt-BR')}</td>
+        <td data-label="Entrou direto" class="mono positive"><b>${app.formatBRL(item.direct_deposited || 0)}</b></td>
+        <td data-label="Rede 2º nível" class="mono">${app.formatBRL(item.second_level_deposited || 0)}</td>
+        <td data-label="Comissão gerada" class="mono">${app.formatBRL(item.commissions_generated || 0)}</td>
+        <td data-label="Saldo comissão" class="mono">${app.formatBRL(item.affiliate_balance || 0)}</td>
+        <td data-label="Taxas" class="mono">${Number(item.affiliate_rate || 0).toFixed(1)}% · ${Number(item.sub_affiliate_rate || 0).toFixed(1)}%</td>
+        <td data-label="Último depósito">${item.last_deposit_at ? app.formatDate(item.last_deposit_at) : '—'}</td>
+      </tr>`;
+    }).join('') : '<tr><td colspan="11" class="empty-state">Nenhum afiliado encontrado.</td></tr>';
   },
 
   async loadOverview(silent = false, force = false) {
