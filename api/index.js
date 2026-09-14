@@ -514,7 +514,7 @@ app.get('/api/affiliate/stats', auth, (req, res) => {
 
   res.json({
     ref_code: req.currentUser.ref_code,
-    referralLink: `${req.protocol}://${req.get('host')}/?ref=${req.currentUser.ref_code}`,
+    referralLink: `${req.protocol}://${req.get('host')}/r?ref=${encodeURIComponent(req.currentUser.ref_code)}`,
     level1Count: direct.length,
     level2Count: level2.length,
     totalReferred: direct.length + level2.length,

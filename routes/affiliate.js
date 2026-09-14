@@ -80,7 +80,7 @@ router.get('/stats', authenticateToken, async (req, res) => {
     const host = req.headers.host;
     const protocol = req.protocol || 'https';
     const tenantQuery = tenantId === DEFAULT_TENANT_ID ? '' : `tenant=${encodeURIComponent(tenantId)}&`;
-    const referralLink = `${protocol}://${host}?${tenantQuery}ref=${encodeURIComponent(ref_code || '')}`;
+    const referralLink = `${protocol}://${host}/r?${tenantQuery}ref=${encodeURIComponent(ref_code || '')}`;
 
     const commissions = commsQuery.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))

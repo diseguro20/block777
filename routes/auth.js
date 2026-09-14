@@ -116,6 +116,24 @@ router.post('/capture-attribution', (req, res) => {
   res.json({ success: true, captured: true });
 });
 
+router.get('/referral', async (req, res) => {
+  const tenantId = req.tenant?.id || DEFAULT_TENANT_ID;
+  const refCode = cleanAttributionCode(req.query?.ref);
+  if (!refCode) return res.status(400).send('Link de afiliado inválido.');
+  try {
+    const referrer = await findTenantUser('ref_code', refCode, tenantId);
+    if (!referrer) return res.status(404).send('Link de afiliado não encontrado. Solicite um novo link ao afiliado.');
+    const token = jwt.sign({ ref: refCode, manager: null, tenant_id: tenantId }, JWT_SECRET, { expiresIn: ATTRIBUTION_MAX_AGE_SECONDS, audience: 'blockerino-attribution' });
+    res.set('Cache-Control', 'no-store');
+    res.setHeader('Set-Cookie', attributionCookieHeader(token));
+    const tenantQuery = tenantId === DEFAULT_TENANT_ID ? '' : `?tenant=${encodeURIComponent(tenantId)}`;
+    return res.redirect(302, `/${tenantQuery}`);
+  } catch (error) {
+    console.error('Referral capture error:', error);
+    return res.status(503).send('Não foi possível validar o link agora. Tente novamente.');
+  }
+});
+
 router.post('/register', async (req, res) => {
   try {
     const tenantId = req.tenant?.id || DEFAULT_TENANT_ID;
