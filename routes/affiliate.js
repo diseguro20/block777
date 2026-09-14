@@ -100,6 +100,7 @@ router.get('/stats', authenticateToken, async (req, res) => {
         return bTime - aTime;
       });
     const totalPaid = payouts.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
+    totalCommissions += payouts.reduce((sum, item) => sum + (Number(item.adjustment_amount) || 0), 0);
 
     const allReferredDocs = [...level1Docs, ...level2Docs];
 

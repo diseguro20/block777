@@ -28,7 +28,7 @@ const report = buildAffiliateReport({
     { affiliate_id: 'b', amount: 200 }
   ],
   payouts: [
-    { affiliate_id: 'a', amount: 600, status: 'paid', paid_at: '2026-09-14' },
+    { affiliate_id: 'a', amount: 600, adjustment_amount: 100, status: 'paid', paid_at: '2026-09-14' },
     { affiliate_id: 'a', amount: 100, status: 'cancelled' }
   ]
 });
@@ -39,7 +39,8 @@ assert.equal(report.affiliates[0].second_level_deposited, 2000);
 assert.equal(report.affiliates[0].direct_depositors, 2);
 assert.equal(report.summary.approved_deposits, 4);
 assert.equal(report.summary.attributed_revenue, 12300);
-assert.equal(report.summary.commissions_generated, 1240);
+assert.equal(report.summary.commissions_generated, 1340);
+assert.equal(report.affiliates[0].historical_adjustment_total, 100);
 assert.equal(report.affiliates[0].paid_total, 600);
 assert.equal(report.affiliates[0].payout_count, 1);
 assert.equal(report.summary.paid_total, 600);
