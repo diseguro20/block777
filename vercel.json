@@ -1,10 +1,6 @@
 {
   "rewrites": [
     {
-      "source": "/r",
-      "destination": "/api/auth/referral"
-    },
-    {
       "source": "/api/:path*",
       "destination": "/api/index.js"
     },
