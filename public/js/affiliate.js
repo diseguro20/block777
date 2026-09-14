@@ -6,12 +6,27 @@ const affiliate = {
       if (!app.user) return this.showAuth();
       await this.loadAffiliateStats();
       await this.loadNotificationStatus();
+      this.startAutoRefresh();
     } catch (_) {
       this.showAuth();
     }
   },
 
   notificationConfig: null,
+  refreshTimer: null,
+
+  startAutoRefresh() {
+    clearInterval(this.refreshTimer);
+    this.refreshTimer = setInterval(() => {
+      if (document.visibilityState === 'visible') this.loadAffiliateStats().catch(() => {});
+    }, 30000);
+    if (!this.visibilityRefreshBound) {
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible' && app.token) this.loadAffiliateStats().catch(() => {});
+      });
+      this.visibilityRefreshBound = true;
+    }
+  },
 
   base64ToBytes(value) {
     const padding = '='.repeat((4 - value.length % 4) % 4);
@@ -107,6 +122,7 @@ const affiliate = {
 
     document.getElementById('affiliate-register-form').onsubmit = async (event) => {
       event.preventDefault();
+      await app.attributionCapturePromise;
       const payload = Object.fromEntries(new FormData(event.currentTarget));
       const attribution = app.getAttribution();
       payload.referred_by = attribution.refCode || null;

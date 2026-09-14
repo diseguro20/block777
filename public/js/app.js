@@ -66,11 +66,25 @@ const app = {
     const params = new URLSearchParams(location.search);
     const refCode = String(params.get('ref') || '').trim().toLowerCase().slice(0, 100);
     const managerCode = String(params.get('manager') || '').trim().toLowerCase().slice(0, 100);
+    this.attributionCapturePromise = Promise.resolve(null);
     if (refCode || managerCode) {
-      localStorage.setItem(`attribution:${this.sessionScope()}`, JSON.stringify({ refCode: refCode || null, managerCode: managerCode || null, capturedAt: Date.now(), landingPath: `${location.pathname}${location.search}`.slice(0, 500) }));
+      try {
+        localStorage.setItem(`attribution:${this.sessionScope()}`, JSON.stringify({ refCode: refCode || null, managerCode: managerCode || null, capturedAt: Date.now(), landingPath: `${location.pathname}${location.search}`.slice(0, 500) }));
+      } catch (_) {}
+      this.attributionCapturePromise = fetch('/api/auth/capture-attribution', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', 'X-Tenant-Slug': this.tenantSlug },
+        body: JSON.stringify({ ref: refCode || null, manager: managerCode || null })
+      }).then(response => {
+        if (!response.ok) throw new Error('Attribution capture failed');
+        return response.json();
+      }).catch(() => null);
     }
-    localStorage.removeItem('ref');
-    localStorage.removeItem('manager_code');
+    try {
+      localStorage.removeItem('ref');
+      localStorage.removeItem('manager_code');
+    } catch (_) {}
     const impersonateToken = params.get('impersonate_token') || params.get('auth_token');
     if (impersonateToken) {
       localStorage.setItem(`token:${this.sessionScope()}`, impersonateToken);
@@ -87,11 +101,11 @@ const app = {
       const maxAge = 30 * 24 * 60 * 60 * 1000;
       if (!saved?.capturedAt || Date.now() - Number(saved.capturedAt) > maxAge) { localStorage.removeItem(key); return {}; }
       return saved;
-    } catch (_) { localStorage.removeItem(key); return {}; }
+    } catch (_) { return {}; }
   },
 
   clearAttribution() {
-    localStorage.removeItem(`attribution:${this.sessionScope()}`);
+    try { localStorage.removeItem(`attribution:${this.sessionScope()}`); } catch (_) {}
   },
 
   async loadPublicPromotion() {
@@ -179,6 +193,7 @@ const app = {
     };
     if (register) register.onsubmit = async (event) => {
       event.preventDefault();
+      await this.attributionCapturePromise;
       const payload = Object.fromEntries(new FormData(register));
       const btn = register.querySelector('button[type="submit"]');
       if (btn) { btn.disabled = true; btn.textContent = 'Criando conta...'; }

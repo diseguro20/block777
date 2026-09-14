@@ -1,11 +1,20 @@
 import assert from 'node:assert/strict';
-import { buildAffiliateReport } from '../lib/affiliateReporting.js';
+import { buildAffiliateNetwork, buildAffiliateReport } from '../lib/affiliateReporting.js';
 import { affiliateIdsForDeposit, attributionFromUser, buildRegistrationAttribution } from '../lib/attribution.js';
 
 const registration = buildRegistrationAttribution({ referrerId: 'a', referrer: { ref_code: 'a1', username: 'Afiliado A', referred_by: 'upline' } });
 assert.deepEqual(affiliateIdsForDeposit({ attribution: registration }, { referred_by: 'wrong' }), { affiliateId: 'a', subAffiliateId: 'upline', managerId: null });
 assert.deepEqual(affiliateIdsForDeposit({ attribution: { version: 1, source: 'direct' } }, { referred_by: 'wrong' }), { affiliateId: null, subAffiliateId: null, managerId: null });
 assert.equal(attributionFromUser({ referred_by: 'legacy' }).affiliate_id, 'legacy');
+
+const network = buildAffiliateNetwork({
+  affiliateId: 'a',
+  users: [{ id: 'a' }, { id: 'lead', username: 'Lead', referred_by: 'wrong' }],
+  deposits: [{ uid: 'lead', status: 'approved', amount: 5000, attribution: { version: 1, affiliate_id: 'a' } }]
+});
+assert.equal(network.level1Count, 1);
+assert.equal(network.totalDeposited, 5000);
+assert.equal(network.leads[0].username, 'Lead');
 
 const report = buildAffiliateReport({
   users: [

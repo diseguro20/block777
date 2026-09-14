@@ -3,6 +3,7 @@ import { db } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { DEFAULT_TENANT_ID, belongsToTenant } from '../lib/tenant.js';
 import { pushStatus, removePushSubscription, savePushSubscription, sendAffiliateTestNotification } from '../lib/pushNotifications.js';
+import { buildAffiliateNetwork } from '../lib/affiliateReporting.js';
 
 const router = express.Router();
 
@@ -51,6 +52,7 @@ router.post('/notifications/test', authenticateToken, async (req, res) => {
 
 router.get('/stats', authenticateToken, async (req, res) => {
   try {
+    res.set('Cache-Control', 'no-store');
     const uid = req.user.uid;
     const tenantId = req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
     const userDoc = await db.collection('users').doc(uid).get();
@@ -59,17 +61,17 @@ router.get('/stats', authenticateToken, async (req, res) => {
     const userData = userDoc.data();
     const ref_code = userData.ref_code;
     
-    const level1Query = await db.collection('users').where('referred_by', '==', uid).get();
-    const level1Docs = level1Query.docs.filter(doc => belongsToTenant(doc.data(), tenantId));
-    const level1Count = level1Docs.length;
-    
-    const level2Query = await db.collection('users').where('sub_referred_by', '==', uid).get();
-    const level2Docs = level2Query.docs.filter(doc => belongsToTenant(doc.data(), tenantId));
-    const level2Count = level2Docs.length;
-    
-    const totalReferred = level1Count + level2Count;
-    
-    const commsQuery = await db.collection('affiliate_commissions').where('affiliate_id', '==', uid).get();
+    const [usersQuery, approvedDepositsQuery, commsQuery, payoutsQuery] = await Promise.all([
+      db.collection('users').get(),
+      db.collection('deposit_requests').where('status', '==', 'approved').get(),
+      db.collection('affiliate_commissions').where('affiliate_id', '==', uid).get(),
+      db.collection('affiliate_payouts').where('affiliate_id', '==', uid).get()
+    ]);
+    const tenantUsers = usersQuery.docs.filter(doc => belongsToTenant(doc.data(), tenantId)).map(doc => ({ id: doc.id, ...doc.data() }));
+    const approvedDeposits = approvedDepositsQuery.docs.filter(doc => belongsToTenant(doc.data(), tenantId)).map(doc => ({ id: doc.id, ...doc.data() }));
+    const network = buildAffiliateNetwork({ affiliateId: uid, users: tenantUsers, deposits: approvedDeposits });
+    const { level1Count, level2Count, totalReferred, totalDeposited, leads } = network;
+
     let totalCommissions = 0;
     commsQuery.forEach(doc => {
       if (belongsToTenant(doc.data(), tenantId)) totalCommissions += doc.data().amount || 0;
@@ -90,7 +92,6 @@ router.get('/stats', authenticateToken, async (req, res) => {
       })
       .slice(0, 20);
 
-    const payoutsQuery = await db.collection('affiliate_payouts').where('affiliate_id', '==', uid).get();
     const payouts = payoutsQuery.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
       .filter(item => item.status === 'paid' && belongsToTenant(item, tenantId))
@@ -101,30 +102,6 @@ router.get('/stats', authenticateToken, async (req, res) => {
       });
     const totalPaid = payouts.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
     totalCommissions += payouts.reduce((sum, item) => sum + (Number(item.adjustment_amount) || 0), 0);
-
-    const allReferredDocs = [...level1Docs, ...level2Docs];
-
-    let totalDeposited = 0;
-    const leads = await Promise.all(allReferredDocs.map(async doc => {
-      const d = doc.data();
-      const isLevel1 = d.referred_by === uid;
-      const depSnap = await db.collection('deposit_requests').where('uid', '==', doc.id).get();
-      const approved = depSnap.docs.map(x => x.data()).filter(x => x.status === 'approved' && belongsToTenant(x, tenantId));
-      const leadDeposited = approved.reduce((sum, item) => sum + (Number(item.amount) || 0), 0);
-      totalDeposited += leadDeposited;
-
-      return {
-        id: doc.id,
-        username: d.username,
-        email: d.email,
-        phone: d.phone || null,
-        level: isLevel1 ? 1 : 2,
-        totalDeposited: leadDeposited,
-        created_at: d.created_at
-      };
-    }));
-
-    leads.sort((a, b) => (b.totalDeposited || 0) - (a.totalDeposited || 0));
 
     res.json({
       ref_code,

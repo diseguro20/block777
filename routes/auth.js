@@ -14,6 +14,21 @@ import { buildRegistrationAttribution } from '../lib/attribution.js';
 
 const router = express.Router();
 const JWT_SECRET = getJwtSecret();
+const ATTRIBUTION_COOKIE = 'blockerino_attribution';
+const ATTRIBUTION_MAX_AGE_SECONDS = 30 * 24 * 60 * 60;
+const cleanAttributionCode = value => String(value || '').trim().toLowerCase().slice(0, 100);
+const readCookie = (req, name) => String(req.headers.cookie || '').split(';').map(item => item.trim()).find(item => item.startsWith(`${name}=`))?.slice(name.length + 1) || '';
+const readAttributionCookie = (req, tenantId) => {
+  try {
+    const token = decodeURIComponent(readCookie(req, ATTRIBUTION_COOKIE));
+    if (!token) return {};
+    const payload = jwt.verify(token, JWT_SECRET, { audience: 'blockerino-attribution' });
+    if (payload.tenant_id !== tenantId) return {};
+    return { refCode: cleanAttributionCode(payload.ref), managerCode: cleanAttributionCode(payload.manager) };
+  } catch (_) { return {}; }
+};
+const attributionCookieHeader = token => `${ATTRIBUTION_COOKIE}=${encodeURIComponent(token)}; Max-Age=${ATTRIBUTION_MAX_AGE_SECONDS}; Path=/; HttpOnly; Secure; SameSite=Lax`;
+const clearAttributionCookie = res => res.setHeader('Set-Cookie', `${ATTRIBUTION_COOKIE}=; Max-Age=0; Path=/; HttpOnly; Secure; SameSite=Lax`);
 
 // Cache somente em memória. Senhas e perfis nunca são gravados em arquivos temporários.
 const resilientUserRegistry = new Map();
@@ -88,10 +103,26 @@ async function autoBanIp(ip, tenantId = DEFAULT_TENANT_ID) {
   } catch (e) {}
 }
 
+router.post('/capture-attribution', (req, res) => {
+  const tenantId = req.tenant?.id || DEFAULT_TENANT_ID;
+  const refCode = cleanAttributionCode(req.body?.ref);
+  const managerCode = cleanAttributionCode(req.body?.manager);
+  if (!refCode && !managerCode) {
+    clearAttributionCookie(res);
+    return res.json({ success: true, captured: false });
+  }
+  const token = jwt.sign({ ref: refCode || null, manager: managerCode || null, tenant_id: tenantId }, JWT_SECRET, { expiresIn: ATTRIBUTION_MAX_AGE_SECONDS, audience: 'blockerino-attribution' });
+  res.setHeader('Set-Cookie', attributionCookieHeader(token));
+  res.json({ success: true, captured: true });
+});
+
 router.post('/register', async (req, res) => {
   try {
     const tenantId = req.tenant?.id || DEFAULT_TENANT_ID;
     const { username, password, referred_by, sub_referred_by, manager_code } = req.body;
+    const cookieAttribution = readAttributionCookie(req, tenantId);
+    const requestedReferralCode = cleanAttributionCode(referred_by || cookieAttribution.refCode);
+    const requestedManagerCode = cleanAttributionCode(manager_code || cookieAttribution.managerCode);
     const rawPhone = String(req.body.phone || req.body.email || '').trim();
     const cleanPhone = rawPhone.replace(/\D/g, '');
     let email = String(req.body.email || '').trim().toLowerCase();
@@ -134,16 +165,17 @@ router.post('/register', async (req, res) => {
     const role = 'user';
 
     let referrer = null;
-    if (referred_by) {
+    if (requestedReferralCode) {
       try {
-        referrer = await findTenantUser('ref_code', String(referred_by).toLowerCase(), tenantId);
+        referrer = await findTenantUser('ref_code', requestedReferralCode, tenantId);
       } catch (e) {}
+      if (!referrer) return res.status(400).json({ error: 'O link do afiliado não pôde ser validado. Abra novamente o link recebido.' });
     }
 
     let manager = null;
-    if (manager_code) {
+    if (requestedManagerCode) {
       try {
-        const managerMatch = await findTenantUser('manager_code', String(manager_code).trim().toLowerCase(), tenantId);
+        const managerMatch = await findTenantUser('manager_code', requestedManagerCode, tenantId);
         if (managerMatch && managerMatch.data().role === 'manager' && managerMatch.data().status === 'active') {
           manager = managerMatch;
         }
@@ -212,6 +244,7 @@ router.post('/register', async (req, res) => {
       { expiresIn: authTokenTtl(newUser.role) }
     );
 
+    clearAttributionCookie(res);
     res.status(201).json({ token, user: { uid: docId, username, email, role, tenant_id: tenantId, balance: newUser.balance } });
   } catch (error) {
     console.error('Register error:', error);
