@@ -520,12 +520,12 @@ const admin = {
   async loadUsers(search = '') {
     const body = document.getElementById('users-table');
     if (!body) return;
-    body.innerHTML = '<tr><td colspan="12" class="empty-state">Carregando leads...</td></tr>';
+    body.innerHTML = '<tr><td colspan="13" class="empty-state">Carregando leads...</td></tr>';
     let data;
     try {
       data = await app.fetchAPI(`/api/admin/users?search=${encodeURIComponent(search)}`);
     } catch (error) {
-      body.innerHTML = `<tr><td colspan="12" class="empty-state">${this.escape(error.message || 'Não foi possível carregar os leads.')}</td></tr>`;
+      body.innerHTML = `<tr><td colspan="13" class="empty-state">${this.escape(error.message || 'Não foi possível carregar os leads.')}</td></tr>`;
       return;
     }
     const createdAtMillis = value => {
@@ -550,6 +550,7 @@ const admin = {
           </div>
         </td>
         <td data-label="Origem do cadastro">${this.renderOrigin(user.origin)}</td>
+        <td data-label="Cadastro" class="mono">${app.formatDate(user.created_at)}</td>
         <td data-label="Saldo" class="mono">${app.formatBRL(user.balance)}</td>
         <td data-label="Bônus" class="mono positive">${app.formatBRL(user.bonus_balance || 0)}</td>
         <td data-label="Rollover" class="mono">${app.formatBRL(user.rollover_remaining || 0)}</td>
@@ -568,7 +569,7 @@ const admin = {
           ${user.role === 'admin' ? '' : `<button class="table-action" style="color:#ff5555;border-color:rgba(255,85,85,0.4)" onclick="admin.banUser('${user.id}','${this.escape(user.username)}')">🚫 Ban IP</button>`}
         </td>
       </tr>`;
-    }).join('') : '<tr><td colspan="12" class="empty-state">Nenhum jogador encontrado.</td></tr>';
+    }).join('') : '<tr><td colspan="13" class="empty-state">Nenhum jogador encontrado.</td></tr>';
   },
 
   async loadPasswordResets() {
