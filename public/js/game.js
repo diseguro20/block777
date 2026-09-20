@@ -125,8 +125,13 @@ const game = {
   celebrationFrame: null,
   audioContext: null,
   soundEnabled: localStorage.getItem('blockerino-sound') !== 'off',
+  bgmTimer: null,
+  bgmStep: 0,
   tutorialStep: 0,
   tutorialSteps: 4,
+  handGeneratedAt: 0,
+  handAnimationFrame: null,
+  lockedTimer: null,
 
   // Jogo Real em Prévia Gratuita na Landing Page (8x8 Completo)
   landingDemo: {
@@ -212,6 +217,26 @@ const game = {
     if (!this.soundEnabled) return;
     this.playTone(148, 0, 0.09, 'sawtooth', 0.018);
     this.playTone(112, 0.065, 0.12, 'triangle', 0.02);
+  },
+
+  startBackgroundMusic() {
+    if (!this.soundEnabled || this.bgmTimer) return;
+    const melody = [261.63, 329.63, 392, 523.25, 392, 329.63, 293.66, 369.99, 440, 587.33, 440, 369.99];
+    const bass = [65.41, 73.42, 55, 61.74];
+    this.bgmStep = 0;
+    const playStep = () => {
+      if (!this.soundEnabled || !this.isPlaying) return;
+      const step = this.bgmStep++;
+      this.playTone(melody[step % melody.length], 0, 0.17, 'triangle', 0.008);
+      if (step % 4 === 0) this.playTone(bass[Math.floor(step / 4) % bass.length], 0, 0.38, 'sine', 0.009);
+    };
+    playStep();
+    this.bgmTimer = window.setInterval(playStep, 245);
+  },
+
+  stopBackgroundMusic() {
+    if (this.bgmTimer) window.clearInterval(this.bgmTimer);
+    this.bgmTimer = null;
   },
 
   maybeShowTutorial() {
@@ -302,6 +327,9 @@ const game = {
       this.unlockAudio();
       this.playTone(659.25, 0, 0.1, 'sine', 0.035);
       this.playTone(987.77, 0.07, 0.14, 'sine', 0.04);
+      if (this.isPlaying) this.startBackgroundMusic();
+    } else {
+      this.stopBackgroundMusic();
     }
   },
 
@@ -311,6 +339,46 @@ const game = {
     button.textContent = this.soundEnabled ? '🔊 Som' : '🔇 Som';
     button.setAttribute('aria-pressed', String(this.soundEnabled));
     button.setAttribute('aria-label', this.soundEnabled ? 'Silenciar efeitos sonoros' : 'Ativar efeitos sonoros');
+  },
+
+  showGameLoading(show) {
+    const loading = document.getElementById('game-loading');
+    if (!loading) return;
+    loading.hidden = !show;
+    document.body.classList.toggle('game-is-loading', show);
+  },
+
+  getBoardGeometry() {
+    const width = this.canvas?.width || 0;
+    const padding = Math.max(7, Math.round(width * 0.022));
+    const gap = Math.max(3, Math.round(width * 0.009));
+    const cell = (width - padding * 2 - gap * (this.gridSize - 1)) / this.gridSize;
+    return { width, padding, gap, cell, step: cell + gap };
+  },
+
+  getDropPosition(piece) {
+    const geometry = this.getBoardGeometry();
+    const pieceWidth = piece.shape[0].length * geometry.step - geometry.gap;
+    const pieceHeight = piece.shape.length * geometry.step - geometry.gap;
+    return {
+      col: Math.round((this.dragX - pieceWidth / 2 - geometry.padding) / geometry.step),
+      row: Math.round((this.dragY - this.dragLift - pieceHeight / 2 - geometry.padding) / geometry.step)
+    };
+  },
+
+  animateNewHand() {
+    this.handGeneratedAt = performance.now();
+    if (this.handAnimationFrame) cancelAnimationFrame(this.handAnimationFrame);
+    const tick = now => {
+      if (now - this.handGeneratedAt > 430) {
+        this.handAnimationFrame = null;
+        this.draw();
+        return;
+      }
+      this.draw(now);
+      this.handAnimationFrame = requestAnimationFrame(tick);
+    };
+    this.handAnimationFrame = requestAnimationFrame(tick);
   },
 
   initLandingDemo() {
@@ -634,6 +702,7 @@ const game = {
         const slotWidth = this.canvas.width / this.hand.length;
         const index = Math.floor(pos.x / slotWidth);
         if (this.hand[index] && !this.hand[index].used) {
+          this.playTone(660, 0, 0.07, 'triangle', 0.018);
           this.isDragging = true;
           this.draggedPieceIndex = index;
           this.dragX = pos.x;
@@ -837,6 +906,7 @@ const game = {
 
       document.getElementById('prep-modal').classList.remove('active');
       app.showScreen('game-screen');
+      this.showGameLoading(true);
       this.init();
       this.initBoard();
       this.isPlaying = true;
@@ -844,7 +914,11 @@ const game = {
       document.getElementById('btn-cashout').style.display = 'flex';
       this.updateHud();
       this.draw();
-      this.maybeShowTutorial();
+      window.setTimeout(() => {
+        this.showGameLoading(false);
+        this.startBackgroundMusic();
+        this.maybeShowTutorial();
+      }, 720);
       app.showToast('🎮 Partida iniciada na Arena Blockerino. Boa sorte!');
     } catch (err) {
       app.showToast(err.message || 'Erro ao iniciar partida.');
@@ -881,6 +955,7 @@ const game = {
     } catch (e) {}
 
     app.showScreen('game-screen');
+    this.showGameLoading(true);
     this.init();
     this.initBoard();
     this.isPlaying = true;
@@ -888,7 +963,11 @@ const game = {
     document.getElementById('btn-cashout').style.display = 'none';
     this.updateHud();
     this.draw();
-    this.maybeShowTutorial();
+    window.setTimeout(() => {
+      this.showGameLoading(false);
+      this.startBackgroundMusic();
+      this.maybeShowTutorial();
+    }, 720);
     app.showToast('🎮 Modo de demonstração iniciado.');
   },
 
@@ -925,6 +1004,9 @@ const game = {
       const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
       this.hand.push({ shape, color, used: false });
     }
+    this.playTone(740, 0, 0.08, 'sine', 0.015);
+    this.playTone(1046.5, 0.08, 0.11, 'sine', 0.017);
+    this.animateNewHand();
   },
 
   pickWeightedShape(shapes, weights) {
@@ -960,11 +1042,7 @@ const game = {
     const piece = this.hand[this.draggedPieceIndex];
     if (!piece || piece.used) return;
 
-    const boardWidth = this.canvas.width;
-    const cellSize = boardWidth / this.gridSize;
-
-    const col = Math.floor((this.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
-    const row = Math.floor((this.dragY - this.dragLift - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
+    const { col, row } = this.getDropPosition(piece);
 
     if (this.canPlaceOnGrid(this.board, piece.shape, row, col, this.gridSize)) {
       let placedBlocks = 0;
@@ -1004,7 +1082,7 @@ const game = {
 
       this.updateHud();
       if (!this.canAnyPieceBePlaced()) {
-        this.handleGameOver();
+        this.showLockedBoard();
       }
     } else {
       this.showInvalidPlacement();
@@ -1049,6 +1127,17 @@ const game = {
     const totalLines = rowsToClear.length + colsToClear.length;
     if (totalLines > 0) {
       const previousMultiplier = this.multiplier;
+      const clearedCellMap = new Map();
+      rowsToClear.forEach(row => {
+        for (let col = 0; col < this.gridSize; col++) {
+          if (this.board[row][col]) clearedCellMap.set(`${row}:${col}`, { row, col, color: this.board[row][col] });
+        }
+      });
+      colsToClear.forEach(col => {
+        for (let row = 0; row < this.gridSize; row++) {
+          if (this.board[row][col]) clearedCellMap.set(`${row}:${col}`, { row, col, color: this.board[row][col] });
+        }
+      });
       rowsToClear.forEach(r => {
         for (let c = 0; c < this.gridSize; c++) this.board[r][c] = null;
       });
@@ -1080,7 +1169,7 @@ const game = {
       this.playLineCompleteSound(totalLines);
       
       this.score += Math.round(totalLines * this.gridSize * Math.max(1, (this.combo + totalLines) / 2) * Math.max(1, placedBlocks));
-      this.triggerLineCelebration(rowsToClear, colsToClear, previousMultiplier);
+      this.triggerLineCelebration(rowsToClear, colsToClear, previousMultiplier, [...clearedCellMap.values()]);
 
       app.showToast(`🔥 ${totalLines} LINHA(S) QUEBRADA(S)! Multiplicador: ${this.multiplier.toFixed(2)}x`);
       if (this.mode === 'real' && !this.boostActive && !this.boostOfferShown && previousLinesCleared < this.boostTriggerLines && this.linesCleared >= this.boostTriggerLines) {
@@ -1091,7 +1180,21 @@ const game = {
     return totalLines;
   },
 
-  triggerLineCelebration(rows, cols, previousMultiplier) {
+  showLockedBoard() {
+    const message = document.getElementById('board-locked-msg');
+    if (message) message.hidden = false;
+    this.canvas?.closest('.game-playfield')?.classList.add('board-locked');
+    this.playInvalidSound();
+    if (navigator.vibrate) navigator.vibrate([55, 30, 85]);
+    window.clearTimeout(this.lockedTimer);
+    this.lockedTimer = window.setTimeout(() => {
+      if (message) message.hidden = true;
+      this.canvas?.closest('.game-playfield')?.classList.remove('board-locked');
+      this.handleGameOver();
+    }, 1050);
+  },
+
+  triggerLineCelebration(rows, cols, previousMultiplier, clearedCells = []) {
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const totalPayout = Math.floor(this.betAmount * this.multiplier);
     const effect = document.getElementById('cash-in-effect');
@@ -1100,6 +1203,19 @@ const game = {
 
     if (value) value.textContent = app.formatBRL(totalPayout);
     if (multiplier) multiplier.textContent = `${previousMultiplier.toFixed(2)}x → ${this.multiplier.toFixed(2)}x`;
+    const gainFloat = document.getElementById('gain-float');
+    if (gainFloat) {
+      const previousPayout = Math.floor(this.betAmount * previousMultiplier);
+      gainFloat.textContent = `+ ${app.formatBRL(Math.max(0, totalPayout - previousPayout))}`;
+      gainFloat.hidden = false;
+      gainFloat.classList.remove('active');
+      void gainFloat.offsetWidth;
+      gainFloat.classList.add('active');
+      window.setTimeout(() => {
+        gainFloat.hidden = true;
+        gainFloat.classList.remove('active');
+      }, reducedMotion ? 350 : 1100);
+    }
     if (effect) {
       effect.classList.remove('active');
       void effect.offsetWidth;
@@ -1113,6 +1229,7 @@ const game = {
     this.lineCelebration = {
       rows: [...rows],
       cols: [...cols],
+      cells: clearedCells,
       startedAt: performance.now(),
       duration: 1050
     };
@@ -1137,7 +1254,8 @@ const game = {
     if (!effect || !this.ctx || !this.canvas) return;
     const progress = Math.min(1, Math.max(0, (now - effect.startedAt) / effect.duration));
     const pulse = Math.sin(progress * Math.PI);
-    const cellSize = this.canvas.width / this.gridSize;
+    const geometry = this.getBoardGeometry();
+    const cellSize = geometry.cell;
     const ctx = this.ctx;
 
     ctx.save();
@@ -1146,8 +1264,8 @@ const game = {
     ctx.shadowBlur = 20 + pulse * 26;
     ctx.fillStyle = `rgba(201,255,67,${0.2 + pulse * 0.65})`;
 
-    effect.rows.forEach(row => ctx.fillRect(0, row * cellSize + 2, this.canvas.width, cellSize - 4));
-    effect.cols.forEach(col => ctx.fillRect(col * cellSize + 2, 0, cellSize - 4, this.canvas.width));
+    effect.rows.forEach(row => ctx.fillRect(geometry.padding, geometry.padding + row * geometry.step, this.canvas.width - geometry.padding * 2, cellSize));
+    effect.cols.forEach(col => ctx.fillRect(geometry.padding + col * geometry.step, geometry.padding, cellSize, this.canvas.width - geometry.padding * 2));
 
     const lines = [
       ...effect.rows.map(row => ({ horizontal: true, index: row })),
@@ -1157,8 +1275,8 @@ const game = {
       for (let i = 0; i < 12; i++) {
         const travel = (i / 11 + progress * 0.65) % 1;
         const wave = Math.sin((i + lineIndex * 3) * 2.4 + progress * 10) * cellSize * 0.45;
-        const x = line.horizontal ? travel * this.canvas.width : line.index * cellSize + cellSize / 2 + wave;
-        const y = line.horizontal ? line.index * cellSize + cellSize / 2 + wave : travel * this.canvas.width;
+        const x = line.horizontal ? geometry.padding + travel * (this.canvas.width - geometry.padding * 2) : geometry.padding + line.index * geometry.step + cellSize / 2 + wave;
+        const y = line.horizontal ? geometry.padding + line.index * geometry.step + cellSize / 2 + wave : geometry.padding + travel * (this.canvas.width - geometry.padding * 2);
         const radius = 2 + ((i + lineIndex) % 3) * 1.5;
         ctx.beginPath();
         ctx.fillStyle = i % 2 ? `rgba(255,255,255,${pulse})` : `rgba(201,255,67,${pulse})`;
@@ -1166,6 +1284,26 @@ const game = {
         ctx.fill();
       }
     });
+    ctx.restore();
+
+    (effect.cells || []).forEach((cell, index) => {
+      const delay = Math.min(0.2, (index % this.gridSize) * 0.018);
+      const local = Math.min(1, Math.max(0, (progress - delay) / Math.max(0.01, 1 - delay)));
+      const fall = local * local;
+      const drift = Math.sin(index * 2.17) * cellSize * 0.95 * local;
+      const lift = Math.sin(Math.min(1, local * 3) * Math.PI) * 8;
+      const x = geometry.padding + cell.col * geometry.step + drift;
+      const y = geometry.padding + cell.row * geometry.step - lift + fall * Math.max(280, this.canvas.width * 0.78);
+      this.drawRotatedBlock(ctx, x, y, cellSize, cell.color, (index % 2 ? 1 : -1) * local * (0.7 + (index % 3) * 0.35), 1 - Math.max(0, local - 0.72) / 0.28);
+    });
+  },
+
+  drawRotatedBlock(ctx, x, y, size, color, rotation = 0, alpha = 1) {
+    ctx.save();
+    ctx.globalAlpha *= Math.max(0, alpha);
+    ctx.translate(x + size / 2, y + size / 2);
+    ctx.rotate(rotation);
+    this.drawBlockCtx(ctx, -size / 2, -size / 2, size, color);
     ctx.restore();
   },
 
@@ -1409,7 +1547,20 @@ const game = {
 
       document.getElementById('win-modal-payout').textContent = app.formatBRL(data.payout);
       document.getElementById('win-modal-mult').textContent = `${data.multiplier.toFixed(2)}x`;
+      const winCard = document.querySelector('#win-modal .result-card');
+      if (winCard) {
+        winCard.classList.add('win-result');
+        winCard.querySelectorAll('.win-confetti-piece').forEach(piece => piece.remove());
+        for (let index = 0; index < 8; index++) {
+          const confetti = document.createElement('i');
+          confetti.className = 'win-confetti-piece';
+          confetti.style.setProperty('--i', index);
+          confetti.setAttribute('aria-hidden', 'true');
+          winCard.appendChild(confetti);
+        }
+      }
       document.getElementById('win-modal').classList.add('active');
+      this.stopBackgroundMusic();
       this.stopBoostPolling();
     } catch (err) {
       this.isPlaying = true;
@@ -1421,6 +1572,7 @@ const game = {
   async leaveGame() {
     if (!this.isPlaying) {
       app.showScreen('menu-screen');
+      this.stopBackgroundMusic();
       this.stopBoostPolling();
       return;
     }
@@ -1428,6 +1580,7 @@ const game = {
     if (this.mode === 'demo') {
       this.isPlaying = false;
       app.showScreen('menu-screen');
+      this.stopBackgroundMusic();
       this.stopBoostPolling();
       return;
     }
@@ -1450,6 +1603,7 @@ const game = {
       }
       app.showToast('Partida encerrada. O valor apostado não foi resgatado.');
       app.showScreen('menu-screen');
+      this.stopBackgroundMusic();
       this.stopBoostPolling();
       app.loadDashboard();
     } catch (err) {
@@ -1460,6 +1614,7 @@ const game = {
 
   async handleGameOver() {
     this.isPlaying = false;
+    this.stopBackgroundMusic();
     this.closeBoostModal();
 
     if (this.mode === 'real') {
@@ -1481,39 +1636,54 @@ const game = {
       } catch (e) {}
     }
 
+    const gameOverCard = document.querySelector('#gameover-modal .result-card');
+    gameOverCard?.classList.add('lose-result');
     document.getElementById('gameover-modal').classList.add('active');
     this.stopBoostPolling();
+  },
+
+  getPotentialClears(piece, startRow, startCol) {
+    if (!this.canPlaceOnGrid(this.board, piece.shape, startRow, startCol, this.gridSize)) return { rows: [], cols: [] };
+    const occupied = this.board.map(row => row.map(Boolean));
+    for (let row = 0; row < piece.shape.length; row++) {
+      for (let col = 0; col < piece.shape[row].length; col++) {
+        if (piece.shape[row][col]) occupied[startRow + row][startCol + col] = true;
+      }
+    }
+    const rows = [];
+    const cols = [];
+    for (let row = 0; row < this.gridSize; row++) if (occupied[row].every(Boolean)) rows.push(row);
+    for (let col = 0; col < this.gridSize; col++) {
+      let full = true;
+      for (let row = 0; row < this.gridSize; row++) if (!occupied[row][col]) full = false;
+      if (full) cols.push(col);
+    }
+    return { rows, cols };
   },
 
   draw(animationTime) {
     if (!this.ctx || !this.canvas) return;
     const w = this.canvas.width;
     const gridW = w;
-    const cellSize = gridW / this.gridSize;
+    const geometry = this.getBoardGeometry();
+    const cellSize = geometry.cell;
+    const now = Number.isFinite(animationTime) ? animationTime : performance.now();
 
     this.ctx.clearRect(0, 0, w, this.canvas.height);
-    this.ctx.fillStyle = '#071238';
+    this.ctx.fillStyle = '#1a4480';
     this.ctx.fillRect(0, 0, gridW, gridW);
-
-    this.ctx.strokeStyle = 'rgba(82, 137, 255, 0.24)';
-    this.ctx.lineWidth = 1;
-
-    for (let r = 0; r <= this.gridSize; r++) {
-      this.ctx.beginPath();
-      this.ctx.moveTo(0, r * cellSize);
-      this.ctx.lineTo(gridW, r * cellSize);
-      this.ctx.stroke();
-
-      this.ctx.beginPath();
-      this.ctx.moveTo(r * cellSize, 0);
-      this.ctx.lineTo(r * cellSize, gridW);
-      this.ctx.stroke();
-    }
 
     for (let r = 0; r < this.gridSize; r++) {
       for (let c = 0; c < this.gridSize; c++) {
+        const x = geometry.padding + c * geometry.step;
+        const y = geometry.padding + r * geometry.step;
+        this.ctx.fillStyle = '#15386a';
+        this.ctx.beginPath();
+        if (typeof this.ctx.roundRect === 'function') this.ctx.roundRect(x, y, cellSize, cellSize, Math.max(3, cellSize * 0.09));
+        else this.ctx.rect(x, y, cellSize, cellSize);
+        this.ctx.fill();
         if (this.board[r][c]) {
-          this.drawBlockCtx(this.ctx, c * cellSize, r * cellSize, cellSize, this.board[r][c]);
+          this.drawBlockCtx(this.ctx, x, y, cellSize, this.board[r][c]);
         }
       }
     }
@@ -1523,33 +1693,54 @@ const game = {
     if (this.isDragging && this.draggedPieceIndex !== null) {
       const piece = this.hand[this.draggedPieceIndex];
       if (piece) {
-        const col = Math.floor((this.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
-        const row = Math.floor((this.dragY - this.dragLift - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
+        const { col, row } = this.getDropPosition(piece);
+        const canPlace = this.canPlaceOnGrid(this.board, piece.shape, row, col, this.gridSize);
 
-        if (this.canPlaceOnGrid(this.board, piece.shape, row, col, this.gridSize)) {
-          this.ctx.globalAlpha = 0.45;
+        if (canPlace) {
+          this.ctx.globalAlpha = 0.62;
           for (let r = 0; r < piece.shape.length; r++) {
             for (let c = 0; c < piece.shape[r].length; c++) {
               if (piece.shape[r][c]) {
-                this.drawBlockCtx(this.ctx, (col + c) * cellSize, (row + r) * cellSize, cellSize, piece.color);
+                this.drawBlockCtx(this.ctx, geometry.padding + (col + c) * geometry.step, geometry.padding + (row + r) * geometry.step, cellSize, piece.color);
               }
             }
           }
           this.ctx.globalAlpha = 1.0;
+          const clears = this.getPotentialClears(piece, row, col);
+          if (clears.rows.length || clears.cols.length) {
+            const flash = 0.22 + (Math.sin(now / 95) + 1) * 0.18;
+            this.ctx.save();
+            this.ctx.globalCompositeOperation = 'screen';
+            this.ctx.fillStyle = `rgba(255,255,255,${flash})`;
+            this.ctx.shadowColor = '#c9ff43';
+            this.ctx.shadowBlur = 18;
+            clears.rows.forEach(line => this.ctx.fillRect(geometry.padding, geometry.padding + line * geometry.step, w - geometry.padding * 2, cellSize));
+            clears.cols.forEach(line => this.ctx.fillRect(geometry.padding + line * geometry.step, geometry.padding, cellSize, w - geometry.padding * 2));
+            this.ctx.restore();
+          }
+        } else if (row < this.gridSize && col < this.gridSize && row + piece.shape.length > 0 && col + piece.shape[0].length > 0) {
+          this.ctx.save();
+          this.ctx.fillStyle = 'rgba(255,84,112,.26)';
+          this.ctx.strokeStyle = 'rgba(255,84,112,.88)';
+          this.ctx.lineWidth = 2;
+          for (let r = 0; r < piece.shape.length; r++) for (let c = 0; c < piece.shape[r].length; c++) {
+            if (!piece.shape[r][c]) continue;
+            const targetRow = row + r;
+            const targetCol = col + c;
+            if (targetRow < 0 || targetCol < 0 || targetRow >= this.gridSize || targetCol >= this.gridSize) continue;
+            const x = geometry.padding + targetCol * geometry.step;
+            const y = geometry.padding + targetRow * geometry.step;
+            this.ctx.fillRect(x, y, cellSize, cellSize);
+            this.ctx.strokeRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
+          }
+          this.ctx.restore();
         }
       }
     }
 
     const handAreaY = gridW;
-    this.ctx.fillStyle = '#0b153e';
+    this.ctx.fillStyle = 'rgba(7,15,38,.94)';
     this.ctx.fillRect(0, handAreaY, w, 130);
-
-    this.ctx.strokeStyle = '#28477f';
-    this.ctx.lineWidth = 2;
-    this.ctx.beginPath();
-    this.ctx.moveTo(0, handAreaY);
-    this.ctx.lineTo(w, handAreaY);
-    this.ctx.stroke();
 
     const slotWidth = w / this.hand.length;
     const widestPiece = Math.max(1, ...this.hand.map(p => p.shape[0].length));
@@ -1560,30 +1751,35 @@ const game = {
       if (p.used) return;
 
       if (this.isDragging && this.draggedPieceIndex === idx) {
-        const pW = p.shape[0].length * cellSize;
-        const pH = p.shape.length * cellSize;
+        const pW = p.shape[0].length * geometry.step - geometry.gap;
+        const pH = p.shape.length * geometry.step - geometry.gap;
         const startX = this.dragX - pW / 2;
         const startY = this.dragY - this.dragLift - pH / 2;
 
         for (let r = 0; r < p.shape.length; r++) {
           for (let c = 0; c < p.shape[r].length; c++) {
             if (p.shape[r][c]) {
-              this.drawBlockCtx(this.ctx, startX + c * cellSize, startY + r * cellSize, cellSize, p.color);
+              this.drawBlockCtx(this.ctx, startX + c * geometry.step, startY + r * geometry.step, cellSize, p.color);
             }
           }
         }
       } else {
         const slotCenterX = idx * slotWidth + slotWidth / 2;
         const slotCenterY = handAreaY + 65;
-        const pW = p.shape[0].length * miniCellSize;
-        const pH = p.shape.length * miniCellSize;
+        const pieceAge = Math.max(0, now - this.handGeneratedAt - idx * 55);
+        const t = Math.min(1, pieceAge / 340);
+        const popScale = t === 1 ? 1 : 1 + 2.7 * Math.pow(t - 1, 3) + 1.7 * Math.pow(t - 1, 2);
+        const shownCell = miniCellSize * Math.max(0.05, popScale);
+        const pW = p.shape[0].length * shownCell;
+        const pH = p.shape.length * shownCell;
         const startX = slotCenterX - pW / 2;
         const startY = slotCenterY - pH / 2;
+        const displayColor = this.canvas.closest('.game-playfield')?.classList.contains('board-locked') ? '#ff5470' : p.color;
 
         for (let r = 0; r < p.shape.length; r++) {
           for (let c = 0; c < p.shape[r].length; c++) {
             if (p.shape[r][c]) {
-              this.drawBlockCtx(this.ctx, startX + c * miniCellSize, startY + r * miniCellSize, miniCellSize, p.color);
+              this.drawBlockCtx(this.ctx, startX + c * shownCell, startY + r * shownCell, shownCell, displayColor);
             }
           }
         }
@@ -1592,34 +1788,42 @@ const game = {
 
     if (this.mode === 'demo') {
       this.ctx.font = 'bold 12px Silkscreen';
-      this.ctx.fillStyle = 'rgba(201, 255, 67, 0.4)';
+      this.ctx.fillStyle = 'rgba(201, 255, 67, 0.32)';
       this.ctx.fillText('MODO TREINO DEMO', 10, gridW - 10);
     }
   },
 
   drawBlockCtx(ctx, x, y, size, color) {
-    const inset = Math.max(1, size * 0.045);
+    const inset = Math.max(1, size * 0.035);
     const blockSize = Math.max(2, size - inset * 2);
-    const radius = Math.max(2, Math.min(7, size * 0.16));
+    const radius = Math.max(2, Math.min(7, size * 0.12));
     const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
-    gradient.addColorStop(0, '#ffffff');
-    gradient.addColorStop(0.08, color);
+    gradient.addColorStop(0, color);
     gradient.addColorStop(0.72, color);
-    gradient.addColorStop(1, '#071333');
+    gradient.addColorStop(1, 'rgba(5,15,43,.72)');
     ctx.save();
-    ctx.shadowColor = color;
-    ctx.shadowBlur = Math.min(10, size * 0.22);
+    ctx.shadowColor = 'rgba(0,0,0,.34)';
+    ctx.shadowBlur = Math.min(5, size * 0.11);
+    ctx.shadowOffsetY = Math.max(1, size * 0.05);
     ctx.beginPath();
     if (typeof ctx.roundRect === 'function') ctx.roundRect(x + inset, y + inset, blockSize, blockSize, radius);
     else ctx.rect(x + inset, y + inset, blockSize, blockSize);
     ctx.fillStyle = gradient;
     ctx.fill();
     ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
     const highlight = ctx.createLinearGradient(x, y, x, y + size * 0.5);
-    highlight.addColorStop(0, 'rgba(255,255,255,.5)');
+    highlight.addColorStop(0, 'rgba(255,255,255,.64)');
     highlight.addColorStop(1, 'rgba(255,255,255,0)');
     ctx.fillStyle = highlight;
-    ctx.fillRect(x + inset + radius, y + inset + 1, Math.max(1, blockSize - radius * 2), Math.max(2, size * 0.09));
+    ctx.fillRect(x + inset + radius, y + inset + 1, Math.max(1, blockSize - radius * 2), Math.max(2, size * 0.08));
+    ctx.strokeStyle = 'rgba(255,255,255,.22)';
+    ctx.lineWidth = Math.max(1, size * 0.025);
+    ctx.beginPath();
+    ctx.moveTo(x + inset + radius, y + inset + 1);
+    ctx.lineTo(x + inset + 1, y + inset + radius);
+    ctx.lineTo(x + inset + 1, y + inset + blockSize - radius);
+    ctx.stroke();
     ctx.restore();
   }
 };
