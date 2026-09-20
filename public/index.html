@@ -127,7 +127,7 @@
 
     <section class="screen play-screen" id="game-screen">
       <div class="game-shell">
-        <div class="game-head"><button class="back-link" onclick="game.leaveGame()">← Sair da mesa</button><div><small>PARTIDA EM ANDAMENTO</small><b id="game-session-label">BLOCKERINO ORIGINAL</b></div><div class="game-actions"><button id="btn-boost-corner" class="boost-corner-button" type="button" onclick="game.reopenBoostOffer()" aria-label="Comprar Boost 300%" hidden><b aria-hidden="true">⚡</b><span>Boost</span></button><button id="btn-game-sound" class="game-sound-toggle" type="button" aria-pressed="true" onclick="game.toggleSound()">🔊 Som</button><button id="btn-cashout" class="btn btn-success" type="button" onclick="game.cashout()" aria-label="Resgate bloqueado até atingir dez vezes" disabled>Libera em 10x</button></div></div>
+        <div class="game-head"><button class="back-link" onclick="game.leaveGame()">← Sair da mesa</button><div><small>PARTIDA EM ANDAMENTO</small><b id="game-session-label">BLOCKERINO ORIGINAL</b></div><div class="game-actions"><button id="btn-boost-corner" class="boost-corner-button" type="button" onclick="game.reopenBoostOffer()" aria-label="Comprar Boost 300%" hidden><b aria-hidden="true">⚡</b><span>Boost</span></button><button class="game-tutorial-button" type="button" onclick="game.openTutorial()" aria-label="Abrir tutorial de como jogar"><b aria-hidden="true">?</b><span>Como jogar</span></button><button id="btn-game-sound" class="game-sound-toggle" type="button" aria-pressed="true" onclick="game.toggleSound()">🔊 Som</button><button id="btn-cashout" class="btn btn-success" type="button" onclick="game.cashout()" aria-label="Resgate bloqueado até atingir dez vezes" disabled>Libera em 10x</button></div></div>
         <div class="game-playfield">
           <div class="game-hud-bar"><div class="game-hud-stat"><span>Multiplicador</span><b id="hud-multiplier">1.00x</b></div><div class="game-hud-stat"><span>Pontuação</span><b id="hud-score">0</b></div><div class="game-hud-stat"><span>Linhas</span><b id="hud-lines">0</b></div><div class="game-hud-stat"><span>Retorno potencial</span><b id="hud-payout">R$ 0,00</b></div></div>
           <div class="combo-track reward-goal-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Progresso até a meta de recompensa de dez vezes a aposta"><i id="hud-combo-bar"></i><span id="hud-combo-label">META 10X</span></div>
@@ -145,6 +145,33 @@
         </div>
       </div>
     </section>
+
+    <div class="game-tutorial" id="game-tutorial" role="dialog" aria-modal="true" aria-labelledby="game-tutorial-title" hidden>
+      <button class="game-tutorial-backdrop" type="button" onclick="game.closeTutorial()" aria-label="Fechar tutorial"></button>
+      <article class="game-tutorial-card">
+        <header><div><small>GUIA RÁPIDO · <span id="tutorial-step-counter">1/4</span></small><h2 id="game-tutorial-title">Domine o tabuleiro</h2></div><button type="button" onclick="game.closeTutorial()" aria-label="Fechar tutorial">×</button></header>
+        <div class="tutorial-slides" id="tutorial-slides">
+          <section class="tutorial-slide is-active" data-tutorial-step="0">
+            <div class="tutorial-demo tutorial-drag-demo" aria-hidden="true"><div class="tutorial-board"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><div class="tutorial-piece"><b></b><b></b><b></b></div><span class="tutorial-finger">☝</span></div>
+            <small>PASSO 1</small><h3>Arraste e encaixe</h3><p>Toque em uma das três peças da bandeja e arraste até o tabuleiro. No celular, o bloco fica acima do dedo para o encaixe continuar visível.</p>
+          </section>
+          <section class="tutorial-slide" data-tutorial-step="1">
+            <div class="tutorial-demo tutorial-line-demo" aria-hidden="true"><div class="tutorial-line"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span>LINHA COMPLETA</span></div>
+            <small>PASSO 2</small><h3>Complete fileiras</h3><p>Preencha uma linha ou coluna inteira. Os blocos explodem, liberam espaço e fazem o multiplicador avançar.</p>
+          </section>
+          <section class="tutorial-slide" data-tutorial-step="2">
+            <div class="tutorial-demo tutorial-multiplier-demo" aria-hidden="true"><span>1.00x</span><b>→</b><strong>1.50x</strong><div><i></i><i></i><i></i></div></div>
+            <small>PASSO 3</small><h3>Multiplique o retorno</h3><p>Cada fileira concluída aumenta o multiplicador conforme as regras da sua conta. Acompanhe o retorno potencial e o progresso no topo.</p>
+          </section>
+          <section class="tutorial-slide" data-tutorial-step="3">
+            <div class="tutorial-demo tutorial-goal-demo" aria-hidden="true"><div><i></i><span>META 10X</span></div><strong>RESGATE LIBERADO</strong></div>
+            <small>PASSO 4</small><h3>Chegue à meta</h3><p>O resgate normal libera ao atingir 10x. Se não houver mais encaixes antes disso, a partida termina sem recompensa. Planeje cada peça.</p>
+          </section>
+        </div>
+        <div class="tutorial-progress" aria-hidden="true"><i class="active"></i><i></i><i></i><i></i></div>
+        <footer><button class="tutorial-prev" id="tutorial-prev" type="button" onclick="game.previousTutorialStep()" disabled>Voltar</button><button class="tutorial-next" id="tutorial-next" type="button" onclick="game.nextTutorialStep()">Próximo <span>→</span></button></footer>
+      </article>
+    </div>
 
     <section class="screen dashboard" id="wallet-screen">
       <header class="page-head"><div><div class="eyebrow"><span></span> FINANCEIRO</div><h2>Sua <em>carteira</em>.</h2><p>Depósitos, saques e histórico em um só lugar.</p></div><button class="btn btn-ghost" onclick="app.showScreen('menu-screen')">Voltar ao painel</button></header>
@@ -222,6 +249,6 @@
   <div class="modal" id="win-modal"><div class="modal-card result-card"><div class="result-icon">✓</div><small>RESGATE CONCLUÍDO</small><h3 id="win-modal-payout">R$ 0,00</h3><p>Multiplicador final: <b id="win-modal-mult">1.00x</b></p><button class="btn btn-primary btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="modal" id="gameover-modal"><div class="modal-card result-card"><div class="result-icon danger">×</div><small>FIM DE PARTIDA</small><h3>Sem movimentos</h3><p>A rodada foi encerrada. Revise sua estratégia e tente novamente.</p><button class="btn btn-primary btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260914-4"></script><script src="./js/wallet.js?v=20260910-2"></script><script src="./js/game.js?v=20260910-4"></script>
+  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260914-4"></script><script src="./js/wallet.js?v=20260910-2"></script><script src="./js/game.js?v=20260919-1"></script>
 </body>
 </html>

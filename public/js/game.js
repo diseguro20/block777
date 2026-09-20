@@ -125,6 +125,8 @@ const game = {
   celebrationFrame: null,
   audioContext: null,
   soundEnabled: localStorage.getItem('blockerino-sound') !== 'off',
+  tutorialStep: 0,
+  tutorialSteps: 4,
 
   // Jogo Real em Prévia Gratuita na Landing Page (8x8 Completo)
   landingDemo: {
@@ -198,6 +200,98 @@ const game = {
       this.playTone(note * lift, index * 0.09, 0.28, 'sine', 0.05);
       this.playTone(note * 2 * lift, index * 0.09 + 0.025, 0.1, 'square', 0.012);
     });
+  },
+
+  playPlacementSound() {
+    if (!this.soundEnabled) return;
+    this.playTone(246.94, 0, 0.07, 'triangle', 0.022);
+    this.playTone(369.99, 0.045, 0.11, 'sine', 0.026);
+  },
+
+  playInvalidSound() {
+    if (!this.soundEnabled) return;
+    this.playTone(148, 0, 0.09, 'sawtooth', 0.018);
+    this.playTone(112, 0.065, 0.12, 'triangle', 0.02);
+  },
+
+  maybeShowTutorial() {
+    if (localStorage.getItem('blockerino-game-tutorial-v2') === 'seen') return;
+    window.setTimeout(() => {
+      if (this.isPlaying) this.openTutorial();
+    }, 350);
+  },
+
+  openTutorial() {
+    const tutorial = document.getElementById('game-tutorial');
+    if (!tutorial) return;
+    this.tutorialStep = 0;
+    this.renderTutorial();
+    tutorial.hidden = false;
+    document.body.classList.add('tutorial-open');
+    tutorial.querySelector('.game-tutorial-card')?.focus?.();
+  },
+
+  closeTutorial() {
+    const tutorial = document.getElementById('game-tutorial');
+    if (tutorial) tutorial.hidden = true;
+    document.body.classList.remove('tutorial-open');
+    localStorage.setItem('blockerino-game-tutorial-v2', 'seen');
+    this.unlockAudio();
+  },
+
+  previousTutorialStep() {
+    this.tutorialStep = Math.max(0, this.tutorialStep - 1);
+    this.renderTutorial();
+  },
+
+  nextTutorialStep() {
+    if (this.tutorialStep >= this.tutorialSteps - 1) {
+      this.closeTutorial();
+      return;
+    }
+    this.tutorialStep += 1;
+    this.renderTutorial();
+  },
+
+  renderTutorial() {
+    const slides = [...document.querySelectorAll('[data-tutorial-step]')];
+    slides.forEach((slide, index) => slide.classList.toggle('is-active', index === this.tutorialStep));
+    document.querySelectorAll('.tutorial-progress i').forEach((dot, index) => dot.classList.toggle('active', index === this.tutorialStep));
+    const counter = document.getElementById('tutorial-step-counter');
+    const previous = document.getElementById('tutorial-prev');
+    const next = document.getElementById('tutorial-next');
+    if (counter) counter.textContent = `${this.tutorialStep + 1}/${this.tutorialSteps}`;
+    if (previous) previous.disabled = this.tutorialStep === 0;
+    if (next) next.innerHTML = this.tutorialStep === this.tutorialSteps - 1 ? 'Entendi, jogar <span>✓</span>' : 'Próximo <span>→</span>';
+  },
+
+  emitPlacementBurst(cells, color) {
+    if (!cells?.length || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const stage = this.canvas?.closest('.game-stage');
+    if (!stage) return;
+    const canvasRect = this.canvas.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    const averageRow = cells.reduce((sum, cell) => sum + cell.row, 0) / cells.length;
+    const averageCol = cells.reduce((sum, cell) => sum + cell.col, 0) / cells.length;
+    const burst = document.createElement('span');
+    burst.className = 'placement-burst';
+    burst.style.left = `${canvasRect.left - stageRect.left + ((averageCol + 0.5) / this.gridSize) * canvasRect.width}px`;
+    burst.style.top = `${canvasRect.top - stageRect.top + ((averageRow + 0.5) / this.gridSize) * canvasRect.width}px`;
+    burst.style.setProperty('--burst-color', color || '#20d4ff');
+    burst.innerHTML = '<i></i>'.repeat(10);
+    stage.appendChild(burst);
+    window.setTimeout(() => burst.remove(), 700);
+  },
+
+  showInvalidPlacement() {
+    const shell = this.canvas?.closest('.game-shell');
+    if (!shell) return;
+    shell.classList.remove('invalid-drop');
+    void shell.offsetWidth;
+    shell.classList.add('invalid-drop');
+    window.setTimeout(() => shell.classList.remove('invalid-drop'), 330);
+    if (navigator.vibrate) navigator.vibrate(25);
+    this.playInvalidSound();
   },
 
   toggleSound() {
@@ -750,6 +844,7 @@ const game = {
       document.getElementById('btn-cashout').style.display = 'flex';
       this.updateHud();
       this.draw();
+      this.maybeShowTutorial();
       app.showToast('🎮 Partida iniciada na Arena Blockerino. Boa sorte!');
     } catch (err) {
       app.showToast(err.message || 'Erro ao iniciar partida.');
@@ -793,6 +888,7 @@ const game = {
     document.getElementById('btn-cashout').style.display = 'none';
     this.updateHud();
     this.draw();
+    this.maybeShowTutorial();
     app.showToast('🎮 Modo de demonstração iniciado.');
   },
 
@@ -872,16 +968,21 @@ const game = {
 
     if (this.canPlaceOnGrid(this.board, piece.shape, row, col, this.gridSize)) {
       let placedBlocks = 0;
+      const placedCells = [];
       for (let r = 0; r < piece.shape.length; r++) {
         for (let c = 0; c < piece.shape[r].length; c++) {
           if (piece.shape[r][c]) {
             this.board[row + r][col + c] = piece.color;
+            placedCells.push({ row: row + r, col: col + c });
             placedBlocks++;
           }
         }
       }
 
       piece.used = true;
+      this.playPlacementSound();
+      this.emitPlacementBurst(placedCells, piece.color);
+      if (navigator.vibrate && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) navigator.vibrate(12);
       this.score += placedBlocks;
       this.blocksPlaced += placedBlocks;
       const clearedLines = this.checkLines(placedBlocks);
@@ -905,6 +1006,8 @@ const game = {
       if (!this.canAnyPieceBePlaced()) {
         this.handleGameOver();
       }
+    } else {
+      this.showInvalidPlacement();
     }
   },
 
@@ -1495,16 +1598,29 @@ const game = {
   },
 
   drawBlockCtx(ctx, x, y, size, color) {
-    ctx.fillStyle = color;
-    ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
-
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
-    ctx.fillRect(x + 1, y + 1, size - 2, 3);
-    ctx.fillRect(x + 1, y + 1, 3, size - 2);
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.fillRect(x + 1, y + size - 4, size - 2, 3);
-    ctx.fillRect(x + size - 4, y + 1, 3, size - 2);
+    const inset = Math.max(1, size * 0.045);
+    const blockSize = Math.max(2, size - inset * 2);
+    const radius = Math.max(2, Math.min(7, size * 0.16));
+    const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
+    gradient.addColorStop(0, '#ffffff');
+    gradient.addColorStop(0.08, color);
+    gradient.addColorStop(0.72, color);
+    gradient.addColorStop(1, '#071333');
+    ctx.save();
+    ctx.shadowColor = color;
+    ctx.shadowBlur = Math.min(10, size * 0.22);
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(x + inset, y + inset, blockSize, blockSize, radius);
+    else ctx.rect(x + inset, y + inset, blockSize, blockSize);
+    ctx.fillStyle = gradient;
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    const highlight = ctx.createLinearGradient(x, y, x, y + size * 0.5);
+    highlight.addColorStop(0, 'rgba(255,255,255,.5)');
+    highlight.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = highlight;
+    ctx.fillRect(x + inset + radius, y + inset + 1, Math.max(1, blockSize - radius * 2), Math.max(2, size * 0.09));
+    ctx.restore();
   }
 };
 
