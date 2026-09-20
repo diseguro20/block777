@@ -22,7 +22,7 @@
   <meta name="twitter:image" content="https://block777-omega.vercel.app/og.png?v=20260803-1">
   <title>Blockerino — 100% de bônus a partir de R$ 50</title>
   <link rel="stylesheet" href="./css/style.css?v=20260831-2">
-  <link rel="stylesheet" href="./css/arena.css?v=20260919-2">
+  <link rel="stylesheet" href="./css/arena.css?v=20260919-3">
 </head>
 <body class="player-app">
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
@@ -64,9 +64,12 @@
         </div>
         <div class="game-preview">
           <div class="offer-badge"><span>VOCÊ DEPOSITA</span><b id="hero-example-deposit">R$ 50</b><i>+</i><span>NÓS ADICIONAMOS</span><b id="hero-example-bonus">R$ 50</b><strong id="hero-example-total">= R$ 100 PARA JOGAR</strong></div>
-          <div class="preview-top"><div><small>MULTIPLICADOR</small><strong id="mini-demo-mult">1.00x</strong></div><div><small>RETORNO</small><strong id="mini-demo-value">R$ 20,00</strong></div><div><small>LINHAS</small><strong id="mini-demo-lines">0</strong></div></div>
+          <div class="landing-demo-head"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><div><b>BLOCKERINO</b><small>DEMONSTRAÇÃO AO VIVO</small></div><button type="button" onclick="game.openLandingTutorial()" aria-label="Abrir tutorial da demonstração">?</button><em><i></i> JOGÁVEL</em></div>
+          <div class="preview-top clone-preview-hud"><div class="clone-preview-corners"><span><small>♛ ENTRADA</small><b>R$ 20,00</b></span><span><small>META DE RESGATE</small><b>R$ 200,00</b></span></div><strong id="mini-demo-value">R$ 20,00</strong><div class="mini-demo-progress"><i id="mini-demo-progress"></i></div><div class="clone-preview-metrics"><div><small>MULTIPLICADOR</small><b id="mini-demo-mult">1.00x</b></div><div><small>PONTUAÇÃO</small><b id="mini-demo-score">0</b></div><div><small>LINHAS</small><b id="mini-demo-lines">0</b></div></div></div>
           <canvas id="mini-demo-canvas" aria-label="Demonstração interativa do jogo"></canvas>
-          <p>Arraste uma peça para experimentar</p>
+          <p>Toque e arraste uma peça — funciona igual ao jogo real</p>
+          <div class="landing-demo-tutorial" id="landing-demo-tutorial" hidden><button class="landing-tutorial-backdrop" type="button" onclick="game.closeLandingTutorial()" aria-label="Fechar tutorial"></button><article><small>APRENDA JOGANDO · <span id="landing-tutorial-counter">1/4</span></small><button class="landing-tutorial-close" type="button" onclick="game.closeLandingTutorial()" aria-label="Fechar">×</button><div class="landing-tutorial-icon" id="landing-tutorial-icon" aria-hidden="true">☝</div><h3 id="landing-tutorial-title">Escolha uma peça</h3><p id="landing-tutorial-copy">Toque em um dos três blocos coloridos que aparecem na bandeja inferior.</p><div class="landing-tutorial-dots"><i class="active"></i><i></i><i></i><i></i></div><footer><button id="landing-tutorial-prev" type="button" onclick="game.previousLandingTutorialStep()" disabled>Voltar</button><button id="landing-tutorial-next" type="button" onclick="game.nextLandingTutorialStep()">Próximo →</button></footer></article></div>
+          <div class="landing-practice-success" id="landing-practice-success" hidden><b>✓ ENCAIXE PERFEITO!</b><span>Continue formando linhas para multiplicar.</span></div>
         </div>
       </div>
       <section class="security-section" aria-labelledby="security-title">
@@ -252,6 +255,6 @@
   <div class="modal clone-result-overlay" id="win-modal"><div class="modal-card result-card clone-result-card"><div class="clone-result-banner"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><b>BLOCKERINO</b><small>RESGATE CONCLUÍDO</small></div><div class="clone-win-trophy" aria-hidden="true">🏆</div><h3>Parabéns!</h3><p class="clone-result-kicker">Você ganhou</p><strong class="clone-result-value win" id="win-modal-payout">R$ 0,00</strong><p>Multiplicador final: <b id="win-modal-mult">1.00x</b><br>O valor já está disponível no seu saldo.</p><div class="clone-result-actions"><button class="btn btn-primary btn-wide" onclick="game.replayFromResult('win-modal')">Jogar de novo</button><button class="btn btn-ghost btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Painel</button></div></div></div>
   <div class="modal clone-result-overlay" id="gameover-modal"><div class="modal-card result-card clone-result-card lose-result"><div class="clone-lose-badge" aria-hidden="true">×</div><h3>O tabuleiro travou!</h3><strong class="clone-result-value lose" id="gameover-loss-value">Fim da partida</strong><p>Nenhuma peça se encaixava. Planeje os próximos espaços e tente novamente.</p><div class="clone-result-actions"><button class="btn btn-primary btn-wide" onclick="game.replayFromResult('gameover-modal')">Tentar de novo</button><button class="btn btn-ghost btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260919-1"></script><script src="./js/wallet.js?v=20260910-2"></script><script src="./js/game.js?v=20260919-3"></script>
+  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260919-1"></script><script src="./js/wallet.js?v=20260910-2"></script><script src="./js/game.js?v=20260919-4"></script>
 </body>
 </html>

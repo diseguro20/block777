@@ -140,12 +140,19 @@ const game = {
     gridSize: 8,
     multiplier: 1.0,
     linesCleared: 0,
+    score: 0,
     isDragging: false,
     draggedIndex: null,
     dragX: 0,
     dragY: 0,
     dragLift: 25,
-    betBase: 2000 // R$ 20,00 base
+    betBase: 2000,
+    handGeneratedAt: 0,
+    animationFrame: null,
+    celebration: null,
+    tutorialStep: 0,
+    tutorialPractice: false,
+    tutorialCompletedPlacement: false
   },
 
   init() {
@@ -381,6 +388,100 @@ const game = {
     this.handAnimationFrame = requestAnimationFrame(tick);
   },
 
+  getLandingGeometry() {
+    const width = this.landingCanvas?.width || 0;
+    const padding = Math.max(7, Math.round(width * 0.022));
+    const gap = Math.max(3, Math.round(width * 0.009));
+    const cell = (width - padding * 2 - gap * 7) / 8;
+    return { width, padding, gap, cell, step: cell + gap };
+  },
+
+  getLandingDropPosition(piece) {
+    const geometry = this.getLandingGeometry();
+    const pieceWidth = piece.shape[0].length * geometry.step - geometry.gap;
+    const pieceHeight = piece.shape.length * geometry.step - geometry.gap;
+    return {
+      col: Math.round((this.landingDemo.dragX - pieceWidth / 2 - geometry.padding) / geometry.step),
+      row: Math.round((this.landingDemo.dragY - this.landingDemo.dragLift - pieceHeight / 2 - geometry.padding) / geometry.step)
+    };
+  },
+
+  openLandingTutorial() {
+    const tutorial = document.getElementById('landing-demo-tutorial');
+    if (!tutorial) return;
+    this.landingDemo.tutorialStep = 0;
+    tutorial.hidden = false;
+    this.renderLandingTutorial();
+  },
+
+  closeLandingTutorial(enablePractice = false) {
+    const tutorial = document.getElementById('landing-demo-tutorial');
+    if (tutorial) tutorial.hidden = true;
+    document.querySelector('.game-preview')?.removeAttribute('data-tutorial-focus');
+    if (enablePractice) {
+      this.landingDemo.tutorialPractice = true;
+      document.querySelector('.game-preview')?.classList.add('tutorial-practice-mode');
+      app.showToast('Agora é com você: arraste uma peça para o tabuleiro.');
+    }
+    localStorage.setItem('blockerino-landing-tutorial-v1', 'seen');
+  },
+
+  previousLandingTutorialStep() {
+    this.landingDemo.tutorialStep = Math.max(0, this.landingDemo.tutorialStep - 1);
+    this.renderLandingTutorial();
+  },
+
+  nextLandingTutorialStep() {
+    if (this.landingDemo.tutorialStep >= 3) {
+      this.closeLandingTutorial(true);
+      return;
+    }
+    this.landingDemo.tutorialStep += 1;
+    this.renderLandingTutorial();
+  },
+
+  renderLandingTutorial() {
+    const steps = [
+      { icon: '☝', title: 'Escolha uma peça', copy: 'Toque em um dos três blocos coloridos que aparecem na bandeja inferior.', focus: 'tray' },
+      { icon: '↟', title: 'Arraste até o tabuleiro', copy: 'Mantenha o dedo pressionado e leve a peça para uma área livre. A prévia verde confirma o encaixe.', focus: 'board' },
+      { icon: '✦', title: 'Complete linhas', copy: 'Preencha uma fileira ou coluna inteira. Os blocos caem, liberam espaço e aumentam seu retorno.', focus: 'board' },
+      { icon: '×', title: 'Multiplique e pratique', copy: 'Observe o retorno e o multiplicador no topo. Agora faça seu primeiro encaixe na demonstração.', focus: 'hud' }
+    ];
+    const step = steps[this.landingDemo.tutorialStep] || steps[0];
+    const preview = document.querySelector('.game-preview');
+    preview?.setAttribute('data-tutorial-focus', step.focus);
+    const counter = document.getElementById('landing-tutorial-counter');
+    const icon = document.getElementById('landing-tutorial-icon');
+    const title = document.getElementById('landing-tutorial-title');
+    const copy = document.getElementById('landing-tutorial-copy');
+    const previous = document.getElementById('landing-tutorial-prev');
+    const next = document.getElementById('landing-tutorial-next');
+    if (counter) counter.textContent = `${this.landingDemo.tutorialStep + 1}/4`;
+    if (icon) icon.textContent = step.icon;
+    if (title) title.textContent = step.title;
+    if (copy) copy.textContent = step.copy;
+    if (previous) previous.disabled = this.landingDemo.tutorialStep === 0;
+    if (next) next.textContent = this.landingDemo.tutorialStep === 3 ? 'Praticar agora ✓' : 'Próximo →';
+    document.querySelectorAll('.landing-tutorial-dots i').forEach((dot, index) => dot.classList.toggle('active', index === this.landingDemo.tutorialStep));
+  },
+
+  completeLandingPractice() {
+    if (!this.landingDemo.tutorialPractice || this.landingDemo.tutorialCompletedPlacement) return;
+    this.landingDemo.tutorialCompletedPlacement = true;
+    this.landingDemo.tutorialPractice = false;
+    document.querySelector('.game-preview')?.classList.remove('tutorial-practice-mode');
+    const success = document.getElementById('landing-practice-success');
+    if (!success) return;
+    success.hidden = false;
+    success.classList.remove('active');
+    void success.offsetWidth;
+    success.classList.add('active');
+    window.setTimeout(() => {
+      success.hidden = true;
+      success.classList.remove('active');
+    }, 2400);
+  },
+
   initLandingDemo() {
     this.landingCanvas = document.getElementById('mini-demo-canvas');
     if (!this.landingCanvas) return;
@@ -408,6 +509,7 @@ const game = {
 
     this.landingDemo.multiplier = 1.0;
     this.landingDemo.linesCleared = 0;
+    this.landingDemo.score = 0;
     this.generateLandingHand();
     if (!this.landingEventsBound) {
       this.setupLandingEvents();
@@ -416,6 +518,9 @@ const game = {
     }
     this.drawLandingDemo();
     this.updateLandingHud();
+    if (localStorage.getItem('blockerino-landing-tutorial-v1') !== 'seen') {
+      window.setTimeout(() => this.openLandingTutorial(), 850);
+    }
   },
 
   resizeLandingCanvas() {
@@ -435,6 +540,18 @@ const game = {
       const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
       this.landingDemo.hand.push({ shape, color, used: false });
     }
+    this.landingDemo.handGeneratedAt = performance.now();
+    if (this.landingDemo.animationFrame) cancelAnimationFrame(this.landingDemo.animationFrame);
+    const animate = now => {
+      if (now - this.landingDemo.handGeneratedAt > 430) {
+        this.landingDemo.animationFrame = null;
+        this.drawLandingDemo();
+        return;
+      }
+      this.drawLandingDemo(now);
+      this.landingDemo.animationFrame = requestAnimationFrame(animate);
+    };
+    this.landingDemo.animationFrame = requestAnimationFrame(animate);
   },
 
   setupLandingEvents() {
@@ -510,26 +627,34 @@ const game = {
     const piece = this.landingDemo.hand[idx];
     if (!piece || piece.used) return;
 
-    const gridW = this.landingCanvas.width;
-    const cellSize = gridW / 8;
-
-    const col = Math.floor((this.landingDemo.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
-    const row = Math.floor((this.landingDemo.dragY - this.landingDemo.dragLift - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
+    const { col, row } = this.getLandingDropPosition(piece);
 
     if (this.canPlaceOnGrid(this.landingDemo.board, piece.shape, row, col, 8)) {
+      let placed = 0;
       for (let r = 0; r < piece.shape.length; r++) {
         for (let c = 0; c < piece.shape[r].length; c++) {
           if (piece.shape[r][c]) {
             this.landingDemo.board[row + r][col + c] = piece.color;
+            placed++;
           }
         }
       }
       piece.used = true;
+      this.landingDemo.score += placed;
+      this.playPlacementSound();
       this.checkLandingLines();
+      this.updateLandingHud();
+      this.completeLandingPractice();
 
       if (this.landingDemo.hand.every(p => p.used)) {
         this.generateLandingHand();
       }
+    } else {
+      this.playInvalidSound();
+      this.landingCanvas.classList.remove('invalid-drop');
+      void this.landingCanvas.offsetWidth;
+      this.landingCanvas.classList.add('invalid-drop');
+      window.setTimeout(() => this.landingCanvas?.classList.remove('invalid-drop'), 330);
     }
   },
 
@@ -552,6 +677,13 @@ const game = {
     lines = rowsToClear.length + colsToClear.length;
 
     if (lines > 0) {
+      const clearedCellMap = new Map();
+      rowsToClear.forEach(row => {
+        for (let col = 0; col < 8; col++) if (board[row][col]) clearedCellMap.set(`${row}:${col}`, { row, col, color: board[row][col] });
+      });
+      colsToClear.forEach(col => {
+        for (let row = 0; row < 8; row++) if (board[row][col]) clearedCellMap.set(`${row}:${col}`, { row, col, color: board[row][col] });
+      });
       rowsToClear.forEach(r => { for (let c = 0; c < 8; c++) board[r][c] = null; });
       colsToClear.forEach(c => { for (let r = 0; r < 8; r++) board[r][c] = null; });
 
@@ -559,6 +691,20 @@ const game = {
       this.landingDemo.multiplier = parseFloat((this.landingDemo.multiplier + lines * 0.20).toFixed(2));
       this.playLineCompleteSound(lines);
       this.updateLandingHud();
+      this.landingDemo.celebration = { rows: rowsToClear, cols: colsToClear, cells: [...clearedCellMap.values()], startedAt: performance.now(), duration: 1000 };
+      if (this.landingDemo.animationFrame) cancelAnimationFrame(this.landingDemo.animationFrame);
+      const animate = now => {
+        const celebration = this.landingDemo.celebration;
+        if (!celebration) return;
+        this.drawLandingDemo(now);
+        if (now - celebration.startedAt < celebration.duration) this.landingDemo.animationFrame = requestAnimationFrame(animate);
+        else {
+          this.landingDemo.celebration = null;
+          this.landingDemo.animationFrame = null;
+          this.drawLandingDemo();
+        }
+      };
+      this.landingDemo.animationFrame = requestAnimationFrame(animate);
       app.showToast(`🔥 ${lines} LINHA(S) QUEBRADA(S)! Multiplicador: ${this.landingDemo.multiplier.toFixed(2)}x`);
     }
   },
@@ -569,6 +715,12 @@ const game = {
     
     const linesEl = document.getElementById('mini-demo-lines');
     if (linesEl) linesEl.textContent = this.landingDemo.linesCleared;
+
+    const scoreEl = document.getElementById('mini-demo-score');
+    if (scoreEl) scoreEl.textContent = this.landingDemo.score.toLocaleString('pt-BR');
+
+    const progressEl = document.getElementById('mini-demo-progress');
+    if (progressEl) progressEl.style.width = `${Math.min(100, Math.max(0, ((this.landingDemo.multiplier - 1) / 9) * 100))}%`;
 
     const valEl = document.getElementById('mini-demo-value');
     const profitCentavos = Math.round(this.landingDemo.betBase * this.landingDemo.multiplier);
@@ -582,79 +734,129 @@ const game = {
     }
   },
 
-  drawLandingDemo() {
+  getLandingPotentialClears(piece, startRow, startCol) {
+    if (!this.canPlaceOnGrid(this.landingDemo.board, piece.shape, startRow, startCol, 8)) return { rows: [], cols: [] };
+    const occupied = this.landingDemo.board.map(row => row.map(Boolean));
+    for (let row = 0; row < piece.shape.length; row++) for (let col = 0; col < piece.shape[row].length; col++) {
+      if (piece.shape[row][col]) occupied[startRow + row][startCol + col] = true;
+    }
+    const rows = [];
+    const cols = [];
+    for (let row = 0; row < 8; row++) if (occupied[row].every(Boolean)) rows.push(row);
+    for (let col = 0; col < 8; col++) {
+      let full = true;
+      for (let row = 0; row < 8; row++) if (!occupied[row][col]) full = false;
+      if (full) cols.push(col);
+    }
+    return { rows, cols };
+  },
+
+  drawLandingDemo(animationTime) {
     if (!this.landingCtx || !this.landingCanvas) return;
     const ctx = this.landingCtx;
     const w = this.landingCanvas.width;
     const gridW = w;
-    const cellSize = gridW / 8;
+    const geometry = this.getLandingGeometry();
+    const cellSize = geometry.cell;
+    const now = Number.isFinite(animationTime) ? animationTime : performance.now();
 
     ctx.clearRect(0, 0, w, this.landingCanvas.height);
-    ctx.fillStyle = '#070b0b';
+    ctx.fillStyle = '#1a4480';
     ctx.fillRect(0, 0, gridW, gridW);
-
-    ctx.strokeStyle = 'rgba(122, 145, 139, 0.22)';
-    ctx.lineWidth = 1;
-    for (let i = 0; i <= 8; i++) {
-      ctx.beginPath(); ctx.moveTo(0, i * cellSize); ctx.lineTo(gridW, i * cellSize); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(i * cellSize, 0); ctx.lineTo(i * cellSize, gridW); ctx.stroke();
-    }
 
     for (let r = 0; r < 8; r++) {
       for (let c = 0; c < 8; c++) {
+        const x = geometry.padding + c * geometry.step;
+        const y = geometry.padding + r * geometry.step;
+        ctx.fillStyle = '#15386a';
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') ctx.roundRect(x, y, cellSize, cellSize, Math.max(3, cellSize * 0.09));
+        else ctx.rect(x, y, cellSize, cellSize);
+        ctx.fill();
         if (this.landingDemo.board[r][c]) {
-          this.drawBlockCtx(ctx, c * cellSize, r * cellSize, cellSize, this.landingDemo.board[r][c]);
+          this.drawBlockCtx(ctx, x, y, cellSize, this.landingDemo.board[r][c]);
         }
       }
     }
+
+    this.drawLandingCelebration(now);
 
     // Preview do Arraste no Jogo Real em Prévia
     if (this.landingDemo.isDragging && this.landingDemo.draggedIndex !== null) {
       const piece = this.landingDemo.hand[this.landingDemo.draggedIndex];
       if (piece) {
-        const col = Math.floor((this.landingDemo.dragX - (piece.shape[0].length * cellSize) / 2) / cellSize + 0.5);
-        const row = Math.floor((this.landingDemo.dragY - this.landingDemo.dragLift - (piece.shape.length * cellSize) / 2) / cellSize + 0.5);
-        if (this.canPlaceOnGrid(this.landingDemo.board, piece.shape, row, col, 8)) {
-          ctx.globalAlpha = 0.5;
+        const { col, row } = this.getLandingDropPosition(piece);
+        const canPlace = this.canPlaceOnGrid(this.landingDemo.board, piece.shape, row, col, 8);
+        if (canPlace) {
+          ctx.globalAlpha = 0.62;
           for (let r = 0; r < piece.shape.length; r++) {
             for (let c = 0; c < piece.shape[r].length; c++) {
               if (piece.shape[r][c]) {
-                this.drawBlockCtx(ctx, (col + c) * cellSize, (row + r) * cellSize, cellSize, piece.color);
+                this.drawBlockCtx(ctx, geometry.padding + (col + c) * geometry.step, geometry.padding + (row + r) * geometry.step, cellSize, piece.color);
               }
             }
           }
           ctx.globalAlpha = 1.0;
+          const clears = this.getLandingPotentialClears(piece, row, col);
+          if (clears.rows.length || clears.cols.length) {
+            const flash = 0.22 + (Math.sin(now / 95) + 1) * 0.18;
+            ctx.save();
+            ctx.globalCompositeOperation = 'screen';
+            ctx.fillStyle = `rgba(255,255,255,${flash})`;
+            ctx.shadowColor = '#c9ff43';
+            ctx.shadowBlur = 18;
+            clears.rows.forEach(line => ctx.fillRect(geometry.padding, geometry.padding + line * geometry.step, w - geometry.padding * 2, cellSize));
+            clears.cols.forEach(line => ctx.fillRect(geometry.padding + line * geometry.step, geometry.padding, cellSize, w - geometry.padding * 2));
+            ctx.restore();
+          }
+        } else {
+          ctx.save();
+          ctx.fillStyle = 'rgba(255,84,112,.24)';
+          ctx.strokeStyle = 'rgba(255,84,112,.86)';
+          ctx.lineWidth = 2;
+          for (let r = 0; r < piece.shape.length; r++) for (let c = 0; c < piece.shape[r].length; c++) {
+            if (!piece.shape[r][c]) continue;
+            const targetRow = row + r;
+            const targetCol = col + c;
+            if (targetRow < 0 || targetCol < 0 || targetRow >= 8 || targetCol >= 8) continue;
+            const x = geometry.padding + targetCol * geometry.step;
+            const y = geometry.padding + targetRow * geometry.step;
+            ctx.fillRect(x, y, cellSize, cellSize);
+            ctx.strokeRect(x + 1, y + 1, cellSize - 2, cellSize - 2);
+          }
+          ctx.restore();
         }
       }
     }
 
     // Área da mão de peças (Rodapé)
-    ctx.fillStyle = '#0a100f';
+    ctx.fillStyle = 'rgba(7,15,38,.96)';
     ctx.fillRect(0, gridW, w, 120);
-    ctx.strokeStyle = '#21302d';
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(0, gridW); ctx.lineTo(w, gridW); ctx.stroke();
 
     const slotW = w / 3;
-    const miniCell = cellSize * 0.65;
+    const miniCell = Math.min(cellSize * 0.65, 24);
     this.landingDemo.hand.forEach((p, idx) => {
       if (p.used) return;
       if (this.landingDemo.isDragging && this.landingDemo.draggedIndex === idx) {
-        const pW = p.shape[0].length * cellSize;
-        const pH = p.shape.length * cellSize;
+        const pW = p.shape[0].length * geometry.step - geometry.gap;
+        const pH = p.shape.length * geometry.step - geometry.gap;
         const startX = this.landingDemo.dragX - pW / 2;
         const startY = this.landingDemo.dragY - this.landingDemo.dragLift - pH / 2;
         for (let r = 0; r < p.shape.length; r++) {
           for (let c = 0; c < p.shape[r].length; c++) {
-            if (p.shape[r][c]) this.drawBlockCtx(ctx, startX + c * cellSize, startY + r * cellSize, cellSize, p.color);
+            if (p.shape[r][c]) this.drawBlockCtx(ctx, startX + c * geometry.step, startY + r * geometry.step, cellSize, p.color);
           }
         }
       } else {
-        const startX = idx * slotW + slotW / 2 - (p.shape[0].length * miniCell) / 2;
-        const startY = gridW + 60 - (p.shape.length * miniCell) / 2;
+        const pieceAge = Math.max(0, now - this.landingDemo.handGeneratedAt - idx * 55);
+        const t = Math.min(1, pieceAge / 340);
+        const popScale = t === 1 ? 1 : 1 + 2.7 * Math.pow(t - 1, 3) + 1.7 * Math.pow(t - 1, 2);
+        const shownCell = miniCell * Math.max(.05, popScale);
+        const startX = idx * slotW + slotW / 2 - (p.shape[0].length * shownCell) / 2;
+        const startY = gridW + 60 - (p.shape.length * shownCell) / 2;
         for (let r = 0; r < p.shape.length; r++) {
           for (let c = 0; c < p.shape[r].length; c++) {
-            if (p.shape[r][c]) this.drawBlockCtx(ctx, startX + c * miniCell, startY + r * miniCell, miniCell, p.color);
+            if (p.shape[r][c]) this.drawBlockCtx(ctx, startX + c * shownCell, startY + r * shownCell, shownCell, p.color);
           }
         }
       }
@@ -663,6 +865,32 @@ const game = {
     ctx.font = 'bold 11px Silkscreen';
     ctx.fillStyle = 'rgba(201, 255, 67, 0.5)';
     ctx.fillText('JOGO REAL — PRÉVIA GRATUITA', 10, gridW - 10);
+  },
+
+  drawLandingCelebration(now = performance.now()) {
+    const effect = this.landingDemo.celebration;
+    if (!effect || !this.landingCtx || !this.landingCanvas) return;
+    const progress = Math.min(1, Math.max(0, (now - effect.startedAt) / effect.duration));
+    const pulse = Math.sin(progress * Math.PI);
+    const geometry = this.getLandingGeometry();
+    const ctx = this.landingCtx;
+    ctx.save();
+    ctx.globalCompositeOperation = 'screen';
+    ctx.fillStyle = `rgba(201,255,67,${.16 + pulse * .58})`;
+    ctx.shadowColor = '#c9ff43';
+    ctx.shadowBlur = 18 + pulse * 24;
+    effect.rows.forEach(row => ctx.fillRect(geometry.padding, geometry.padding + row * geometry.step, this.landingCanvas.width - geometry.padding * 2, geometry.cell));
+    effect.cols.forEach(col => ctx.fillRect(geometry.padding + col * geometry.step, geometry.padding, geometry.cell, this.landingCanvas.width - geometry.padding * 2));
+    ctx.restore();
+    (effect.cells || []).forEach((cell, index) => {
+      const delay = Math.min(.2, (index % 8) * .018);
+      const local = Math.min(1, Math.max(0, (progress - delay) / Math.max(.01, 1 - delay)));
+      const drift = Math.sin(index * 2.17) * geometry.cell * .9 * local;
+      const lift = Math.sin(Math.min(1, local * 3) * Math.PI) * 8;
+      const x = geometry.padding + cell.col * geometry.step + drift;
+      const y = geometry.padding + cell.row * geometry.step - lift + local * local * Math.max(270, this.landingCanvas.width * .76);
+      this.drawRotatedBlock(ctx, x, y, geometry.cell, cell.color, (index % 2 ? 1 : -1) * local, 1 - Math.max(0, local - .72) / .28);
+    });
   },
 
   canPlaceOnGrid(grid, shape, startRow, startCol, maxGrid) {
