@@ -1315,6 +1315,8 @@ const game = {
     const cashoutButton = document.getElementById('btn-cashout');
     const comboBar = document.getElementById('hud-combo-bar');
     const comboLabel = document.getElementById('hud-combo-label');
+    const betLabel = document.getElementById('clone-hud-bet');
+    const targetLabel = document.getElementById('clone-hud-target');
 
     if (multiplier) multiplier.textContent = `${this.multiplier.toFixed(2)}x`;
     if (score) score.textContent = this.score.toLocaleString('pt-BR');
@@ -1322,6 +1324,8 @@ const game = {
     
     const payout = Math.floor(this.betAmount * this.multiplier);
     if (payoutElement) payoutElement.textContent = app.formatBRL(payout);
+    if (betLabel) betLabel.textContent = app.formatBRL(this.betAmount);
+    if (targetLabel) targetLabel.textContent = app.formatBRL(Math.floor(this.betAmount * this.rewardTargetMultiplier));
     if (cashoutButton && this.mode === 'real') {
       const formattedPayout = app.formatBRL(payout);
       const goalReached = this.multiplier >= this.rewardTargetMultiplier;
@@ -1638,8 +1642,19 @@ const game = {
 
     const gameOverCard = document.querySelector('#gameover-modal .result-card');
     gameOverCard?.classList.add('lose-result');
+    const lossValue = document.getElementById('gameover-loss-value');
+    if (lossValue) lossValue.textContent = `-${app.formatBRL(this.betAmount)}`;
     document.getElementById('gameover-modal').classList.add('active');
     this.stopBoostPolling();
+  },
+
+  replayFromResult(modalId) {
+    app.closeModal(modalId);
+    this.isPlaying = false;
+    this.stopBackgroundMusic();
+    this.stopBoostPolling();
+    app.showScreen('menu-screen');
+    this.showPrep('real', 'classic');
   },
 
   getPotentialClears(piece, startRow, startCol) {

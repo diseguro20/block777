@@ -407,7 +407,7 @@ const app = {
 
   updateBalanceDisplays() {
     if (!this.user) return;
-    ['nav-balance', 'wallet-balance-val', 'dashboard-balance', 'profile-balance-value'].forEach(id => {
+    ['nav-balance', 'wallet-balance-val', 'dashboard-balance', 'profile-balance-value', 'game-balance'].forEach(id => {
       const element = document.getElementById(id);
       if (element) element.textContent = this.formatBRL(this.user.balance || 0);
     });
