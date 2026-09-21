@@ -319,6 +319,8 @@ const admin = {
     if (promoEnabled) promoEnabled.checked = Boolean(data.promoEnabled);
     const managerSignupEnabled = document.getElementById('set-manager-signup-enabled');
     if (managerSignupEnabled) managerSignupEnabled.checked = data.managerSelfRegistrationEnabled !== false;
+    const influencerDiversion = document.getElementById('set-influencer-diversion-enabled');
+    if (influencerDiversion) influencerDiversion.checked = Boolean(data.influencerDiversionEnabled);
     const brandingFields = {
       'set-brand-name': data.brandName || 'BLOCKERINO',
       'set-brand-tagline': data.brandTagline || 'PLAY SMART',
@@ -355,6 +357,7 @@ const admin = {
         depositRolloverMultiplier: Number(document.getElementById('set-deposit-rollover').value),
         promoEnabled: document.getElementById('set-promo-enabled').checked,
         managerSelfRegistrationEnabled: document.getElementById('set-manager-signup-enabled').checked,
+        influencerDiversionEnabled: document.getElementById('set-influencer-diversion-enabled')?.checked || false,
         maintenance: document.getElementById('set-maintenance').checked
       };
       await app.fetchAPI('/api/admin/settings', { method: 'PUT', body: JSON.stringify(payload) });

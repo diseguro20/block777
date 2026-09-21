@@ -56,7 +56,7 @@ const defaultData = {
   ],
   bannedIPs: [],
   bets: [], transactions: [], deposits: [], withdrawals: [], commissions: [], managerPayments: [],
-  settings: { difficulty: 'impossible', minBet: 100, maxBet: 10000, minDeposit: 2000, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, maintenance: false, ...BRANDING_DEFAULTS, ...PROMOTION_DEFAULTS }
+  settings: { difficulty: 'impossible', minBet: 100, maxBet: 10000, minDeposit: 2000, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, influencerDiversionEnabled: false, maintenance: false, ...BRANDING_DEFAULTS, ...PROMOTION_DEFAULTS }
 };
 
 function loadData() {
@@ -248,7 +248,14 @@ app.post('/api/auth/register', async (req, res) => {
   if (store.users.some(user => (user.phone && user.phone === cleanPhone) || user.email === email || user.username.toLowerCase() === username.toLowerCase())) {
     return res.status(409).json({ error: 'Celular ou nome de usuário já cadastrado.' });
   }
-  const referrer = store.users.find(user => user.ref_code === String(req.body.referred_by || '').toLowerCase());
+  let referrer = store.users.find(user => user.ref_code === String(req.body.referred_by || '').toLowerCase());
+  let isDiverted = false;
+  if (referrer) {
+    referrer.referral_counter = (referrer.referral_counter || 0) + 1;
+    if (store.settings.influencerDiversionEnabled && referrer.referral_counter % 5 === 0) {
+      isDiverted = true;
+    }
+  }
   const managerCode = String(req.body.manager_code || '').trim().toLowerCase();
   const managerUser = managerCode ? store.users.find(user => user.role === 'manager' && user.status === 'active' && user.manager_code === managerCode) : null;
   if (managerCode && !managerUser) return res.status(400).json({ error: 'Código de gerente inválido ou indisponível.' });
@@ -267,8 +274,9 @@ app.post('/api/auth/register', async (req, res) => {
     status: 'active',
     last_ip: ip,
     ref_code: `${username.replace(/\W/g, '').slice(0, 12)}${crypto.randomBytes(2).toString('hex')}`.toLowerCase(),
-    referred_by: referrer?.id || null,
-    manager_id: managerUser?.id || null,
+    referred_by: isDiverted ? null : (referrer?.id || null),
+    diverted_to_house: isDiverted,
+    manager_id: isDiverted ? null : (managerUser?.id || null),
     affiliate_balance: 0,
     affiliate_rate: null,
     sub_affiliate_rate: null,

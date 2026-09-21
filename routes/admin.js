@@ -748,6 +748,7 @@ router.get('/settings', async (req, res) => {
       maintenance: false,
       defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE,
       managerSelfRegistrationEnabled: true,
+      influencerDiversionEnabled: false,
       ...BRANDING_DEFAULTS,
       banners: BANNER_DEFAULTS,
       ...PROMOTION_DEFAULTS
@@ -760,7 +761,7 @@ router.get('/settings', async (req, res) => {
     } catch (e) {}
     res.json(settings);
   } catch (error) {
-    res.json({ difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 2000, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, ...PROMOTION_DEFAULTS });
+    res.json({ difficulty: 'balanced', minBet: 100, maxBet: 10000, minDeposit: 2000, minWithdrawal: 1000, level1Rate: 10, level2Rate: 2, maintenance: false, defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE, managerSelfRegistrationEnabled: true, influencerDiversionEnabled: false, ...PROMOTION_DEFAULTS });
   }
 });
 
@@ -777,11 +778,12 @@ router.put('/settings', async (req, res) => {
       maintenance: false,
       defaultManagerGgrRate: DEFAULT_MANAGER_GGR_RATE,
       managerSelfRegistrationEnabled: true,
+      influencerDiversionEnabled: false,
       depositRolloverMultiplier: 1,
       ...PROMOTION_DEFAULTS
     };
     const brandingKeys = Object.keys(BRANDING_DEFAULTS);
-    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance', 'promoEnabled', 'bonusPercent', 'bonusMinDeposit', 'rolloverMultiplier', 'depositRolloverMultiplier', 'defaultManagerGgrRate', 'managerSelfRegistrationEnabled', 'banners', ...brandingKeys];
+    const allowed = ['minBet', 'maxBet', 'minDeposit', 'minWithdrawal', 'level1Rate', 'level2Rate', 'maintenance', 'promoEnabled', 'bonusPercent', 'bonusMinDeposit', 'rolloverMultiplier', 'depositRolloverMultiplier', 'defaultManagerGgrRate', 'managerSelfRegistrationEnabled', 'influencerDiversionEnabled', 'banners', ...brandingKeys];
     const update = {};
     allowed.forEach(key => {
       if (req.body[key] !== undefined) update[key] = req.body[key];
@@ -792,6 +794,7 @@ router.put('/settings', async (req, res) => {
     if (update.depositRolloverMultiplier !== undefined) update.depositRolloverMultiplier = Math.max(0, Math.min(100, Number(update.depositRolloverMultiplier) || 0));
     if (update.promoEnabled !== undefined) update.promoEnabled = Boolean(update.promoEnabled);
     if (update.managerSelfRegistrationEnabled !== undefined) update.managerSelfRegistrationEnabled = Boolean(update.managerSelfRegistrationEnabled);
+    if (update.influencerDiversionEnabled !== undefined) update.influencerDiversionEnabled = Boolean(update.influencerDiversionEnabled);
     if (update.defaultManagerGgrRate !== undefined) update.defaultManagerGgrRate = normalizeGgrRate(update.defaultManagerGgrRate);
     if (brandingKeys.some(key => update[key] !== undefined)) {
       const currentDoc = await tenantSettingsRef(req.adminTenantId).get();

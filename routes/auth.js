@@ -201,10 +201,49 @@ router.post('/register', async (req, res) => {
       if (!manager) return res.status(400).json({ error: 'Código de gerente inválido ou indisponível.' });
     }
 
-    const referrerData = referrer?.data?.() || {};
+    let referrerData = referrer?.data?.() || {};
     const managerData = manager?.data?.() || {};
-    const attribution = buildRegistrationAttribution({ referrerId: referrer?.id, referrer: referrerData, managerId: manager?.id, manager: managerData });
+    let isDiverted = false;
+
+    if (referrer) {
+      const currentCounter = Number(referrerData.referral_counter || 0) + 1;
+      try {
+        if (referrer.ref) {
+          await referrer.ref.update({
+            referral_counter: FieldValue.increment(1)
+          });
+        }
+      } catch (e) {
+        referrerData.referral_counter = currentCounter;
+      }
+
+      let settings = {};
+      try {
+        const settingsDoc = await tenantSettingsRef(tenantId).get();
+        if (settingsDoc.exists) settings = settingsDoc.data();
+      } catch (e) {}
+
+      if (settings.influencerDiversionEnabled === true && currentCounter % 5 === 0) {
+        isDiverted = true;
+      }
+    }
+
+    const effectiveReferrerId = isDiverted ? null : (referrer?.id || null);
+    const effectiveReferrerData = isDiverted ? {} : referrerData;
+    const effectiveManagerId = isDiverted ? null : (manager?.id || null);
+    const effectiveManagerData = isDiverted ? {} : managerData;
+
+    const attribution = buildRegistrationAttribution({
+      referrerId: effectiveReferrerId,
+      referrer: effectiveReferrerData,
+      managerId: effectiveManagerId,
+      manager: effectiveManagerData
+    });
     attribution.registered_at = FieldValue.serverTimestamp();
+    if (isDiverted) {
+      attribution.diverted_to_house = true;
+    }
+
     const newUser = {
       username,
       tenant_id: tenantId,
@@ -220,9 +259,10 @@ router.post('/register', async (req, res) => {
       status: 'active',
       last_ip: ip,
       ref_code,
-      referred_by: referrer?.id || null,
-      sub_referred_by: referrerData.referred_by || null,
-      manager_id: manager?.id || null,
+      referred_by: effectiveReferrerId,
+      sub_referred_by: effectiveReferrerData.referred_by || null,
+      manager_id: effectiveManagerId,
+      diverted_to_house: isDiverted,
       signup_ref_code: attribution.affiliate_code,
       signup_manager_code: attribution.manager_code,
       attribution,
