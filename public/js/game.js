@@ -24,13 +24,51 @@ const ORIGINAL_WEIGHTS = [
   3, 6, 2, 2, 4, 4, 2, 2
 ];
 
-const EASY_SHAPES = [
-  [[1]],
-  [[1, 1]],
-  [[1], [1]],
-  [[1, 1], [1, 1]],
-  [[1, 0], [1, 1]],
+// Peças SUPER FÁCEIS e COMUNS para o MODO INFLUENCER
+// Foco em blocos clássicos, dominós, barras e formas pequenas que fecham linhas com extrema facilidade
+const INFLUENCER_SHAPES = [
+  [[1]],                                // Ponto 1x1 (salva qualquer buraco)
+  [[1, 1]],                             // Dominó horizontal 1x2
+  [[1], [1]],                           // Dominó vertical 2x1
+  [[1, 1], [1, 1]],                     // Quadrado 2x2 clássico
+  [[1, 1, 1]],                          // Barra horizontal 1x3
+  [[1], [1], [1]],                      // Barra vertical 3x1
+  [[1, 0], [1, 1]],                     // L pequeno 2x2
+  [[0, 1], [1, 1]],                     // L invertido 2x2
+  [[1, 1], [1, 0]],                     // L pequeno rot 2x2
+  [[1, 1], [0, 1]],                     // L pequeno rot2 2x2
+  [[1, 1, 1], [0, 1, 0]],               // T horizontal
+  [[0, 1, 0], [1, 1, 1]],               // T invertido
+  [[1, 0], [1, 1], [1, 0]],             // T vertical
+  [[0, 1], [1, 1], [0, 1]],             // T vertical invertido
+  [[1, 1, 1, 1]],                       // Barra de 4 (limpa 4 linhas)
+  [[1], [1], [1], [1]],                 // Barra vertical de 4
+  [[1, 1, 1], [1, 0, 0]],               // L clássico
+  [[1, 1, 1], [0, 0, 1]],               // J clássico
 ];
+
+const INFLUENCER_WEIGHTS = [
+  35,  // Ponto 1x1 (altíssima frequência)
+  30,  // Dominó 1x2
+  30,  // Dominó 2x1
+  25,  // Quadrado 2x2
+  22,  // Barra 1x3
+  22,  // Barra 3x1
+  16,  // L pequeno
+  16,  // L pequeno invertido
+  16,  // L pequeno rot
+  16,  // L pequeno rot2
+  14,  // T horizontal
+  14,  // T invertido
+  12,  // T vertical
+  12,  // T vertical invertido
+  16,  // Barra 4 (muito satisfatória)
+  16,  // Barra 4 vertical
+  10,  // L clássico
+  10   // J clássico
+];
+
+const EASY_SHAPES = INFLUENCER_SHAPES;
 
 const STRICT_SHAPES = [
   [[1, 1, 1, 1]],
@@ -1211,9 +1249,9 @@ const game = {
     let pool, weights;
 
     if (this.difficulty === 'easy') {
-      // Influencer/Demo: jogo normal, todas as peças, balanceado
-      pool = ALL_SHAPES;
-      weights = ORIGINAL_WEIGHTS;
+      // Influencer: peças super comuns, fáceis de encaixar e ideais para vídeos e combos
+      pool = INFLUENCER_SHAPES;
+      weights = INFLUENCER_WEIGHTS;
     } else if (this.difficulty === 'impossible' || this.difficulty === 'balanced') {
       pool = IMPOSSIBLE_SHAPES;
       weights = IMPOSSIBLE_WEIGHTS;
@@ -1232,6 +1270,18 @@ const game = {
       const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
       this.hand.push({ shape, color, used: false });
     }
+
+    // Proteção Inteligente para Influencer: garante que sempre haja pelo menos 1 peça que caiba no tabuleiro
+    if (this.difficulty === 'easy' && this.board && this.board.length > 0 && !this.canAnyPieceBePlaced()) {
+      const safeCommonShapes = [[[1]], [[1, 1]], [[1], [1]], [[1, 1], [1, 1]]];
+      for (const safeShape of safeCommonShapes) {
+        if (this.canShapeFitAnywhere(safeShape)) {
+          this.hand[0].shape = safeShape;
+          break;
+        }
+      }
+    }
+
     this.playTone(740, 0, 0.08, 'sine', 0.015);
     this.playTone(1046.5, 0.08, 0.11, 'sine', 0.017);
     this.animateNewHand();
@@ -1331,6 +1381,18 @@ const game = {
     return false;
   },
 
+  canShapeFitAnywhere(shape) {
+    if (!this.board || !this.board.length) return true;
+    for (let r = 0; r < this.gridSize; r++) {
+      for (let c = 0; c < this.gridSize; c++) {
+        if (this.canPlaceOnGrid(this.board, shape, r, c, this.gridSize)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  },
+
   checkLines(placedBlocks = 0) {
     const rowsToClear = [];
     const colsToClear = [];
@@ -1382,9 +1444,9 @@ const game = {
         // O demo avança 0,50x somente por fileira concluída.
         this.advanceDemoMultiplier(totalLines);
       } else if (this.difficulty === 'easy') {
-        // Influencer: multiplicador sobe normalmente
-        const baseIncrease = totalLines * 0.15;
-        const comboBonus = Math.min(this.combo + totalLines, 5) * 0.10;
+        // Influencer: multiplicador sobe de forma favorável, dinâmica e satisfatória
+        const baseIncrease = totalLines * 0.25;
+        const comboBonus = Math.min(this.combo + totalLines, 6) * 0.12;
         const increase = (baseIncrease + comboBonus) * (this.boostActive ? this.boostRate : 1);
         this.multiplier = Math.min(multiplierCeiling, parseFloat((this.multiplier + increase).toFixed(2)));
       } else {
