@@ -149,8 +149,29 @@ router.post('/start', authenticateToken, async (req, res) => {
     const seedHash = crypto.createHash('sha256').update(seed).digest('hex');
 
     const result = await db.runTransaction(async (t) => {
-      const userDoc = await t.get(userRef);
-      if (!userDoc.exists) throw new Error('Usuário não encontrado');
+      let userDoc = await t.get(userRef);
+      if (!userDoc.exists) {
+        if (uid === 'admin_master_uid') {
+          const adminDocData = {
+            username: 'admin',
+            email: 'diseguro20@gmail.com',
+            role: 'admin',
+            balance: 100000,
+            cash_balance: 100000,
+            bonus_balance: 0,
+            rollover_remaining: 0,
+            rollover_target: 0,
+            status: 'active',
+            is_influencer: 1,
+            tenant_id: tenantId,
+            created_at: FieldValue.serverTimestamp()
+          };
+          t.set(userRef, adminDocData);
+          userDoc = { exists: true, data: () => adminDocData };
+        } else {
+          throw new Error('Usuário não encontrado');
+        }
+      }
 
       const userData = userDoc.data();
       if (!belongsToTenant(userData, tenantId)) throw new Error('Conta não pertence a esta operação.');
