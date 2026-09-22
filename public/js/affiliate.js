@@ -4,12 +4,25 @@ const affiliate = {
     try {
       await app.fetchUserDataOnly();
       if (!app.user) return this.showAuth();
+      this.hideAuth();
       await this.loadAffiliateStats();
       await this.loadNotificationStatus();
       this.startAutoRefresh();
-    } catch (_) {
-      this.showAuth();
+    } catch (err) {
+      console.error('Affiliate load warning:', err);
+      if (!app.user && !app.token) {
+        this.showAuth();
+      } else {
+        this.hideAuth();
+      }
     }
+  },
+
+  hideAuth() {
+    const content = document.getElementById('affiliate-content');
+    const auth = document.getElementById('affiliate-auth');
+    if (content) content.hidden = false;
+    if (auth) auth.hidden = true;
   },
 
   notificationConfig: null,
