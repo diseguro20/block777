@@ -20,6 +20,7 @@ import { approveAndCreditDeposit } from './wallet.js';
 import { buildAffiliateReport } from '../lib/affiliateReporting.js';
 import { affiliateIdsForDeposit, attributionFromUser } from '../lib/attribution.js';
 import { normalizePayoutDescription, resolveAffiliatePayout } from '../lib/affiliatePayout.js';
+import { sendKrsConversionWebhook } from '../lib/krsCreatorHub.js';
 
 const JWT_SECRET = getJwtSecret();
 const router = express.Router();
@@ -1057,112 +1058,30 @@ router.post('/deposits/audit-recent', async (req, res) => {
 router.put('/deposits/:id/approve', async (req, res) => {
   try {
     const depositRef = db.collection('deposit_requests').doc(req.params.id);
-    const depositTransactionSnapshot = await db.collection('transactions').where('reference_id', '==', depositRef.id).limit(1).get();
-    const depositTransactionRef = depositTransactionSnapshot.empty ? null : depositTransactionSnapshot.docs[0].ref;
-    await db.runTransaction(async transaction => {
-      const depositDoc = await transaction.get(depositRef);
-      if (!depositDoc.exists || depositDoc.data().status !== 'pending') throw new Error('Depósito pendente não encontrado');
-      const deposit = depositDoc.data();
-      ensureTenantAccess(req, deposit);
-      const settingsDoc = await transaction.get(tenantSettingsRef(req.adminTenantId));
-      const userRef = db.collection('users').doc(deposit.uid);
-      const userDoc = await transaction.get(userRef);
-      if (!userDoc.exists) throw new Error('Usuário não encontrado');
-      const user = userDoc.data();
-      const resolvedCredit = resolveDepositCredit(deposit, settingsDoc.exists ? settingsDoc.data() : {});
-      const bonusAmount = resolvedCredit.bonusAmount;
-      const creditedAmount = resolvedCredit.creditedAmount;
-      const rolloverRequired = rolloverForUser(user, resolvedCredit.rolloverRequired);
-      const wallet = getWalletBuckets(user);
-      const newCashBalance = wallet.cashBalance + deposit.amount;
-      const newBonusBalance = wallet.bonusBalance + bonusAmount;
-      const newBalance = newCashBalance + newBonusBalance;
-      const influencerMode = Number(user.is_influencer) === 1;
-      const newRolloverRemaining = influencerMode ? 0 : wallet.rolloverRemaining + rolloverRequired;
-      const newRolloverTarget = influencerMode ? 0 : wallet.rolloverTarget + rolloverRequired;
-      let affiliateRef = null;
-      let affiliateDoc = null;
-      let upperRef = null;
-      let upperDoc = null;
-      const attributionIds = affiliateIdsForDeposit(deposit, user);
-      const effectiveAttribution = Number(deposit.attribution?.version) >= 1 ? deposit.attribution : attributionFromUser(user);
-      if (attributionIds.affiliateId) {
-        affiliateRef = db.collection('users').doc(attributionIds.affiliateId);
-        affiliateDoc = await transaction.get(affiliateRef);
-        const upperId = attributionIds.subAffiliateId || affiliateDoc.data()?.referred_by;
-        if (affiliateDoc.exists && upperId && upperId !== attributionIds.affiliateId) {
-          upperRef = db.collection('users').doc(upperId);
-          upperDoc = await transaction.get(upperRef);
-        }
-      }
-
-      transaction.update(depositRef, {
-        status: 'approved',
-        attribution: effectiveAttribution,
-        referred_by: effectiveAttribution.affiliate_id,
-        sub_referred_by: effectiveAttribution.sub_affiliate_id,
-        manager_id: effectiveAttribution.manager_id,
-        bonusAmount,
-        rolloverRequired,
-        creditedAmount,
-        credit_applied: true,
-        credit_applied_at: FieldValue.serverTimestamp(),
-        approved_at: FieldValue.serverTimestamp()
-      });
-      transaction.update(userRef, {
-        balance: newBalance,
-        cash_balance: newCashBalance,
-        bonus_balance: newBonusBalance,
-        rollover_remaining: newRolloverRemaining,
-        rollover_target: newRolloverTarget
-      });
-      updateAdminSummary(transaction, req.adminTenantId, {
-        pendingDeposits: -1,
-        approvedDeposits: 1,
-        approvedDepositAmount: deposit.amount,
-        totalBonusGranted: bonusAmount,
-        lockedBonus: bonusAmount,
-        activeRolloverUsers: wallet.rolloverRemaining > 0 ? 0 : (newRolloverRemaining > 0 ? 1 : 0),
-        totalWalletBalance: deposit.amount + bonusAmount
-      });
-      if (depositTransactionRef) {
-        transaction.update(depositTransactionRef, {
-          status: 'approved',
-          balance_after: newBalance,
-          completed_at: FieldValue.serverTimestamp()
-        });
-      }
-      if (bonusAmount > 0) {
-        transaction.set(db.collection('transactions').doc(), {
-          uid: deposit.uid,
-          type: 'deposit_bonus',
-          amount: bonusAmount,
-          status: 'locked',
-          reference_id: depositRef.id,
-          balance_after: newBalance,
-          rollover_required: rolloverRequired,
-          tenant_id: req.adminTenantId,
-          created_at: FieldValue.serverTimestamp()
-        });
-      }
-      if (affiliateDoc?.exists) {
-          const affiliate = affiliateDoc.data();
-          const level1Rate = affiliate.affiliate_rate ?? 10;
-          const commission = Math.floor(deposit.amount * level1Rate / 100);
-          transaction.update(affiliateRef, { affiliate_balance: FieldValue.increment(commission) });
-          transaction.set(db.collection('affiliate_commissions').doc(), { tenant_id: req.adminTenantId, affiliate_id: affiliateDoc.id, source_user_id: deposit.uid, level: 1, amount: commission, created_at: FieldValue.serverTimestamp() });
-
-          if (upperDoc?.exists) {
-              const level2Rate = upperDoc.data().sub_affiliate_rate ?? 2;
-              const subCommission = Math.floor(deposit.amount * level2Rate / 100);
-              transaction.update(upperRef, { affiliate_balance: FieldValue.increment(subCommission) });
-              transaction.set(db.collection('affiliate_commissions').doc(), { tenant_id: req.adminTenantId, affiliate_id: upperDoc.id, source_user_id: deposit.uid, level: 2, amount: subCommission, created_at: FieldValue.serverTimestamp() });
-          }
-      }
-    });
-    res.json({ success: true });
+    const depositDoc = await depositRef.get();
+    if (!depositDoc.exists) return res.status(404).json({ error: 'Depósito não encontrado.' });
+    ensureTenantAccess(req, depositDoc.data());
+    const result = await approveAndCreditDeposit(depositRef, 'ADMIN_MANUAL');
+    res.json({ success: true, ...result });
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+router.post('/test-krs-webhook', async (req, res) => {
+  try {
+    const { affiliateCode, amountDeposited, commissionAmount, playerName, transactionId, gameSlug } = req.body || {};
+    const result = await sendKrsConversionWebhook({
+      gameSlug: gameSlug || process.env.KRS_GAME_SLUG || 'krs-777',
+      affiliateCode: affiliateCode || 'teste_admin',
+      amountDeposited: Number(amountDeposited) || 100.00,
+      commissionAmount: Number(commissionAmount) || 20.00,
+      playerName: playerName || req.user?.username || 'Admin Tester',
+      transactionId: transactionId || `test_manual_${Date.now()}`
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

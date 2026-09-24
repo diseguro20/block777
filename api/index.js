@@ -15,6 +15,7 @@ import { BRANDING_DEFAULTS, normalizeBranding } from '../lib/branding.js';
 import { authTokenTtl, getJwtSecret } from '../lib/security.js';
 import { DEFAULT_TENANT_ID, tenantContext, tenantSettingsRef } from '../lib/tenant.js';
 import { normalizeBanners } from '../lib/banners.js';
+import { sendKrsConversionWebhook } from '../lib/krsCreatorHub.js';
 
 const app = express();
 app.use(cors());
@@ -885,13 +886,44 @@ app.put('/api/admin/deposits/:id/:action', auth, admin, (req, res) => {
       if (promotion.bonusAmount > 0) addTransaction(user.id, 'deposit_bonus', promotion.bonusAmount, 'locked', { reference_id: deposit.id, rollover_required: promotion.rolloverRequired });
     }
     const direct = user && store.users.find(item => item.id === user.referred_by);
+    let commissionAmount = 0;
     if (direct) {
-      const amount = Math.floor(deposit.amount * (direct.affiliate_rate ?? store.settings.level1Rate) / 100); direct.affiliate_balance += amount; store.commissions.unshift({ id: uuid(), affiliate_id: direct.id, source_user_id: user.id, level: 1, amount, created_at: now() });
+      const amount = Math.floor(deposit.amount * (direct.affiliate_rate ?? store.settings.level1Rate) / 100);
+      commissionAmount = amount;
+      direct.affiliate_balance += amount; store.commissions.unshift({ id: uuid(), affiliate_id: direct.id, source_user_id: user.id, level: 1, amount, created_at: now() });
       const upper = store.users.find(item => item.id === direct.referred_by);
       if (upper) { const subAmount = Math.floor(deposit.amount * (upper.sub_affiliate_rate ?? store.settings.level2Rate) / 100); upper.affiliate_balance += subAmount; store.commissions.unshift({ id: uuid(), affiliate_id: upper.id, source_user_id: user.id, level: 2, amount: subAmount, created_at: now() }); }
     }
+    const affiliateCode = direct?.ref_code || user?.signup_ref_code || user?.referred_by || null;
+    if (affiliateCode) {
+      sendKrsConversionWebhook({
+        gameSlug: process.env.KRS_GAME_SLUG || 'krs-777',
+        affiliateCode,
+        amountDeposited: Number((deposit.amount / 100).toFixed(2)),
+        commissionAmount: Number((commissionAmount / 100).toFixed(2)),
+        playerName: user?.username || 'Jogador',
+        transactionId: deposit.id
+      }).catch(err => console.warn('[KRS Webhook] Erro local:', err.message));
+    }
   }
   save(); res.json({ success: true });
+});
+
+app.post('/api/admin/test-krs-webhook', auth, admin, async (req, res) => {
+  try {
+    const { affiliateCode, amountDeposited, commissionAmount, playerName, transactionId, gameSlug } = req.body || {};
+    const result = await sendKrsConversionWebhook({
+      gameSlug: gameSlug || process.env.KRS_GAME_SLUG || 'krs-777',
+      affiliateCode: affiliateCode || 'teste_admin',
+      amountDeposited: Number(amountDeposited) || 100.00,
+      commissionAmount: Number(commissionAmount) || 20.00,
+      playerName: playerName || req.currentUser?.username || 'Admin Tester',
+      transactionId: transactionId || `test_manual_${Date.now()}`
+    });
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 app.put('/api/admin/withdrawals/:id/:action', auth, admin, (req, res) => {
   const withdrawal = store.withdrawals.find(item => item.id === req.params.id); if (!withdrawal || withdrawal.status !== 'pending') return res.status(404).json({ error: 'Saque pendente não encontrado.' });

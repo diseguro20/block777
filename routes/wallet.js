@@ -10,6 +10,7 @@ import { updateAdminSummary } from '../lib/adminSummary.js';
 import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
 import { sendAffiliateDepositNotification } from '../lib/pushNotifications.js';
 import { affiliateIdsForDeposit, attributionFromUser } from '../lib/attribution.js';
+import { sendKrsConversionWebhook } from '../lib/krsCreatorHub.js';
 
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
@@ -355,8 +356,10 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       });
     }
 
+    let affiliateCommissionCents = 0;
     if (affiliateDoc?.exists) {
       const commission = Math.floor(deposit.amount * (affiliateDoc.data().affiliate_rate ?? 10) / 100);
+      affiliateCommissionCents = commission;
       transaction.update(affiliateRef, { affiliate_balance: FieldValue.increment(commission) });
       transaction.set(db.collection('affiliate_commissions').doc(), {
         tenant_id: tenantId,
@@ -380,12 +383,28 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       }
     }
 
+    const resolvedAffiliateCode = affiliateDoc?.data()?.ref_code
+      || effectiveAttribution?.affiliate_code
+      || user.signup_ref_code
+      || deposit.signup_ref_code
+      || (typeof user.referred_by === 'string' && !user.referred_by.startsWith('user_') ? user.referred_by : null);
+
+    const krsPayload = resolvedAffiliateCode ? {
+      gameSlug: settings.krsGameSlug || process.env.KRS_GAME_SLUG || 'krs-777',
+      affiliateCode: resolvedAffiliateCode,
+      amountDeposited: Number((deposit.amount / 100).toFixed(2)),
+      commissionAmount: Number((affiliateCommissionCents / 100).toFixed(2)),
+      playerName: user.username || user.email?.split('@')[0] || 'Jogador',
+      transactionId: deposit.transaction_id || deposit.gatewayId || depositRef.id
+    } : null;
+
     return {
       success: true,
       balance: newBalance,
       cashBalance: newCashBalance,
       bonusBalance: newBonusBalance,
       creditedAmount,
+      krsPayload,
       notification: attributionIds.affiliateId ? {
         affiliateId: attributionIds.affiliateId,
         tenantId,
@@ -400,6 +419,11 @@ export async function approveAndCreditDeposit(depositRef, verifiedStatus = 'COMP
       event: 'deposit_paid'
     }).catch(error => console.warn('[Push] Depósito pago:', error.message));
     delete result.notification;
+  }
+  if (result.krsPayload) {
+    sendKrsConversionWebhook(result.krsPayload)
+      .catch(error => console.warn('[KRS Webhook] Erro ao disparar webhook de conversão:', error.message));
+    delete result.krsPayload;
   }
   return result;
 }
