@@ -4,7 +4,15 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { createVizzionPix, extractVizzionTransaction, getVizzionTransaction, isVizzionPaid, parseVizzionWebhook, verifyVizzionTransactionWithRetry, vizzionAmountMatches, vizzionPayStatus, vizzionTransactionStatus } from '../lib/vizzionpay.js';
+import { createOmegaPix, extractOmegaTransaction, getOmegaTransaction, isOmegaPaid, omegaAmountMatches, omegaPayStatus, omegaTransactionStatus, omegaWebhookUrl, parseOmegaWebhook, verifyOmegaTransactionWithRetry, verifyOmegaWebhookToken } from '../lib/omegapay.js';
 import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
+
+// ─── Roteamento 20/80 entre OmegaPay e VizzionPay ────────────────────────────
+// A cada depósito, há 20% de chance de ser processado pela OmegaPay.
+// O sorteio é aleatório e independente por transação.
+function shouldRouteToOmega() {
+  return Math.random() < 0.20; // 20% → OmegaPay | 80% → VizzionPay
+}
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
 import { updateAdminSummary } from '../lib/adminSummary.js';
 import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
@@ -124,7 +132,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
         amount,
         status: 'creating',
         depositId,
-        gateway: 'vizzionpay',
+        gateway: 'pending_routing',
         bonusAmount: promotion.bonusAmount,
         rolloverRequired: promotion.rolloverRequired,
         bonusPercent: promotion.bonusPercent,
@@ -168,16 +176,36 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     }
     creationContext = { owner: true, docRef, lockRef };
 
-    const webhookUrl = `${String(req.get('host') || '').includes('localhost') ? req.protocol : 'https'}://${req.get('host')}/api/wallet/webhook/vizzionpay`;
-    const charge = await createVizzionPix({
-      amountCents: amount,
-      referenceId: docRef.id,
-      webhookUrl,
-      customer: {
-        name: user.username || req.user.email?.split('@')[0] || 'Jogador Blockerino',
-        email: user.email || req.user.email
-      }
-    });
+    // ─── Roteamento de gateway: 20% OmegaPay / 80% VizzionPay ─────────────
+    const useOmega = shouldRouteToOmega();
+    const gatewayUsed = useOmega ? 'omegapay' : 'vizzionpay';
+    const customerData = {
+      name: user.username || req.user.email?.split('@')[0] || 'Jogador Block777',
+      email: user.email || req.user.email,
+      phone: user.phone || null,
+      document: user.document || user.cpf || user.cnpj || null
+    };
+
+    let charge;
+    if (useOmega) {
+      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → OmegaPay (20%)');
+      const webhookUrl = omegaWebhookUrl('/api/wallet/webhook/omegapay');
+      charge = await createOmegaPix({
+        amountCents: amount,
+        referenceId: docRef.id,
+        webhookUrl,
+        customer: customerData
+      });
+    } else {
+      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → VizzionPay (80%)');
+      const webhookUrl = `${String(req.get('host') || '').includes('localhost') ? req.protocol : 'https'}://${req.get('host')}/api/wallet/webhook/vizzionpay`;
+      charge = await createVizzionPix({
+        amountCents: amount,
+        referenceId: docRef.id,
+        webhookUrl,
+        customer: customerData
+      });
+    }
     creationContext.gatewayCharge = charge;
 
     const transactionRef = db.collection('transactions').doc();
@@ -185,10 +213,12 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       pixCode: charge.pixCode,
       qrCodeUrl: charge.qrCodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(charge.pixCode)}`,
       status: 'pending',
+      gateway: gatewayUsed,
       gatewayId: charge.gatewayId,
       gateway_status: charge.status,
       gateway_fee: charge.fee,
       gateway_order_id: charge.orderId,
+      webhook_token_hash: charge.webhookTokenHash || null,
       transaction_id: transactionRef.id,
       ready_at: FieldValue.serverTimestamp()
     });
@@ -202,7 +232,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       amount,
       status: 'pending',
       reference_id: docRef.id,
-      gateway: 'vizzionpay',
+      gateway: gatewayUsed,
       gateway_id: charge.gatewayId,
       created_at: FieldValue.serverTimestamp()
     });
@@ -223,7 +253,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
       depositId,
       pixCode: charge.pixCode,
       qrCodeUrl: charge.qrCodeUrl || `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(charge.pixCode)}`,
-      gateway: 'vizzionpay',
+      gateway: gatewayUsed,
       status: 'pending',
       bonusAmount: promotion.bonusAmount,
       totalAfterPayment: amount + promotion.bonusAmount,
@@ -519,6 +549,123 @@ router.post('/webhook/vizzionpay', async (req, res) => {
   }
 });
 
+// ─── Webhook OmegaPay (20% dos depósitos) ────────────────────────────────────
+router.post('/webhook/omegapay', async (req, res) => {
+  try {
+    const event = parseOmegaWebhook(req.body);
+
+    let depositRef = null;
+    let depositDoc = null;
+
+    if (event.referenceId) {
+      const ref = db.collection('deposit_requests').doc(event.referenceId);
+      const doc = await ref.get();
+      if (doc.exists) {
+        depositRef = ref;
+        depositDoc = doc;
+      }
+    }
+
+    if (!depositDoc && event.gatewayId) {
+      const snapshot = await db.collection('deposit_requests').where('gatewayId', '==', String(event.gatewayId)).limit(1).get();
+      if (!snapshot.empty) {
+        depositRef = snapshot.docs[0].ref;
+        depositDoc = snapshot.docs[0];
+      }
+    }
+
+    if (!depositDoc && req.body?.metadata?.referenceId) {
+      const ref = db.collection('deposit_requests').doc(req.body.metadata.referenceId);
+      const doc = await ref.get();
+      if (doc.exists) {
+        depositRef = ref;
+        depositDoc = doc;
+      }
+    }
+
+    if (!depositDoc) {
+      console.warn('[OmegaPay Webhook] Depósito não encontrado para a transação recebida.');
+      return res.status(200).json({ received: true, warning: 'Deposit not found' });
+    }
+
+    const depositData = depositDoc.data();
+    if (!verifyOmegaWebhookToken(event.token, depositData.webhook_token_hash)) {
+      console.warn(`[OmegaPay Webhook] Token inválido no depósito ${depositRef.id}.`);
+      return res.status(401).json({ received: false, error: 'Invalid webhook token' });
+    }
+    if (depositData.status === 'approved') {
+      return res.json({ received: true, status: 'already_approved' });
+    }
+
+    if (event.gatewayId && depositData.gatewayId && String(event.gatewayId) !== String(depositData.gatewayId)) {
+      return res.status(409).json({ received: true, status: 'transaction_mismatch' });
+    }
+    if (event.referenceId && String(event.referenceId) !== String(depositRef.id)) {
+      return res.status(409).json({ received: true, status: 'reference_mismatch' });
+    }
+
+    if (event.paid && event.transaction && Object.keys(event.transaction).length > 0) {
+      if (!omegaAmountMatches(event.transaction, depositData.amount)) {
+        console.warn(`[OmegaPay Webhook] Valor divergente no depósito ${depositRef.id}.`);
+        return res.status(409).json({ received: true, status: 'amount_mismatch' });
+      }
+      await approveAndCreditDeposit(depositRef, event.status || 'COMPLETED');
+      console.log(`[OmegaPay Webhook] Depósito ${depositRef.id} aprovado pelo evento autenticado e saldo creditado.`);
+      return res.json({ received: true, status: 'approved' });
+    }
+
+    if (!event.paid) {
+      await depositRef.update({
+        gateway_status: event.status || depositData.gateway_status || 'PENDING',
+        last_webhook_event: event.event || null
+      });
+      return res.json({ received: true, status: 'pending' });
+    }
+
+    const verification = await verifyOmegaTransactionWithRetry({
+      gatewayId: depositData.gatewayId || event.gatewayId,
+      referenceId: depositRef.id
+    });
+    const verifiedTransaction = verification.transaction;
+
+    if (!verifiedTransaction) {
+      console.warn('[OmegaPay Webhook] Confirmação autenticada indisponível após novas tentativas:', verification.error?.message || 'transação ainda não propagada');
+      await depositRef.update({
+        gateway_status: event.status || depositData.gateway_status || 'PENDING',
+        verification_attempts: FieldValue.increment(verification.attemptsCompleted),
+        verification_pending_at: FieldValue.serverTimestamp(),
+        last_webhook_event: event.event || null
+      });
+      return res.status(202).json({ received: true, status: 'verification_pending' });
+    }
+    const verifiedStatus = omegaTransactionStatus(verifiedTransaction);
+    const isPaid = isOmegaPaid(verifiedTransaction);
+    if (!omegaAmountMatches(verifiedTransaction, depositData.amount)) {
+      console.warn(`[OmegaPay Webhook] Valor divergente no depósito ${depositRef.id}.`);
+      return res.status(409).json({ received: true, status: 'amount_mismatch' });
+    }
+
+    if (isPaid) {
+      await approveAndCreditDeposit(depositRef, verifiedStatus);
+      console.log(`[OmegaPay Webhook] Depósito ${depositRef.id} aprovado com sucesso e saldo creditado.`);
+      return res.json({ received: true, status: 'approved' });
+    }
+
+    const statusUpper = verifiedStatus;
+    if (['REFUNDED', 'CHARGED_BACK', 'FAILED'].includes(statusUpper)) {
+      await depositRef.update({
+        status: statusUpper.toLowerCase(),
+        gateway_status: statusUpper
+      });
+    }
+
+    res.json({ received: true, status: event.status || 'pending' });
+  } catch (error) {
+    console.error('OmegaPay webhook error:', error);
+    res.status(200).json({ received: true, error: error.message });
+  }
+});
+
 router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
   try {
     const depositId = req.params.depositId;
@@ -554,27 +701,50 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
       });
     }
 
+    const isOmegaDeposit = deposit.gateway === 'omegapay';
     if ((deposit.gatewayId || depositRef.id) && await claimVizzionDepositLookup(depositRef)) {
       try {
-        const lookup = await getVizzionTransaction({
-          gatewayId: deposit.gatewayId,
-          referenceId: depositRef.id
-        });
-        const gatewayTx = extractVizzionTransaction(lookup, { gatewayId: deposit.gatewayId, referenceId: depositRef.id });
-        const gStatus = vizzionTransactionStatus(gatewayTx);
-        if (isVizzionPaid(gatewayTx) && vizzionAmountMatches(gatewayTx, deposit.amount)) {
-          const result = await approveAndCreditDeposit(depositRef, gStatus || 'COMPLETED');
-          return res.json({
-            status: 'approved',
-            balance: result.balance,
-            cash_balance: result.cashBalance,
-            bonus_balance: result.bonusBalance,
-            bonusAmount: deposit.bonusAmount || 0,
-            amount: deposit.amount
+        if (isOmegaDeposit) {
+          // ── Polling OmegaPay (20%) ───────────────────────────────────────
+          const lookup = await getOmegaTransaction({
+            gatewayId: deposit.gatewayId,
+            referenceId: depositRef.id
           });
+          const gatewayTx = extractOmegaTransaction(lookup, { gatewayId: deposit.gatewayId, referenceId: depositRef.id });
+          const gStatus = omegaTransactionStatus(gatewayTx);
+          if (isOmegaPaid(gatewayTx) && omegaAmountMatches(gatewayTx, deposit.amount)) {
+            const result = await approveAndCreditDeposit(depositRef, gStatus || 'COMPLETED');
+            return res.json({
+              status: 'approved',
+              balance: result.balance,
+              cash_balance: result.cashBalance,
+              bonus_balance: result.bonusBalance,
+              bonusAmount: deposit.bonusAmount || 0,
+              amount: deposit.amount
+            });
+          }
+        } else {
+          // ── Polling VizzionPay (80%) ──────────────────────────────────────
+          const lookup = await getVizzionTransaction({
+            gatewayId: deposit.gatewayId,
+            referenceId: depositRef.id
+          });
+          const gatewayTx = extractVizzionTransaction(lookup, { gatewayId: deposit.gatewayId, referenceId: depositRef.id });
+          const gStatus = vizzionTransactionStatus(gatewayTx);
+          if (isVizzionPaid(gatewayTx) && vizzionAmountMatches(gatewayTx, deposit.amount)) {
+            const result = await approveAndCreditDeposit(depositRef, gStatus || 'COMPLETED');
+            return res.json({
+              status: 'approved',
+              balance: result.balance,
+              cash_balance: result.cashBalance,
+              bonus_balance: result.bonusBalance,
+              bonusAmount: deposit.bonusAmount || 0,
+              amount: deposit.amount
+            });
+          }
         }
       } catch (err) {
-        console.warn('Vizzion Pay polling lookup info:', err.message);
+        console.warn((isOmegaDeposit ? 'OmegaPay' : 'Vizzion Pay') + ' polling lookup info:', err.message);
         if (err.gatewayStatus === 429) {
           await depositRef.update({ gateway_check_after_ms: Date.now() + VIZZION_RATE_LIMIT_BACKOFF_MS });
         }
@@ -593,9 +763,17 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
 
 router.get('/gateway/status', authenticateToken, (req, res) => {
   res.json({
-    provider: vizzionPayStatus.provider,
-    configured: vizzionPayStatus.configured,
-    webhookConfigured: vizzionPayStatus.webhookConfigured
+    routing: '20% OmegaPay / 80% VizzionPay',
+    omegapay: {
+      provider: omegaPayStatus.provider,
+      configured: omegaPayStatus.configured,
+      webhookConfigured: omegaPayStatus.webhookConfigured
+    },
+    vizzionpay: {
+      provider: vizzionPayStatus.provider,
+      configured: vizzionPayStatus.configured,
+      webhookConfigured: vizzionPayStatus.webhookConfigured
+    }
   });
 });
 
