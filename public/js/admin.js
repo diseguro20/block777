@@ -582,28 +582,52 @@ const admin = {
     try {
       const data = await app.fetchAPI('/api/admin/password-resets');
       const requests = data.requests || [];
-      body.innerHTML = requests.length ? requests.map(item => `<tr><td data-label="Jogador"><b>${this.escape(item.username || 'Conta')}</b></td><td data-label="Contato" class="mono">${this.escape(item.contact || 'Contato cadastrado')}</td><td data-label="Solicitado em">${app.formatDate(item.created_at)}</td><td data-label="Status"><span class="badge ${item.status === 'issued' ? 'badge-success' : ''}">${item.status === 'issued' ? 'Código emitido' : 'Aguardando'}</span></td><td data-label="Ação"><button class="table-action" onclick="admin.issuePasswordReset('${this.escape(item.id)}','${this.escape(item.username || 'Jogador')}')">Gerar código</button></td></tr>`).join('') : '<tr><td colspan="5" class="empty-state">Nenhuma solicitação pendente.</td></tr>';
+      body.innerHTML = requests.length ? requests.map(item => {
+        const phoneDigits = item.contact ? String(item.contact).replace(/\D/g, '') : '';
+        const waUrl = phoneDigits ? this.getWhatsAppUrl(phoneDigits, item.username) : '';
+        const isPending = item.status === 'pending';
+        return `<tr>
+          <td data-label="Jogador"><b>${this.escape(item.username || 'Conta')}</b></td>
+          <td data-label="Contato" class="mono">
+            ${this.escape(item.contact || 'Contato cadastrado')}
+            ${waUrl ? `<a href="${waUrl}" target="_blank" rel="noopener noreferrer" class="whatsapp-btn" style="display:inline-flex;margin-left:6px;padding:2px 8px;font-size:11px" title="Conversar no WhatsApp">WhatsApp</a>` : ''}
+          </td>
+          <td data-label="Solicitado em">${app.formatDate(item.created_at)}</td>
+          <td data-label="Status">
+            <span class="badge ${item.status === 'approved' ? 'badge-success' : item.status === 'rejected' ? 'badge-danger' : 'badge-warning'}">
+              ${item.status === 'approved' ? 'Aprovada' : item.status === 'rejected' ? 'Rejeitada' : 'Aguardando aprovação'}
+            </span>
+          </td>
+          <td data-label="Ação" class="actions">
+            ${isPending ? `
+              <button class="table-action" style="color:#60e49c;border-color:rgba(96,228,156,0.4);font-weight:700" onclick="admin.approvePasswordReset('${this.escape(item.id)}','${this.escape(item.username || 'Jogador')}')">✓ Aprovar Senha</button>
+              <button class="table-action" style="color:#ff5555;border-color:rgba(255,85,85,0.4)" onclick="admin.rejectPasswordReset('${this.escape(item.id)}','${this.escape(item.username || 'Jogador')}')">✕ Rejeitar</button>
+            ` : `<span style="color:var(--color-text-muted);font-size:12px">${item.status === 'approved' ? 'Senha ativa' : 'Finalizada'}</span>`}
+          </td>
+        </tr>`;
+      }).join('') : '<tr><td colspan="5" class="empty-state">Nenhuma solicitação pendente no momento.</td></tr>';
     } catch (error) { body.innerHTML = `<tr><td colspan="5" class="empty-state">${this.escape(error.message)}</td></tr>`; }
   },
 
-  async issuePasswordReset(id, username) {
+  async approvePasswordReset(id, username) {
+    if (!confirm(`Deseja aprovar a alteração de senha de ${username}? A nova senha começará a valer imediatamente.`)) return;
     try {
-      const data = await app.fetchAPI(`/api/admin/password-resets/${encodeURIComponent(id)}/issue`, { method: 'POST' });
-      this.currentResetCode = data.code;
-      document.getElementById('reset-code-user').textContent = username;
-      document.getElementById('reset-code-value').textContent = data.code;
-      document.getElementById('reset-code-modal')?.classList.add('active');
+      const data = await app.fetchAPI(`/api/admin/password-resets/${encodeURIComponent(id)}/approve`, { method: 'POST' });
+      app.showToast(data.message || `Senha de ${username} aprovada com sucesso!`);
       await this.loadPasswordResets();
     } catch (error) { app.showToast(error.message); }
   },
 
-  async copyResetCode() {
-    if (!this.currentResetCode) return;
-    try { await navigator.clipboard.writeText(this.currentResetCode); app.showToast('Código copiado.'); }
-    catch (_) { app.showToast(`Código: ${this.currentResetCode}`); }
+  async rejectPasswordReset(id, username) {
+    if (!confirm(`Deseja rejeitar a solicitação de senha de ${username}?`)) return;
+    try {
+      const data = await app.fetchAPI(`/api/admin/password-resets/${encodeURIComponent(id)}/reject`, { method: 'POST' });
+      app.showToast(data.message || 'Solicitação rejeitada.');
+      await this.loadPasswordResets();
+    } catch (error) { app.showToast(error.message); }
   },
 
-  openCommissionModal(id, username, level1, level2, source = 'users') {
+    openCommissionModal(id, username, level1, level2, source = 'users') {
     this.selectedCommissionUserId = id;
     this.selectedCommissionUsername = username;
     this.selectedCommissionSource = source;
@@ -684,8 +708,8 @@ const admin = {
     if (!this.selectedPasswordUserId) return;
     const passInput = document.getElementById('user-new-password');
     const newPassword = passInput ? passInput.value.trim() : '';
-    if (!newPassword || newPassword.length < 8) {
-      return app.showToast('A nova senha deve ter no mínimo 8 caracteres.');
+    if (!newPassword || newPassword.length < 6) {
+      return app.showToast('A nova senha deve ter no mínimo 6 caracteres.');
     }
     try {
       await app.fetchAPI(`/api/admin/users/${encodeURIComponent(this.selectedPasswordUserId)}/password`, {

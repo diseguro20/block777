@@ -12,6 +12,7 @@ import { authTokenTtl, getJwtSecret } from '../lib/security.js';
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantBannedIpsId, tenantSettingsRef } from '../lib/tenant.js';
 import { BANNER_DEFAULTS, normalizeBanners } from '../lib/banners.js';
 import { findTenantUser } from '../lib/userLookup.js';
+import { invalidateUserCache } from './auth.js';
 import { adminSummaryRef, emptyAdminSummary, normalizeAdminSummary, updateAdminSummary } from '../lib/adminSummary.js';
 import { createPasswordResetCode, hashPasswordResetCode, PASSWORD_RESET_MAX_ATTEMPTS, passwordResetExpiry } from '../lib/passwordReset.js';
 import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
@@ -553,8 +554,8 @@ router.post('/users/:id/impersonate', async (req, res) => {
 router.put('/users/:id/password', async (req, res) => {
   try {
     const { newPassword } = req.body;
-    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 8) {
-      return res.status(400).json({ error: 'A nova senha deve ter no mínimo 8 caracteres.' });
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) {
+      return res.status(400).json({ error: 'A nova senha deve ter no mínimo 6 caracteres.' });
     }
     const userRef = db.collection('users').doc(req.params.id);
     const userDoc = await userRef.get();
@@ -565,10 +566,29 @@ router.put('/users/:id/password', async (req, res) => {
       password_hash,
       password_updated_at: FieldValue.serverTimestamp()
     });
-    res.json({ success: true, message: 'Senha atualizada com sucesso.' });
+
+    try { invalidateUserCache(req.params.id); } catch (_) {}
+
+    try {
+      const pendingSnap = await db.collection('password_reset_requests')
+        .where('uid', '==', req.params.id)
+        .where('status', '==', 'pending')
+        .get();
+      const batch = db.batch();
+      pendingSnap.forEach(doc => {
+        batch.update(doc.ref, {
+          status: 'approved',
+          approved_at: FieldValue.serverTimestamp(),
+          approved_by: req.user?.uid || 'admin'
+        });
+      });
+      if (!pendingSnap.empty) await batch.commit();
+    } catch (_) {}
+
+    res.json({ success: true, message: `Senha de ${userDoc.data().username || 'usuário'} alterada com sucesso!` });
   } catch (error) {
     console.error('Admin change password error:', error);
-    res.status(500).json({ error: 'Erro ao alterar senha do usuário.' });
+    res.status(500).json({ error: error.message || 'Erro ao alterar senha do usuário.' });
   }
 });
 
@@ -577,36 +597,68 @@ router.get('/password-resets', async (req, res) => {
     const snapshot = await db.collection('password_reset_requests').get();
     const requests = snapshot.docs
       .map(doc => ({ id: doc.id, ...doc.data() }))
-      .filter(item => belongsToTenant(item, req.adminTenantId) && item.status !== 'used')
+      .filter(item => belongsToTenant(item, req.adminTenantId))
       .sort((a, b) => timestampMillis(b.created_at) - timestampMillis(a.created_at))
       .slice(0, 100)
-      .map(item => ({ ...item, code_hash: undefined }));
+      .map(item => ({ ...item, new_password_hash: undefined, password_hash: undefined, code_hash: undefined }));
     res.json({ requests });
   } catch (error) {
     res.status(503).json({ error: 'Não foi possível carregar as solicitações de senha.' });
   }
 });
 
-router.post('/password-resets/:id/issue', async (req, res) => {
+router.post('/password-resets/:id/approve', async (req, res) => {
   try {
     const requestRef = db.collection('password_reset_requests').doc(req.params.id);
     const requestDoc = await requestRef.get();
     if (!requestDoc.exists) return res.status(404).json({ error: 'Solicitação não encontrada.' });
     ensureTenantAccess(req, requestDoc.data());
-    if (requestDoc.data().status === 'used') return res.status(409).json({ error: 'Esta solicitação já foi utilizada.' });
-    const code = createPasswordResetCode();
-    await requestRef.update({
-      status: 'issued',
-      code_hash: hashPasswordResetCode(requestRef.id, code, JWT_SECRET),
-      attempts: 0,
-      max_attempts: PASSWORD_RESET_MAX_ATTEMPTS,
-      expires_at: passwordResetExpiry(),
-      issued_at: FieldValue.serverTimestamp(),
-      issued_by: req.user.uid
+    const data = requestDoc.data();
+    if (data.status === 'approved') return res.status(400).json({ error: 'Esta solicitação já foi aprovada.' });
+
+    const password_hash = data.new_password_hash || data.password_hash;
+    if (!password_hash) {
+      return res.status(400).json({ error: 'Esta solicitação não contém uma nova senha registrada.' });
+    }
+
+    const userRef = db.collection('users').doc(data.uid);
+    const userDoc = await userRef.get();
+    if (!userDoc.exists) return res.status(404).json({ error: 'Usuário não encontrado.' });
+
+    await userRef.update({
+      password_hash,
+      password_updated_at: FieldValue.serverTimestamp()
     });
-    res.json({ success: true, code, expiresInMinutes: 15 });
+
+    await requestRef.update({
+      status: 'approved',
+      approved_at: FieldValue.serverTimestamp(),
+      approved_by: req.user?.uid || 'admin'
+    });
+
+    try { invalidateUserCache(data.uid); } catch (_) {}
+
+    res.json({ success: true, message: `Nova senha de ${data.username || 'jogador'} aprovada com sucesso! O jogador já pode entrar.` });
   } catch (error) {
-    res.status(400).json({ error: error.message || 'Não foi possível gerar o código.' });
+    console.error('Admin approve password error:', error);
+    res.status(500).json({ error: error.message || 'Erro ao aprovar solicitação de senha.' });
+  }
+});
+
+router.post('/password-resets/:id/reject', async (req, res) => {
+  try {
+    const requestRef = db.collection('password_reset_requests').doc(req.params.id);
+    const requestDoc = await requestRef.get();
+    if (!requestDoc.exists) return res.status(404).json({ error: 'Solicitação não encontrada.' });
+    ensureTenantAccess(req, requestDoc.data());
+    await requestRef.update({
+      status: 'rejected',
+      rejected_at: FieldValue.serverTimestamp(),
+      rejected_by: req.user?.uid || 'admin'
+    });
+    res.json({ success: true, message: 'Solicitação rejeitada com sucesso.' });
+  } catch (error) {
+    res.status(500).json({ error: error.message || 'Erro ao rejeitar solicitação.' });
   }
 });
 

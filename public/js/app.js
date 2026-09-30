@@ -216,30 +216,25 @@ const app = {
     };
     if (resetRequest) resetRequest.onsubmit = async event => {
       event.preventDefault();
+      const payload = Object.fromEntries(new FormData(resetRequest));
+      const confirmInput = document.getElementById('password-reset-confirmation');
+      if (confirmInput && payload.newPassword !== confirmInput.value) {
+        return this.showToast('As senhas não coincidem.');
+      }
+      if (!payload.newPassword || payload.newPassword.length < 6) {
+        return this.showToast('A nova senha deve ter no mínimo 6 caracteres.');
+      }
       const button = resetRequest.querySelector('button[type="submit"]');
       if (button) { button.disabled = true; button.textContent = 'Enviando...'; }
       try {
-        const payload = Object.fromEntries(new FormData(resetRequest));
         const data = await this.fetchAPI('/api/auth/password-reset/request', { method: 'POST', body: JSON.stringify(payload) });
-        document.getElementById('password-reset-request-id').value = data.requestId;
-        resetRequest.hidden = true;
-        resetConfirm.hidden = false;
-        this.showToast(data.message);
+        resetRequest.reset();
+        resetRequest.style.display = 'none';
+        const successBox = document.getElementById('password-reset-success-box');
+        if (successBox) successBox.style.display = 'block';
+        this.showToast(data.message || 'Solicitação enviada com sucesso!');
       } catch (error) { this.showToast(error.message); }
-      finally { if (button) { button.disabled = false; button.textContent = 'Solicitar código'; } }
-    };
-    if (resetConfirm) resetConfirm.onsubmit = async event => {
-      event.preventDefault();
-      const payload = Object.fromEntries(new FormData(resetConfirm));
-      if (payload.newPassword !== document.getElementById('password-reset-confirmation').value) return this.showToast('As senhas não coincidem.');
-      const button = resetConfirm.querySelector('button[type="submit"]');
-      if (button) { button.disabled = true; button.textContent = 'Alterando...'; }
-      try {
-        const data = await this.fetchAPI('/api/auth/password-reset/confirm', { method: 'POST', body: JSON.stringify(payload) });
-        resetConfirm.reset(); resetConfirm.hidden = true; resetRequest.hidden = false;
-        this.closeModal('password-recovery-modal'); this.openAuth('login'); this.showToast(data.message);
-      } catch (error) { this.showToast(error.message); }
-      finally { if (button) { button.disabled = false; button.textContent = 'Definir nova senha'; } }
+      finally { if (button) { button.disabled = false; button.textContent = 'Solicitar alteração de senha'; } }
     };
     if (changePassword) changePassword.onsubmit = async event => {
       event.preventDefault();
