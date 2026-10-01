@@ -250,6 +250,14 @@ const affiliate = {
     await navigator.clipboard.writeText(document.getElementById('ref-link').value);
     app.showToast('Link de indicação copiado.');
   }
+,
+  openVipModal() {
+    document.getElementById('vip-partner-modal')?.classList.add('active');
+  },
+
+  closeVipModal() {
+    document.getElementById('vip-partner-modal')?.classList.remove('active');
+  }
 };
 
 document.addEventListener('DOMContentLoaded', () => setTimeout(() => affiliate.init(), 60));

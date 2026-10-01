@@ -313,3 +313,36 @@
     min-height: 48px;
   }
 }
+
+
+/* VIP Partner Modal & Discreet Card */
+.vip-partner-discreet-card {
+  transition: transform 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.vip-partner-discreet-card:hover {
+  border-color: rgba(37, 211, 102, 0.5) !important;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.35);
+  transform: translateY(-1px);
+}
+.vip-modal-card {
+  width: min(620px, 100%) !important;
+  max-width: 620px !important;
+  padding: 26px 22px !important;
+}
+.vip-modal-card .vip-affiliate-banner,
+.vip-modal-card .influencer-bounty-banner {
+  flex-direction: column !important;
+  align-items: flex-start !important;
+  padding: 20px 20px !important;
+  gap: 16px !important;
+  border-radius: 14px !important;
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+.vip-modal-card .vip-whatsapp-btn,
+.vip-modal-card .bounty-whatsapp-btn {
+  width: 100% !important;
+  min-height: 46px !important;
+  justify-content: center !important;
+  font-size: 14px !important;
+}
