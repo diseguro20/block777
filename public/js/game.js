@@ -339,18 +339,17 @@ const game = {
     if (!cells?.length || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
     const stage = this.canvas?.closest('.game-stage');
     if (!stage) return;
-    const canvasRect = this.canvas.getBoundingClientRect();
-    const stageRect = stage.getBoundingClientRect();
+    const canvasW = this.canvas.clientWidth || this.canvas.width || 360;
     const averageRow = cells.reduce((sum, cell) => sum + cell.row, 0) / cells.length;
     const averageCol = cells.reduce((sum, cell) => sum + cell.col, 0) / cells.length;
     const burst = document.createElement('span');
     burst.className = 'placement-burst';
-    burst.style.left = `${canvasRect.left - stageRect.left + ((averageCol + 0.5) / this.gridSize) * canvasRect.width}px`;
-    burst.style.top = `${canvasRect.top - stageRect.top + ((averageRow + 0.5) / this.gridSize) * canvasRect.width}px`;
+    burst.style.left = `${((averageCol + 0.5) / this.gridSize) * canvasW}px`;
+    burst.style.top = `${((averageRow + 0.5) / this.gridSize) * canvasW}px`;
     burst.style.setProperty('--burst-color', color || '#20d4ff');
-    burst.innerHTML = '<i></i>'.repeat(10);
+    burst.innerHTML = '<i></i><i></i><i></i><i></i><i></i><i></i>';
     stage.appendChild(burst);
-    window.setTimeout(() => burst.remove(), 700);
+    window.setTimeout(() => burst.remove(), 550);
   },
 
   showInvalidPlacement() {
@@ -729,7 +728,7 @@ const game = {
       this.landingDemo.multiplier = parseFloat((this.landingDemo.multiplier + lines * 0.20).toFixed(2));
       this.playLineCompleteSound(lines);
       this.updateLandingHud();
-      this.landingDemo.celebration = { rows: rowsToClear, cols: colsToClear, cells: [...clearedCellMap.values()], startedAt: performance.now(), duration: 1000 };
+      this.landingDemo.celebration = { rows: rowsToClear, cols: colsToClear, cells: [...clearedCellMap.values()], startedAt: performance.now(), duration: 480 };
       if (this.landingDemo.animationFrame) cancelAnimationFrame(this.landingDemo.animationFrame);
       const animate = now => {
         const celebration = this.landingDemo.celebration;
@@ -743,7 +742,6 @@ const game = {
         }
       };
       this.landingDemo.animationFrame = requestAnimationFrame(animate);
-      app.showToast(`🔥 ${lines} LINHA(S) QUEBRADA(S)! Multiplicador: ${this.landingDemo.multiplier.toFixed(2)}x`);
     }
   },
 
@@ -837,15 +835,13 @@ const game = {
           ctx.globalAlpha = 1.0;
           const clears = this.getLandingPotentialClears(piece, row, col);
           if (clears.rows.length || clears.cols.length) {
-            const flash = 0.22 + (Math.sin(now / 95) + 1) * 0.18;
-            ctx.save();
-            ctx.globalCompositeOperation = 'screen';
-            ctx.fillStyle = `rgba(255,255,255,${flash})`;
-            ctx.shadowColor = '#c9ff43';
-            ctx.shadowBlur = 18;
+            const flash = 0.25 + (Math.sin(now / 95) + 1) * 0.15;
+            ctx.fillStyle = `rgba(201, 255, 67, ${flash * 0.45})`;
             clears.rows.forEach(line => ctx.fillRect(geometry.padding, geometry.padding + line * geometry.step, w - geometry.padding * 2, cellSize));
             clears.cols.forEach(line => ctx.fillRect(geometry.padding + line * geometry.step, geometry.padding, cellSize, w - geometry.padding * 2));
-            ctx.restore();
+            ctx.fillStyle = `rgba(255, 255, 255, ${flash * 0.65})`;
+            clears.rows.forEach(line => ctx.fillRect(geometry.padding, geometry.padding + line * geometry.step + cellSize * 0.35, w - geometry.padding * 2, cellSize * 0.3));
+            clears.cols.forEach(line => ctx.fillRect(geometry.padding + line * geometry.step + cellSize * 0.35, geometry.padding, cellSize * 0.3, w - geometry.padding * 2));
           }
         } else {
           ctx.save();
@@ -912,22 +908,30 @@ const game = {
     const pulse = Math.sin(progress * Math.PI);
     const geometry = this.getLandingGeometry();
     const ctx = this.landingCtx;
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.fillStyle = `rgba(201,255,67,${.16 + pulse * .58})`;
-    ctx.shadowColor = '#c9ff43';
-    ctx.shadowBlur = 18 + pulse * 24;
-    effect.rows.forEach(row => ctx.fillRect(geometry.padding, geometry.padding + row * geometry.step, this.landingCanvas.width - geometry.padding * 2, geometry.cell));
-    effect.cols.forEach(col => ctx.fillRect(geometry.padding + col * geometry.step, geometry.padding, geometry.cell, this.landingCanvas.width - geometry.padding * 2));
-    ctx.restore();
+    const boardWidth = this.landingCanvas.width - geometry.padding * 2;
+
+    ctx.fillStyle = `rgba(201, 255, 67, ${pulse * 0.45})`;
+    effect.rows.forEach(row => ctx.fillRect(geometry.padding, geometry.padding + row * geometry.step, boardWidth, geometry.cell));
+    effect.cols.forEach(col => ctx.fillRect(geometry.padding + col * geometry.step, geometry.padding, geometry.cell, boardWidth));
+
+    const coreH = Math.max(3, geometry.cell * 0.38);
+    const coreOffset = (geometry.cell - coreH) / 2;
+    ctx.fillStyle = `rgba(255, 255, 255, ${pulse * 0.9})`;
+    effect.rows.forEach(row => ctx.fillRect(geometry.padding, geometry.padding + row * geometry.step + coreOffset, boardWidth, coreH));
+    effect.cols.forEach(col => ctx.fillRect(geometry.padding + col * geometry.step + coreOffset, geometry.padding, coreH, boardWidth));
+
     (effect.cells || []).forEach((cell, index) => {
-      const delay = Math.min(.2, (index % 8) * .018);
-      const local = Math.min(1, Math.max(0, (progress - delay) / Math.max(.01, 1 - delay)));
-      const drift = Math.sin(index * 2.17) * geometry.cell * .9 * local;
-      const lift = Math.sin(Math.min(1, local * 3) * Math.PI) * 8;
+      const delay = Math.min(0.15, (index % 8) * 0.012);
+      const local = Math.min(1, Math.max(0, (progress - delay) / Math.max(0.01, 1 - delay)));
+      const drift = Math.sin(index * 2.17) * geometry.cell * 0.6 * local;
+      const lift = Math.sin(Math.min(1, local * 3) * Math.PI) * 6;
       const x = geometry.padding + cell.col * geometry.step + drift;
-      const y = geometry.padding + cell.row * geometry.step - lift + local * local * Math.max(270, this.landingCanvas.width * .76);
-      this.drawRotatedBlock(ctx, x, y, geometry.cell, cell.color, (index % 2 ? 1 : -1) * local, 1 - Math.max(0, local - .72) / .28);
+      const y = geometry.padding + cell.row * geometry.step - lift + local * local * Math.max(240, this.landingCanvas.width * 0.65);
+      const rot = (index % 2 ? 1 : -1) * local * 0.7;
+      const alpha = Math.max(0, 1 - local * 1.25);
+      if (alpha > 0.02) {
+        this.drawRotatedBlock(ctx, x, y, geometry.cell, cell.color, rot, alpha);
+      }
     });
   },
 
@@ -1281,7 +1285,6 @@ const game = {
         }
       }
     }
-
     this.playTone(740, 0, 0.08, 'sine', 0.015);
     this.playTone(1046.5, 0.08, 0.11, 'sine', 0.017);
     this.animateNewHand();
@@ -1461,7 +1464,6 @@ const game = {
       this.score += Math.round(totalLines * this.gridSize * Math.max(1, (this.combo + totalLines) / 2) * Math.max(1, placedBlocks));
       this.triggerLineCelebration(rowsToClear, colsToClear, previousMultiplier, [...clearedCellMap.values()]);
 
-      app.showToast(`🔥 ${totalLines} LINHA(S) QUEBRADA(S)! Multiplicador: ${this.multiplier.toFixed(2)}x`);
       if (this.mode === 'real' && !this.boostActive && !this.boostOfferShown && previousLinesCleared < this.boostTriggerLines && this.linesCleared >= this.boostTriggerLines) {
         this.boostOfferShown = true;
         window.setTimeout(() => this.showBoostOffer(), 650);
@@ -1475,7 +1477,9 @@ const game = {
     if (message) message.hidden = false;
     this.canvas?.closest('.game-playfield')?.classList.add('board-locked');
     this.playInvalidSound();
-    if (navigator.vibrate) navigator.vibrate([55, 30, 85]);
+    if (navigator.vibrate) {
+      try { navigator.vibrate([55, 30, 85]); } catch (_) {}
+    }
     window.clearTimeout(this.lockedTimer);
     this.lockedTimer = window.setTimeout(() => {
       if (message) message.hidden = true;
@@ -1499,21 +1503,27 @@ const game = {
       gainFloat.textContent = `+ ${app.formatBRL(Math.max(0, totalPayout - previousPayout))}`;
       gainFloat.hidden = false;
       gainFloat.classList.remove('active');
-      void gainFloat.offsetWidth;
-      gainFloat.classList.add('active');
-      window.setTimeout(() => {
+      window.requestAnimationFrame(() => {
+        gainFloat.classList.add('active');
+      });
+      window.clearTimeout(this.gainFloatTimer);
+      this.gainFloatTimer = window.setTimeout(() => {
         gainFloat.hidden = true;
         gainFloat.classList.remove('active');
-      }, reducedMotion ? 350 : 1100);
+      }, reducedMotion ? 350 : 850);
     }
     if (effect) {
       effect.classList.remove('active');
-      void effect.offsetWidth;
-      effect.classList.add('active');
-      window.setTimeout(() => effect.classList.remove('active'), reducedMotion ? 300 : 1450);
+      window.requestAnimationFrame(() => {
+        effect.classList.add('active');
+      });
+      window.clearTimeout(this.cashInTimer);
+      this.cashInTimer = window.setTimeout(() => effect.classList.remove('active'), reducedMotion ? 300 : 950);
     }
 
-    if (navigator.vibrate && !reducedMotion) navigator.vibrate([35, 25, 55]);
+    if (navigator.vibrate && !reducedMotion) {
+      try { navigator.vibrate([35, 25, 55]); } catch (_) {}
+    }
     if (reducedMotion) return;
 
     this.lineCelebration = {
@@ -1521,7 +1531,7 @@ const game = {
       cols: [...cols],
       cells: clearedCells,
       startedAt: performance.now(),
-      duration: 1050
+      duration: 480
     };
     if (this.celebrationFrame) cancelAnimationFrame(this.celebrationFrame);
 
@@ -1547,44 +1557,52 @@ const game = {
     const geometry = this.getBoardGeometry();
     const cellSize = geometry.cell;
     const ctx = this.ctx;
+    const boardWidth = this.canvas.width - geometry.padding * 2;
 
-    ctx.save();
-    ctx.globalCompositeOperation = 'screen';
-    ctx.shadowColor = '#c9ff43';
-    ctx.shadowBlur = 20 + pulse * 26;
-    ctx.fillStyle = `rgba(201,255,67,${0.2 + pulse * 0.65})`;
+    // Laser beam aura (clean alpha fills, zero shadowBlur, zero composite readbacks)
+    ctx.fillStyle = `rgba(201, 255, 67, ${pulse * 0.45})`;
+    effect.rows.forEach(row => ctx.fillRect(geometry.padding, geometry.padding + row * geometry.step, boardWidth, cellSize));
+    effect.cols.forEach(col => ctx.fillRect(geometry.padding + col * geometry.step, geometry.padding, cellSize, boardWidth));
 
-    effect.rows.forEach(row => ctx.fillRect(geometry.padding, geometry.padding + row * geometry.step, this.canvas.width - geometry.padding * 2, cellSize));
-    effect.cols.forEach(col => ctx.fillRect(geometry.padding + col * geometry.step, geometry.padding, cellSize, this.canvas.width - geometry.padding * 2));
+    // Blinding core laser beam (white intense center line)
+    const coreH = Math.max(3, cellSize * 0.38);
+    const coreOffset = (cellSize - coreH) / 2;
+    ctx.fillStyle = `rgba(255, 255, 255, ${pulse * 0.9})`;
+    effect.rows.forEach(row => ctx.fillRect(geometry.padding, geometry.padding + row * geometry.step + coreOffset, boardWidth, coreH));
+    effect.cols.forEach(col => ctx.fillRect(geometry.padding + col * geometry.step + coreOffset, geometry.padding, coreH, boardWidth));
 
-    const lines = [
-      ...effect.rows.map(row => ({ horizontal: true, index: row })),
-      ...effect.cols.map(col => ({ horizontal: false, index: col }))
-    ];
-    lines.forEach((line, lineIndex) => {
-      for (let i = 0; i < 12; i++) {
-        const travel = (i / 11 + progress * 0.65) % 1;
-        const wave = Math.sin((i + lineIndex * 3) * 2.4 + progress * 10) * cellSize * 0.45;
-        const x = line.horizontal ? geometry.padding + travel * (this.canvas.width - geometry.padding * 2) : geometry.padding + line.index * geometry.step + cellSize / 2 + wave;
-        const y = line.horizontal ? geometry.padding + line.index * geometry.step + cellSize / 2 + wave : geometry.padding + travel * (this.canvas.width - geometry.padding * 2);
-        const radius = 2 + ((i + lineIndex) % 3) * 1.5;
-        ctx.beginPath();
-        ctx.fillStyle = i % 2 ? `rgba(255,255,255,${pulse})` : `rgba(201,255,67,${pulse})`;
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fill();
+    // Snappy sparks across the line (sharp fast rects, 0 GC, no arc paths)
+    const sparkCount = 6;
+    ctx.fillStyle = `rgba(255, 255, 255, ${pulse})`;
+    effect.rows.forEach(row => {
+      const y = geometry.padding + row * geometry.step + cellSize / 2;
+      for (let i = 0; i < sparkCount; i++) {
+        const x = geometry.padding + ((i / sparkCount + progress * 1.5) % 1) * boardWidth;
+        ctx.fillRect(x - 2, y - 2, 4, 4);
       }
     });
-    ctx.restore();
+    effect.cols.forEach(col => {
+      const x = geometry.padding + col * geometry.step + cellSize / 2;
+      for (let i = 0; i < sparkCount; i++) {
+        const y = geometry.padding + ((i / sparkCount + progress * 1.5) % 1) * boardWidth;
+        ctx.fillRect(x - 2, y - 2, 4, 4);
+      }
+    });
 
+    // Dissolving/falling cleared blocks
     (effect.cells || []).forEach((cell, index) => {
-      const delay = Math.min(0.2, (index % this.gridSize) * 0.018);
+      const delay = Math.min(0.15, (index % this.gridSize) * 0.012);
       const local = Math.min(1, Math.max(0, (progress - delay) / Math.max(0.01, 1 - delay)));
       const fall = local * local;
-      const drift = Math.sin(index * 2.17) * cellSize * 0.95 * local;
-      const lift = Math.sin(Math.min(1, local * 3) * Math.PI) * 8;
+      const drift = Math.sin(index * 2.17) * cellSize * 0.6 * local;
+      const lift = Math.sin(Math.min(1, local * 3) * Math.PI) * 6;
       const x = geometry.padding + cell.col * geometry.step + drift;
-      const y = geometry.padding + cell.row * geometry.step - lift + fall * Math.max(280, this.canvas.width * 0.78);
-      this.drawRotatedBlock(ctx, x, y, cellSize, cell.color, (index % 2 ? 1 : -1) * local * (0.7 + (index % 3) * 0.35), 1 - Math.max(0, local - 0.72) / 0.28);
+      const y = geometry.padding + cell.row * geometry.step - lift + fall * Math.max(240, this.canvas.width * 0.65);
+      const rot = (index % 2 ? 1 : -1) * local * 0.7;
+      const alpha = Math.max(0, 1 - local * 1.25);
+      if (alpha > 0.02) {
+        this.drawRotatedBlock(ctx, x, y, cellSize, cell.color, rot, alpha);
+      }
     });
   },
 
@@ -2013,15 +2031,13 @@ const game = {
           this.ctx.globalAlpha = 1.0;
           const clears = this.getPotentialClears(piece, row, col);
           if (clears.rows.length || clears.cols.length) {
-            const flash = 0.22 + (Math.sin(now / 95) + 1) * 0.18;
-            this.ctx.save();
-            this.ctx.globalCompositeOperation = 'screen';
-            this.ctx.fillStyle = `rgba(255,255,255,${flash})`;
-            this.ctx.shadowColor = '#c9ff43';
-            this.ctx.shadowBlur = 18;
+            const flash = 0.25 + (Math.sin(now / 95) + 1) * 0.15;
+            this.ctx.fillStyle = `rgba(201, 255, 67, ${flash * 0.45})`;
             clears.rows.forEach(line => this.ctx.fillRect(geometry.padding, geometry.padding + line * geometry.step, w - geometry.padding * 2, cellSize));
             clears.cols.forEach(line => this.ctx.fillRect(geometry.padding + line * geometry.step, geometry.padding, cellSize, w - geometry.padding * 2));
-            this.ctx.restore();
+            this.ctx.fillStyle = `rgba(255, 255, 255, ${flash * 0.65})`;
+            clears.rows.forEach(line => this.ctx.fillRect(geometry.padding, geometry.padding + line * geometry.step + cellSize * 0.35, w - geometry.padding * 2, cellSize * 0.3));
+            clears.cols.forEach(line => this.ctx.fillRect(geometry.padding + line * geometry.step + cellSize * 0.35, geometry.padding, cellSize * 0.3, w - geometry.padding * 2));
           }
         } else if (row < this.gridSize && col < this.gridSize && row + piece.shape.length > 0 && col + piece.shape[0].length > 0) {
           this.ctx.save();
@@ -2101,35 +2117,38 @@ const game = {
   drawBlockCtx(ctx, x, y, size, color) {
     const inset = Math.max(1, size * 0.035);
     const blockSize = Math.max(2, size - inset * 2);
-    const radius = Math.max(2, Math.min(7, size * 0.12));
-    const gradient = ctx.createLinearGradient(x, y, x + size, y + size);
-    gradient.addColorStop(0, color);
-    gradient.addColorStop(0.72, color);
-    gradient.addColorStop(1, 'rgba(5,15,43,.72)');
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,.34)';
-    ctx.shadowBlur = Math.min(5, size * 0.11);
-    ctx.shadowOffsetY = Math.max(1, size * 0.05);
+    const radius = Math.max(2, Math.min(6, size * 0.12));
+    const bx = x + inset;
+    const by = y + inset;
+
+    // Base block
+    ctx.fillStyle = color;
     ctx.beginPath();
-    if (typeof ctx.roundRect === 'function') ctx.roundRect(x + inset, y + inset, blockSize, blockSize, radius);
-    else ctx.rect(x + inset, y + inset, blockSize, blockSize);
-    ctx.fillStyle = gradient;
+    if (typeof ctx.roundRect === 'function') {
+      ctx.roundRect(bx, by, blockSize, blockSize, radius);
+    } else {
+      ctx.rect(bx, by, blockSize, blockSize);
+    }
     ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetY = 0;
-    const highlight = ctx.createLinearGradient(x, y, x, y + size * 0.5);
-    highlight.addColorStop(0, 'rgba(255,255,255,.64)');
-    highlight.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = highlight;
-    ctx.fillRect(x + inset + radius, y + inset + 1, Math.max(1, blockSize - radius * 2), Math.max(2, size * 0.08));
-    ctx.strokeStyle = 'rgba(255,255,255,.22)';
-    ctx.lineWidth = Math.max(1, size * 0.025);
+
+    // Specular top highlight (gloss effect without gradient allocation)
+    const hlH = Math.max(2, blockSize * 0.22);
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.35)';
+    ctx.fillRect(bx + radius * 0.5, by + 1, Math.max(1, blockSize - radius), hlH);
+
+    // Subtle bottom inner shade (3D depth without gradient or shadowBlur)
+    const shadeH = Math.max(2, blockSize * 0.18);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.fillRect(bx + radius * 0.5, by + blockSize - shadeH - 1, Math.max(1, blockSize - radius), shadeH);
+
+    // Top-left crisp bevel stroke
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.32)';
+    ctx.lineWidth = Math.max(1, size * 0.03);
     ctx.beginPath();
-    ctx.moveTo(x + inset + radius, y + inset + 1);
-    ctx.lineTo(x + inset + 1, y + inset + radius);
-    ctx.lineTo(x + inset + 1, y + inset + blockSize - radius);
+    ctx.moveTo(bx + radius, by + 1);
+    ctx.lineTo(bx + 1, by + radius);
+    ctx.lineTo(bx + 1, by + blockSize - radius);
     ctx.stroke();
-    ctx.restore();
   }
 };
 

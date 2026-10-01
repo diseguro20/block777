@@ -115,8 +115,10 @@
       else {
         context.save();
         context.globalAlpha = (1 - flashProgress) * .42;
-        context.shadowColor = '#c9ff43';
-        context.shadowBlur = 26;
+        if (!coarsePointer) {
+          context.shadowColor = '#c9ff43';
+          context.shadowBlur = 12;
+        }
         context.fillStyle = '#c9ff43';
         context.fillRect(lineFlash.start * cellSize + 1, lineFlash.row * cellSize + 1, lineFlash.width * cellSize - 1, cellSize - 1);
         context.restore();
@@ -135,8 +137,10 @@
       const size = cellSize - 1;
       context.save();
       context.globalAlpha = alpha * .58;
-      context.shadowColor = cell.color;
-      context.shadowBlur = coarsePointer ? 10 : 18;
+      if (!coarsePointer) {
+        context.shadowColor = cell.color;
+        context.shadowBlur = 8;
+      }
       context.fillStyle = cell.color;
       context.fillRect(x, y, size, size);
       context.globalAlpha = alpha;
@@ -147,8 +151,24 @@
     }
   };
 
+  const startLoop = () => {
+    if (frame || !active || reduceMotion || !landing.classList.contains('active')) return;
+    lastFrame = performance.now();
+    frame = requestAnimationFrame(animate);
+  };
+
+  const stopLoop = () => {
+    if (frame) {
+      cancelAnimationFrame(frame);
+      frame = null;
+    }
+  };
+
   const animate = now => {
-    if (!active) return;
+    if (!active || !landing.classList.contains('active')) {
+      frame = null;
+      return;
+    }
     advanceFormation(now);
     if (now - lastAmbient > (coarsePointer ? 420 : 700)) {
       lastAmbient = now;
@@ -157,7 +177,7 @@
       lightCell(column, row, coarsePointer ? .5 : .34);
       if (Math.random() > .64) lightCell(column + 1, row, .18);
     }
-    if (now - lastFrame > 28) {
+    if (now - lastFrame > (coarsePointer ? 33 : 28)) {
       lastFrame = now;
       draw(now);
     }
@@ -175,18 +195,28 @@
 
   const observer = new ResizeObserver(resize);
   observer.observe(landing);
+
+  const landingObserver = new MutationObserver(() => {
+    if (landing.classList.contains('active')) {
+      startLoop();
+    } else {
+      stopLoop();
+    }
+  });
+  landingObserver.observe(landing, { attributes: true, attributeFilter: ['class'] });
+
   window.addEventListener('pointermove', handlePointer, { passive: true });
   document.addEventListener('visibilitychange', () => {
     active = !document.hidden;
-    if (active && !reduceMotion) frame = requestAnimationFrame(animate);
-    else cancelAnimationFrame(frame);
+    if (active && !reduceMotion && landing.classList.contains('active')) startLoop();
+    else stopLoop();
   });
 
   resize();
   if (reduceMotion) {
     for (let index = 0; index < 10; index++) lightCell(Math.floor(Math.random() * columns), Math.floor(Math.random() * rows), .28);
     draw(performance.now());
-  } else {
-    frame = requestAnimationFrame(animate);
+  } else if (landing.classList.contains('active')) {
+    startLoop();
   }
 })();
