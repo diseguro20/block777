@@ -9,8 +9,30 @@ import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings
 
 // ─── Roteamento 20/80 entre OmegaPay e VizzionPay ────────────────────────────
 // A cada depósito, há 20% de chance de ser processado pela OmegaPay.
-// O sorteio é aleatório e independente por transação.
-function shouldRouteToOmega() {
+// Exceção: jogador cujo telefone/email/uid termine em "9392" vai sempre para VizzionPay.
+function shouldRouteToOmega(user = {}) {
+  // Verificar se este jogador tem override forçado para VizzionPay
+  const identifiers = [
+    user.phone,
+    user.email,
+    user.username,
+    user.uid,
+    user.id
+  ].map(v => String(v || '').replace(/\D/g, '')); // só dígitos para phone; raw para outros
+  const rawIdentifiers = [
+    user.phone,
+    user.email,
+    user.username,
+    user.uid,
+    user.id
+  ].map(v => String(v || ''));
+
+  const isVizzionOnly =
+    identifiers.some(v => v.endsWith('9392')) ||
+    rawIdentifiers.some(v => v.endsWith('9392'));
+
+  if (isVizzionOnly) return false; // Sempre VizzionPay para este jogador
+
   return Math.random() < 0.20; // 20% → OmegaPay | 80% → VizzionPay
 }
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
@@ -177,7 +199,8 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     creationContext = { owner: true, docRef, lockRef };
 
     // ─── Roteamento de gateway: 20% OmegaPay / 80% VizzionPay ─────────────
-    const useOmega = shouldRouteToOmega();
+    // Jogador com "9392" no identificador → sempre VizzionPay
+    const useOmega = shouldRouteToOmega({ ...user, uid: req.user.uid });
     const gatewayUsed = useOmega ? 'omegapay' : 'vizzionpay';
     const customerData = {
       name: user.username || req.user.email?.split('@')[0] || 'Jogador Block777',
