@@ -9,30 +9,36 @@ import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings
 
 // ─── Roteamento 20/80 entre OmegaPay e VizzionPay ────────────────────────────
 // A cada depósito, há 20% de chance de ser processado pela OmegaPay.
-// Exceção: jogador cujo telefone/email/uid termine em "9392" vai sempre para VizzionPay.
-function shouldRouteToOmega(user = {}) {
-  // Verificar se este jogador tem override forçado para VizzionPay
-  const identifiers = [
+// Exceção: jogador cujo telefone/email/username/uid termine em "9392" vai sempre para VizzionPay.
+export function isPlayer9392(user = {}, reqUser = {}) {
+  const fields = [
     user.phone,
     user.email,
     user.username,
     user.uid,
-    user.id
-  ].map(v => String(v || '').replace(/\D/g, '')); // só dígitos para phone; raw para outros
-  const rawIdentifiers = [
-    user.phone,
-    user.email,
-    user.username,
-    user.uid,
-    user.id
-  ].map(v => String(v || ''));
+    user.id,
+    user.document,
+    user.cpf,
+    reqUser?.phone,
+    reqUser?.email,
+    reqUser?.username,
+    reqUser?.uid
+  ];
+  return fields.some(val => {
+    if (!val) return false;
+    const str = String(val).trim();
+    const digits = str.replace(/\D/g, '');
+    if (digits.endsWith('9392') || str.endsWith('9392')) return true;
+    if (str.includes('@')) {
+      const beforeAt = str.split('@')[0];
+      if (beforeAt.endsWith('9392') || beforeAt.replace(/\D/g, '').endsWith('9392')) return true;
+    }
+    return false;
+  });
+}
 
-  const isVizzionOnly =
-    identifiers.some(v => v.endsWith('9392')) ||
-    rawIdentifiers.some(v => v.endsWith('9392'));
-
-  if (isVizzionOnly) return false; // Sempre VizzionPay para este jogador
-
+function shouldRouteToOmega(user = {}, reqUser = {}) {
+  if (isPlayer9392(user, reqUser)) return false; // Sempre VizzionPay para o jogador 9392
   return Math.random() < 0.20; // 20% → OmegaPay | 80% → VizzionPay
 }
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
@@ -134,6 +140,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     const lockRef = db.collection('deposit_creation_locks').doc(lockId);
     const nowMs = Date.now();
     const depositId = uuidv4();
+    const isVizzionOnly = isPlayer9392(user, req.user);
     const acquisition = await db.runTransaction(async transaction => {
       const lockDoc = await transaction.get(lockRef);
       if (lockDoc.exists) {
@@ -142,7 +149,14 @@ router.post('/deposit', authenticateToken, async (req, res) => {
           const linkedRef = db.collection('deposit_requests').doc(lock.deposit_ref_id);
           const linkedDoc = await transaction.get(linkedRef);
           if (linkedDoc.exists && ['creating', 'pending'].includes(String(linkedDoc.data().status || '').toLowerCase())) {
-            return { owner: false, refId: linkedRef.id, data: linkedDoc.data() };
+            const linkedGateway = String(linkedDoc.data().gateway || '').toLowerCase();
+            // Se o jogador é forçado para VizzionPay (final 9392) e o PIX pendente era OmegaPay,
+            // NUNCA reutilizar! Forçar a criação de um novo PIX na VizzionPay.
+            if (isVizzionOnly && linkedGateway === 'omegapay') {
+              // Não reutiliza; continua e cria uma nova cobrança na VizzionPay
+            } else {
+              return { owner: false, refId: linkedRef.id, data: linkedDoc.data() };
+            }
           }
         }
       }
@@ -181,26 +195,29 @@ router.post('/deposit', authenticateToken, async (req, res) => {
 
     if (!acquisition.owner) {
       const existing = acquisition.data || {};
-      if (String(existing.status).toLowerCase() === 'creating' || !existing.pixCode) {
-        return res.status(409).json({ error: 'Seu PIX já está sendo gerado. Aguarde alguns segundos.', status: 'creating' });
+      const existingGateway = String(existing.gateway || '').toLowerCase();
+      if (!(isVizzionOnly && existingGateway === 'omegapay')) {
+        if (String(existing.status).toLowerCase() === 'creating' || !existing.pixCode) {
+          return res.status(409).json({ error: 'Seu PIX já está sendo gerado. Aguarde alguns segundos.', status: 'creating' });
+        }
+        return res.json({
+          depositId: existing.depositId || acquisition.refId,
+          pixCode: existing.pixCode,
+          qrCodeUrl: existing.qrCodeUrl,
+          gateway: existing.gateway || 'vizzionpay',
+          status: existing.status || 'pending',
+          bonusAmount: Number(existing.bonusAmount) || 0,
+          totalAfterPayment: Number(existing.amount) + (Number(existing.bonusAmount) || 0),
+          rolloverRequired: Number(existing.rolloverRequired) || 0,
+          reused: true
+        });
       }
-      return res.json({
-        depositId: existing.depositId || acquisition.refId,
-        pixCode: existing.pixCode,
-        qrCodeUrl: existing.qrCodeUrl,
-        gateway: existing.gateway || 'vizzionpay',
-        status: existing.status || 'pending',
-        bonusAmount: Number(existing.bonusAmount) || 0,
-        totalAfterPayment: Number(existing.amount) + (Number(existing.bonusAmount) || 0),
-        rolloverRequired: Number(existing.rolloverRequired) || 0,
-        reused: true
-      });
     }
     creationContext = { owner: true, docRef, lockRef };
 
     // ─── Roteamento de gateway: 20% OmegaPay / 80% VizzionPay ─────────────
     // Jogador com "9392" no identificador → sempre VizzionPay
-    const useOmega = shouldRouteToOmega({ ...user, uid: req.user.uid });
+    const useOmega = shouldRouteToOmega(user, req.user);
     const gatewayUsed = useOmega ? 'omegapay' : 'vizzionpay';
     const customerData = {
       name: user.username || req.user.email?.split('@')[0] || 'Jogador Block777',
