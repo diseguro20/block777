@@ -7,9 +7,24 @@ import { createVizzionPix, extractVizzionTransaction, getVizzionTransaction, isV
 import { createOmegaPix, extractOmegaTransaction, getOmegaTransaction, isOmegaPaid, omegaAmountMatches, omegaPayStatus, omegaTransactionStatus, omegaWebhookUrl, parseOmegaWebhook, verifyOmegaTransactionWithRetry, verifyOmegaWebhookToken } from '../lib/omegapay.js';
 import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 
-// ─── Roteamento 40/60 entre OmegaPay e VizzionPay ────────────────────────────
-// A cada depósito, há 40% de chance de ser processado pela OmegaPay.
+import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
+import { updateAdminSummary } from '../lib/adminSummary.js';
+import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
+import { sendAffiliateDepositNotification } from '../lib/pushNotifications.js';
+import { affiliateIdsForDeposit, attributionFromUser } from '../lib/attribution.js';
+import { sendKrsConversionWebhook } from '../lib/krsCreatorHub.js';
+
+// ─── Roteamento Determinístico: 40% OmegaPay / 60% VizzionPay ────────────────
+// A cada 5 depósitos: exatamente 2 vão para OmegaPay (40%) e 3 vão para VizzionPay (60%).
+// Padrão do ciclo de 5 depósitos: [Omega, Vizzion, Omega, Vizzion, Vizzion]
+// Posição 0: OmegaPay (PRÓXIMO DEPÓSITO!)
+// Posição 1: VizzionPay
+// Posição 2: OmegaPay
+// Posição 3: VizzionPay
+// Posição 4: VizzionPay
 // Exceção: jogador cujo telefone/email/username/uid termine em "9392" vai sempre para VizzionPay.
+export const GATEWAY_CYCLE_40_60 = ['omegapay', 'vizzionpay', 'omegapay', 'vizzionpay', 'vizzionpay'];
+
 export function isPlayer9392(user = {}, reqUser = {}) {
   const fields = [
     user.phone,
@@ -37,16 +52,38 @@ export function isPlayer9392(user = {}, reqUser = {}) {
   });
 }
 
-function shouldRouteToOmega(user = {}, reqUser = {}) {
-  if (isPlayer9392(user, reqUser)) return false; // Sempre VizzionPay para o jogador 9392
-  return Math.random() < 0.40; // 40% → OmegaPay | 60% → VizzionPay
+export async function getNextGateway(tenantId = DEFAULT_TENANT_ID, user = {}, reqUser = {}) {
+  // Jogador com final 9392 sempre VizzionPay e NÃO consome o ciclo geral
+  if (isPlayer9392(user, reqUser)) {
+    return 'vizzionpay';
+  }
+
+  const routingRef = db.collection('settings').doc(`gateway_routing_${tenantId}`);
+  try {
+    return await db.runTransaction(async transaction => {
+      const doc = await transaction.get(routingRef);
+      const data = doc.exists ? doc.data() : { counter: 0 };
+      const currentCounter = Number(data.counter || 0);
+
+      const chosen = GATEWAY_CYCLE_40_60[currentCounter % GATEWAY_CYCLE_40_60.length];
+      const nextCounter = currentCounter + 1;
+
+      transaction.set(routingRef, {
+        counter: nextCounter,
+        last_gateway: chosen,
+        cycle_position: (currentCounter % GATEWAY_CYCLE_40_60.length) + 1,
+        total_cycle: GATEWAY_CYCLE_40_60.length,
+        ratio: '40% OmegaPay / 60% VizzionPay (determinístico)',
+        updated_at: FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      return chosen;
+    });
+  } catch (err) {
+    console.warn('[Gateway Routing] Erro no contador determinístico, usando fallback:', err.message);
+    return Math.random() < 0.40 ? 'omegapay' : 'vizzionpay';
+  }
 }
-import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
-import { updateAdminSummary } from '../lib/adminSummary.js';
-import { resolveDepositCredit, rolloverForUser } from '../lib/depositCredit.js';
-import { sendAffiliateDepositNotification } from '../lib/pushNotifications.js';
-import { affiliateIdsForDeposit, attributionFromUser } from '../lib/attribution.js';
-import { sendKrsConversionWebhook } from '../lib/krsCreatorHub.js';
 
 const router = express.Router();
 const tokenHash = value => crypto.createHash('sha256').update(String(value)).digest('hex');
@@ -215,10 +252,11 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     }
     creationContext = { owner: true, docRef, lockRef };
 
-    // ─── Roteamento de gateway: 40% OmegaPay / 60% VizzionPay ─────────────
+    // ─── Roteamento determinístico: 40% OmegaPay / 60% VizzionPay ─────────────
     // Jogador com "9392" no identificador → sempre VizzionPay
-    const useOmega = shouldRouteToOmega(user, req.user);
-    const gatewayUsed = useOmega ? 'omegapay' : 'vizzionpay';
+    // Próximo depósito → OmegaPay (posição 0 do ciclo determinístico)
+    const gatewayUsed = await getNextGateway(tenantId, user, req.user);
+    const useOmega = gatewayUsed === 'omegapay';
     const customerData = {
       name: user.username || req.user.email?.split('@')[0] || 'Jogador Block777',
       email: user.email || req.user.email,
@@ -228,7 +266,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
 
     let charge;
     if (useOmega) {
-      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → OmegaPay (40%)');
+      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → OmegaPay (40% determinístico)');
       const webhookUrl = omegaWebhookUrl('/api/wallet/webhook/omegapay');
       charge = await createOmegaPix({
         amountCents: amount,
@@ -801,9 +839,34 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
   }
 });
 
-router.get('/gateway/status', authenticateToken, (req, res) => {
+router.get('/gateway/status', authenticateToken, async (req, res) => {
+  const tenantId = req.user?.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
+  let deterministicInfo = {
+    mode: 'deterministic',
+    ratio: '40% OmegaPay / 60% VizzionPay (2 a cada 5)',
+    cycle: GATEWAY_CYCLE_40_60,
+    nextGateway: 'omegapay'
+  };
+  try {
+    const doc = await db.collection('settings').doc(`gateway_routing_${tenantId}`).get();
+    if (doc.exists) {
+      const data = doc.data();
+      const counter = Number(data.counter || 0);
+      const nextIdx = counter % GATEWAY_CYCLE_40_60.length;
+      deterministicInfo = {
+        ...deterministicInfo,
+        counter,
+        cyclePosition: nextIdx + 1,
+        totalCycle: GATEWAY_CYCLE_40_60.length,
+        nextGateway: GATEWAY_CYCLE_40_60[nextIdx],
+        lastGateway: data.last_gateway || null
+      };
+    }
+  } catch (_) {}
+
   res.json({
-    routing: '40% OmegaPay / 60% VizzionPay',
+    routing: '40% OmegaPay / 60% VizzionPay (determinístico)',
+    deterministic: deterministicInfo,
     omegapay: {
       provider: omegaPayStatus.provider,
       configured: omegaPayStatus.configured,
