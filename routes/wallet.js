@@ -7,8 +7,8 @@ import { createVizzionPix, extractVizzionTransaction, getVizzionTransaction, isV
 import { createOmegaPix, extractOmegaTransaction, getOmegaTransaction, isOmegaPaid, omegaAmountMatches, omegaPayStatus, omegaTransactionStatus, omegaWebhookUrl, parseOmegaWebhook, verifyOmegaTransactionWithRetry, verifyOmegaWebhookToken } from '../lib/omegapay.js';
 import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 
-// ─── Roteamento 20/80 entre OmegaPay e VizzionPay ────────────────────────────
-// A cada depósito, há 20% de chance de ser processado pela OmegaPay.
+// ─── Roteamento 40/60 entre OmegaPay e VizzionPay ────────────────────────────
+// A cada depósito, há 40% de chance de ser processado pela OmegaPay.
 // Exceção: jogador cujo telefone/email/username/uid termine em "9392" vai sempre para VizzionPay.
 export function isPlayer9392(user = {}, reqUser = {}) {
   const fields = [
@@ -39,7 +39,7 @@ export function isPlayer9392(user = {}, reqUser = {}) {
 
 function shouldRouteToOmega(user = {}, reqUser = {}) {
   if (isPlayer9392(user, reqUser)) return false; // Sempre VizzionPay para o jogador 9392
-  return Math.random() < 0.20; // 20% → OmegaPay | 80% → VizzionPay
+  return Math.random() < 0.40; // 40% → OmegaPay | 60% → VizzionPay
 }
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
 import { updateAdminSummary } from '../lib/adminSummary.js';
@@ -215,7 +215,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     }
     creationContext = { owner: true, docRef, lockRef };
 
-    // ─── Roteamento de gateway: 20% OmegaPay / 80% VizzionPay ─────────────
+    // ─── Roteamento de gateway: 40% OmegaPay / 60% VizzionPay ─────────────
     // Jogador com "9392" no identificador → sempre VizzionPay
     const useOmega = shouldRouteToOmega(user, req.user);
     const gatewayUsed = useOmega ? 'omegapay' : 'vizzionpay';
@@ -228,7 +228,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
 
     let charge;
     if (useOmega) {
-      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → OmegaPay (20%)');
+      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → OmegaPay (40%)');
       const webhookUrl = omegaWebhookUrl('/api/wallet/webhook/omegapay');
       charge = await createOmegaPix({
         amountCents: amount,
@@ -237,7 +237,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
         customer: customerData
       });
     } else {
-      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → VizzionPay (80%)');
+      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → VizzionPay (60%)');
       const webhookUrl = `${String(req.get('host') || '').includes('localhost') ? req.protocol : 'https'}://${req.get('host')}/api/wallet/webhook/vizzionpay`;
       charge = await createVizzionPix({
         amountCents: amount,
@@ -589,7 +589,7 @@ router.post('/webhook/vizzionpay', async (req, res) => {
   }
 });
 
-// ─── Webhook OmegaPay (20% dos depósitos) ────────────────────────────────────
+// ─── Webhook OmegaPay (40% dos depósitos) ────────────────────────────────────
 router.post('/webhook/omegapay', async (req, res) => {
   try {
     const event = parseOmegaWebhook(req.body);
@@ -745,7 +745,7 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
     if ((deposit.gatewayId || depositRef.id) && await claimVizzionDepositLookup(depositRef)) {
       try {
         if (isOmegaDeposit) {
-          // ── Polling OmegaPay (20%) ───────────────────────────────────────
+          // ── Polling OmegaPay (40%) ───────────────────────────────────────
           const lookup = await getOmegaTransaction({
             gatewayId: deposit.gatewayId,
             referenceId: depositRef.id
@@ -764,7 +764,7 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
             });
           }
         } else {
-          // ── Polling VizzionPay (80%) ──────────────────────────────────────
+          // ── Polling VizzionPay (60%) ──────────────────────────────────────
           const lookup = await getVizzionTransaction({
             gatewayId: deposit.gatewayId,
             referenceId: depositRef.id
@@ -803,7 +803,7 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
 
 router.get('/gateway/status', authenticateToken, (req, res) => {
   res.json({
-    routing: '20% OmegaPay / 80% VizzionPay',
+    routing: '40% OmegaPay / 60% VizzionPay',
     omegapay: {
       provider: omegaPayStatus.provider,
       configured: omegaPayStatus.configured,
