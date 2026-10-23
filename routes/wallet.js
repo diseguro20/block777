@@ -53,36 +53,8 @@ export function isPlayer9392(user = {}, reqUser = {}) {
 }
 
 export async function getNextGateway(tenantId = DEFAULT_TENANT_ID, user = {}, reqUser = {}) {
-  // Jogador com final 9392 sempre VizzionPay e NÃO consome o ciclo geral
-  if (isPlayer9392(user, reqUser)) {
-    return 'vizzionpay';
-  }
-
-  const routingRef = db.collection('settings').doc(`gateway_routing_${tenantId}`);
-  try {
-    return await db.runTransaction(async transaction => {
-      const doc = await transaction.get(routingRef);
-      const data = doc.exists ? doc.data() : { counter: 0 };
-      const currentCounter = Number(data.counter || 0);
-
-      const chosen = GATEWAY_CYCLE_40_60[currentCounter % GATEWAY_CYCLE_40_60.length];
-      const nextCounter = currentCounter + 1;
-
-      transaction.set(routingRef, {
-        counter: nextCounter,
-        last_gateway: chosen,
-        cycle_position: (currentCounter % GATEWAY_CYCLE_40_60.length) + 1,
-        total_cycle: GATEWAY_CYCLE_40_60.length,
-        ratio: '40% OmegaPay / 60% VizzionPay (determinístico)',
-        updated_at: FieldValue.serverTimestamp()
-      }, { merge: true });
-
-      return chosen;
-    });
-  } catch (err) {
-    console.warn('[Gateway Routing] Erro no contador determinístico, usando fallback:', err.message);
-    return Math.random() < 0.40 ? 'omegapay' : 'vizzionpay';
-  }
+  // OmegaPay temporariamente desativada: 100% dos depósitos vão para VizzionPay
+  return 'vizzionpay';
 }
 
 const router = express.Router();
@@ -177,7 +149,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     const lockRef = db.collection('deposit_creation_locks').doc(lockId);
     const nowMs = Date.now();
     const depositId = uuidv4();
-    const isVizzionOnly = isPlayer9392(user, req.user);
+    const isVizzionOnly = true; // OmegaPay desativada: todos os depósitos 100% VizzionPay (não reutiliza PIX da Omega)
     const acquisition = await db.runTransaction(async transaction => {
       const lockDoc = await transaction.get(lockRef);
       if (lockDoc.exists) {
@@ -275,7 +247,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
         customer: customerData
       });
     } else {
-      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → VizzionPay (60%)');
+      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → VizzionPay (100% - OmegaPay desativada)');
       const webhookUrl = `${String(req.get('host') || '').includes('localhost') ? req.protocol : 'https'}://${req.get('host')}/api/wallet/webhook/vizzionpay`;
       charge = await createVizzionPix({
         amountCents: amount,
@@ -865,17 +837,17 @@ router.get('/gateway/status', authenticateToken, async (req, res) => {
   } catch (_) {}
 
   res.json({
-    routing: '40% OmegaPay / 60% VizzionPay (determinístico)',
-    deterministic: deterministicInfo,
+    routing: '100% VizzionPay (OmegaPay temporariamente desativada)',
+    activeGateway: 'vizzionpay',
     omegapay: {
       provider: omegaPayStatus.provider,
       configured: omegaPayStatus.configured,
-      webhookConfigured: omegaPayStatus.webhookConfigured
+      active: false
     },
     vizzionpay: {
       provider: vizzionPayStatus.provider,
       configured: vizzionPayStatus.configured,
-      webhookConfigured: vizzionPayStatus.webhookConfigured
+      active: true
     }
   });
 });
