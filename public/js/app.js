@@ -207,7 +207,8 @@ const app = {
         const data = await this.fetchAPI('/api/auth/register', { method: 'POST', body: JSON.stringify(payload) });
         this.setSession(data);
         this.clearAttribution();
-        this.showToast('Conta criada com sucesso! Bem-vindo ao Blockerino!');
+        this.showToast('Conta criada com sucesso! Faça seu primeiro depósito e aproveite.');
+        this.openDepositModal(20);
       } catch (e) {
         this.showToast(e.message || 'Falha ao criar conta.');
       } finally {
@@ -357,6 +358,10 @@ const app = {
     if (active) nav.querySelector(`[data-player-tab="${active}"]`)?.classList.add('active');
   },
   openWalletTab(tab = 'deposit') {
+    if (tab === 'deposit') {
+      this.openDepositModal(20);
+      return;
+    }
     this.showScreen('wallet-screen');
     window.setTimeout(() => {
       window.wallet?.toggleTab(tab);
@@ -364,6 +369,23 @@ const app = {
       nav?.querySelectorAll('[data-player-tab]').forEach(item => item.classList.remove('active'));
       nav?.querySelector(`[data-player-tab="${tab === 'withdraw' ? 'withdraw' : 'wallet'}"]`)?.classList.add('active');
     }, 30);
+  },
+  openDepositModal(defaultAmount = 20) {
+    if (!this.token) {
+      this.openAuth('register');
+      return;
+    }
+    this.closeModal('profile-modal');
+    this.closeModal('auth-modal');
+    const modal = document.getElementById('deposit-modal');
+    if (modal) {
+      modal.classList.add('active');
+      window.wallet?.initDepositModal(defaultAmount);
+    }
+  },
+  closeDepositModal() {
+    this.closeModal('deposit-modal');
+    window.wallet?.stopDepositModalPolling();
   },
   showPlayerProfile() {
     this.showScreen('menu-screen');

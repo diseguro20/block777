@@ -21,7 +21,7 @@
   <meta name="twitter:description" content="Depósito mínimo de R$ 20 e 100% de bônus a partir de R$ 50. Bônus sujeito a rollover.">
   <meta name="twitter:image" content="https://block777-omega.vercel.app/og.png?v=20260803-1">
   <title>Blockerino — 100% de bônus a partir de R$ 50</title>
-  <link rel="stylesheet" href="./css/style.css?v=20260831-2">
+  <link rel="stylesheet" href="./css/style.css?v=20261023-1">
   <link rel="stylesheet" href="./css/arena.css?v=20260919-3">
 </head>
 <body class="player-app">
@@ -37,7 +37,8 @@
       <a href="./affiliate/">Afiliados</a>
       <a href="./admin/" id="btn-admin-link">Admin</a>
       <a href="./manager/" id="btn-manager-link">Gerente</a>
-      <button class="balance-pill" onclick="app.showScreen('wallet-screen')"><span>Saldo</span><b id="nav-balance">R$ 0,00</b></button>
+      <button class="balance-pill" onclick="app.openDepositModal(20)" title="Depositar"><span>Saldo</span><b id="nav-balance">R$ 0,00</b></button>
+      <button class="btn btn-primary nav-deposit-btn" onclick="app.openDepositModal(20)">Depositar +</button>
       <button class="avatar" onclick="app.logout()" title="Sair">SA</button>
     </div>
     <button class="btn btn-primary landing-register-cta" id="landing-register-btn" type="button" onclick="app.openAuth('register')">Criar conta grátis <span>→</span></button>
@@ -104,7 +105,7 @@
     <section class="screen dashboard" id="menu-screen">
       <header class="player-home-balance" aria-label="Saldo disponível">
         <span>SALDO DISPONÍVEL</span><strong id="dashboard-balance">R$ 0,00</strong>
-        <button type="button" onclick="app.openWalletTab('deposit')">Depositar <span>＋</span></button>
+        <button type="button" onclick="app.openDepositModal(20)">Depositar <span>＋</span></button>
       </header>
       <section class="tenant-campaign-banner" id="tenant-dashboard-banner" hidden></section>
       <article class="arena-entry-card" aria-labelledby="arena-title">
@@ -213,15 +214,104 @@
   </main>
 
   <nav class="player-bottom-nav" id="player-bottom-nav" aria-label="Navegação do jogador" hidden>
-    <button type="button" data-player-tab="wallet" onclick="app.openWalletTab('deposit')" aria-label="Depositar"><span class="nav-icon nav-icon-deposit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5h13.5A2.5 2.5 0 0 1 20 10v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 2 17V6a2.5 2.5 0 0 1 2.5-2.5H16"/><path d="M15.5 12.5h5v4h-5a2 2 0 1 1 0-4Z"/><path class="nav-icon-accent" d="M8 8.5v-4M6 6.5h4"/></svg></span><small>Depositar</small></button>
+    <button type="button" data-player-tab="wallet" onclick="app.openDepositModal(20)" aria-label="Depositar"><span class="nav-icon nav-icon-deposit" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 7.5h13.5A2.5 2.5 0 0 1 20 10v7a2.5 2.5 0 0 1-2.5 2.5h-13A2.5 2.5 0 0 1 2 17V6a2.5 2.5 0 0 1 2.5-2.5H16"/><path d="M15.5 12.5h5v4h-5a2 2 0 1 1 0-4Z"/><path class="nav-icon-accent" d="M8 8.5v-4M6 6.5h4"/></svg></span><small>Depositar</small></button>
     <button type="button" data-player-tab="withdraw" onclick="app.openWalletTab('withdraw')" aria-label="Sacar"><span class="nav-icon nav-icon-withdraw" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 6.5h16v11H4z"/><path d="M7 9.5a2 2 0 0 1-2 2m12-2a2 2 0 0 0 2 2M7 14.5a2 2 0 0 0-2-2m12 2a2 2 0 0 1 2-2"/><circle cx="12" cy="12" r="2"/><path class="nav-icon-accent" d="M12 2.5v5m-2-2 2 2 2-2"/></svg></span><small>Sacar</small></button>
     <button type="button" class="play-tab" data-player-tab="play" onclick="game.openQuickPlay()" aria-label="Jogar: escolher valor da entrada"><span class="play-mark"><i></i><i></i><i></i><i></i></span><small>Jogar</small></button>
     <a data-player-tab="affiliate" href="./affiliate/" aria-label="Indicar amigos"><span class="nav-icon nav-icon-affiliate" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="8" cy="9" r="2.5"/><circle cx="17.5" cy="7" r="2"/><path d="M3.5 18c.4-3 2-4.5 4.5-4.5s4.1 1.5 4.5 4.5M15 11.5c2.8 0 4.7 1.3 5 3.8"/><path class="nav-icon-accent" d="m14.5 4 3-3m0 0h-2.8m2.8 0v2.8"/></svg></span><small>Indicar</small></a>
     <button type="button" data-player-tab="profile" onclick="app.showPlayerProfile()" aria-label="Abrir perfil"><span class="nav-icon nav-icon-profile" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M5 19.5c.6-4.2 3-6.3 7-6.3s6.4 2.1 7 6.3"/><path class="nav-icon-accent" d="M18.2 5.2h.1"/></svg></span><small>Perfil</small></button>
   </nav>
 
+  <!-- MODAL DE DEPÓSITO DIRETO (ESTILO FRUITCASH) -->
+  <div class="modal" id="deposit-modal" onclick="if(event.target===this)app.closeDepositModal()">
+    <div class="modal-card deposit-modal-card">
+      <button class="modal-close" onclick="app.closeDepositModal()" aria-label="Fechar">×</button>
+
+      <!-- ETAPA 1: SELEÇÃO DE VALOR DO DEPÓSITO -->
+      <div id="dep-modal-step-amount">
+        <div class="dephd">
+          <div class="dep-mm">Min R$ 20 · Max R$ 1.000</div>
+          <div class="dep-bonus" id="dep-modal-bonus-promo">🎁 100% DE BÔNUS NO PRIMEIRO DEPÓSITO</div>
+        </div>
+
+        <form id="dep-modal-form" onsubmit="event.preventDefault();wallet.submitDepositModal();">
+          <div class="depval">
+            <div class="depamt"><span class="c">R$</span><input type="number" name="amount" id="dep-modal-amount" value="20" min="20" max="1000" step="1" inputmode="numeric" required></div>
+          </div>
+
+          <div class="depsub">Sugestões rápidas</div>
+          <div class="depchips">
+            <button type="button" class="depchip sel" data-v="20" onclick="wallet.depModalSet(20)">
+              <span class="depbadge b-pop">POPULAR</span> R$ 20
+            </button>
+            <button type="button" class="depchip" data-v="25" onclick="wallet.depModalSet(25)">
+              R$ 25
+            </button>
+            <button type="button" class="depchip" data-v="30" onclick="wallet.depModalSet(30)">
+              <span class="depbadge b-hot">QUENTE</span> R$ 30
+            </button>
+            <button type="button" class="depchip" data-v="50" onclick="wallet.depModalSet(50)">
+              R$ 50
+            </button>
+            <button type="button" class="depchip" data-v="100" onclick="wallet.depModalSet(100)">
+              <span class="depbadge b-chn">+CHANCES</span> R$ 100
+            </button>
+            <button type="button" class="depchip" data-v="200" onclick="wallet.depModalSet(200)">
+              <span class="depbadge b-vip">VIP</span> R$ 200
+            </button>
+          </div>
+
+          <div id="dep-modal-err-box" class="flash" style="display:none;margin-top:14px;color:#ff665c;background:rgba(255,102,92,0.14);padding:10px 14px;border-radius:10px;font-size:12px;font-weight:700;"></div>
+
+          <button class="btn btn-primary btn-wide depgo" id="dep-modal-go" type="submit">
+            <span id="dep-modal-go-t">DEPOSITAR R$ 20,00</span>
+          </button>
+        </form>
+      </div>
+
+      <!-- ETAPA 2: PAGAMENTO VIA PIX DIRETAMENTE NO POPUP -->
+      <div id="dep-modal-step-pix" style="display:none;">
+        <div class="qrpay">
+          <div class="qp-hd">
+            <div class="muted" style="font-size:13px;color:var(--muted);font-weight:600;">Pague via PIX para creditar na hora</div>
+            <div class="qp-val" id="dep-pix-val">R$ 20,00</div>
+            <div id="dep-pix-bonus-tag" class="dep-bonus" style="display:inline-block;margin-top:6px;">+ R$ 20,00 de Bônus previsto</div>
+          </div>
+
+          <div class="qp-qrwrap">
+            <img id="dep-pix-qr-img" src="" alt="QR Code PIX">
+          </div>
+          <div style="font-size:12px;color:var(--muted);margin-bottom:12px">Abra seu banco e escaneie o QR Code ou copie o código abaixo:</div>
+
+          <div class="qp-copyrow">
+            <input id="dep-pixcopy" readonly value="" onclick="this.select()" title="Clique para selecionar">
+            <button type="button" class="qp-copybtn" id="dep-qp-copy" onclick="wallet.copyDepositModalPix()">
+              <span id="dep-qp-copy-t">Copiar Código PIX</span>
+            </button>
+          </div>
+
+          <div class="qp-wait" id="dep-modal-status">
+            <i class="qp-spin"></i> Aguardando pagamento... assim que você pagar, o saldo cai na hora.
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-top:10px" id="dep-qp-exp">Expira em 10 minutos</div>
+
+          <button type="button" class="btn btn-ghost" id="dep-modal-back-btn" onclick="wallet.depModalBack()" style="margin-top:16px;width:100%;">← Alterar valor / Escolher outro valor</button>
+        </div>
+      </div>
+
+      <!-- ETAPA 3: PAGAMENTO CONFIRMADO -->
+      <div id="dep-modal-step-ok" style="display:none;">
+        <div class="qp-ok">
+          <div class="qp-check">✓</div>
+          <div class="qp-oktext">Pagamento confirmado!</div>
+          <div class="qp-okval" id="dep-modal-confirmed-val">+R$ 20,00 no seu saldo</div>
+          <button type="button" class="btn btn-primary btn-wide" onclick="app.closeDepositModal();app.showScreen('game-screen');game.showPrep('real','classic')">JOGAR AGORA</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="modal" id="auth-modal"><div class="modal-card auth-card"><button class="modal-close" onclick="app.closeModal('auth-modal')">×</button><div class="brand auth-brand"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><span>BLOCKERINO</span></div><h3>Entre no jogo.</h3><p>Uma conta para jogar, sacar e acompanhar seus resultados.</p><div class="tabs"><button id="tab-login-btn" class="active" onclick="app.toggleAuthTab('login')">Entrar</button><button id="tab-reg-btn" onclick="app.toggleAuthTab('register')">Criar conta</button></div><form id="login-form"><label>Celular ou E-mail</label><input name="email" id="login-identifier-input" required placeholder="(11) 99999-9999 ou e-mail" autocomplete="username"><label>Senha</label><input name="password" type="password" required placeholder="••••••••"><button class="btn btn-primary btn-wide" type="submit">Entrar</button><button class="auth-help-button" type="button" onclick="app.openPasswordRecovery()">Esqueci minha senha</button></form><form id="register-form" hidden><label>Nome de usuário</label><input name="username" required minlength="3" placeholder="Seu nome no jogo"><label>Celular com DDD (WhatsApp)</label><input name="phone" id="reg-phone-input" type="tel" required placeholder="(11) 99999-9999" maxlength="15" autocomplete="tel"><label>Senha</label><input name="password" type="password" required minlength="6" placeholder="Mínimo de 6 caracteres"><button class="btn btn-primary btn-wide" type="submit">Criar minha conta</button></form><small class="legal">Ao continuar, você confirma ter 18 anos ou mais.</small></div></div>
-  <div class="modal" id="profile-modal"><div class="modal-card player-profile-card"><button class="modal-close" onclick="app.closePlayerProfile()">×</button><header class="profile-head"><span class="profile-avatar" id="profile-avatar">J</span><div><small>PERFIL DO JOGADOR</small><h3 id="dashboard-name">jogador</h3></div></header><section class="profile-balance"><span>SALDO DISPONÍVEL</span><strong id="profile-balance-value">R$ 0,00</strong><button onclick="app.closePlayerProfile();app.openWalletTab('deposit')">Adicionar saldo</button></section><div class="profile-stats"><article><small>RETORNO TOTAL</small><strong id="dashboard-return">R$ 0,00</strong></article><article><small>PARTIDAS</small><strong id="dashboard-games">0</strong></article><article><small>MELHOR MULT.</small><strong id="dashboard-best">1.00x</strong></article></div><section class="profile-activity"><div class="panel-title"><div><small>ATIVIDADE</small><h3>Últimas movimentações</h3></div><button onclick="app.closePlayerProfile();app.showScreen('wallet-screen')">Ver todas</button></div><div id="recent-activity" class="activity-list"><div class="empty-state">Suas movimentações aparecerão aqui.</div></div></section><div class="profile-actions"><a class="btn btn-ghost" href="./affiliate/">Painel de afiliados</a><button class="btn btn-ghost" onclick="app.openChangePassword()">Trocar senha</button><button class="btn btn-ghost" onclick="app.closePlayerProfile();app.logout()">Sair da conta</button></div></div></div>
+  <div class="modal" id="profile-modal"><div class="modal-card player-profile-card"><button class="modal-close" onclick="app.closePlayerProfile()">×</button><header class="profile-head"><span class="profile-avatar" id="profile-avatar">J</span><div><small>PERFIL DO JOGADOR</small><h3 id="dashboard-name">jogador</h3></div></header><section class="profile-balance"><span>SALDO DISPONÍVEL</span><strong id="profile-balance-value">R$ 0,00</strong><button onclick="app.closePlayerProfile();app.openDepositModal(20)">Adicionar saldo</button></section><div class="profile-stats"><article><small>RETORNO TOTAL</small><strong id="dashboard-return">R$ 0,00</strong></article><article><small>PARTIDAS</small><strong id="dashboard-games">0</strong></article><article><small>MELHOR MULT.</small><strong id="dashboard-best">1.00x</strong></article></div><section class="profile-activity"><div class="panel-title"><div><small>ATIVIDADE</small><h3>Últimas movimentações</h3></div><button onclick="app.closePlayerProfile();app.showScreen('wallet-screen')">Ver todas</button></div><div id="recent-activity" class="activity-list"><div class="empty-state">Suas movimentações aparecerão aqui.</div></div></section><div class="profile-actions"><a class="btn btn-ghost" href="./affiliate/">Painel de afiliados</a><button class="btn btn-ghost" onclick="app.openChangePassword()">Trocar senha</button><button class="btn btn-ghost" onclick="app.closePlayerProfile();app.logout()">Sair da conta</button></div></div></div>
   <div class="modal" id="password-recovery-modal">
     <div class="modal-card password-card">
       <button class="modal-close" onclick="app.closeModal('password-recovery-modal')">×</button>
@@ -277,6 +367,6 @@
   <div class="modal clone-result-overlay" id="win-modal"><div class="modal-card result-card clone-result-card"><div class="clone-result-banner"><span class="brand-mark"><i></i><i></i><i></i><i></i></span><b>BLOCKERINO</b><small>RESGATE CONCLUÍDO</small></div><div class="clone-win-trophy" aria-hidden="true">🏆</div><h3>Parabéns!</h3><p class="clone-result-kicker">Você ganhou</p><strong class="clone-result-value win" id="win-modal-payout">R$ 0,00</strong><p>Multiplicador final: <b id="win-modal-mult">1.00x</b><br>O valor já está disponível no seu saldo.</p><div class="clone-result-actions"><button class="btn btn-primary btn-wide" onclick="game.replayFromResult('win-modal')">Jogar de novo</button><button class="btn btn-ghost btn-wide" onclick="app.closeModal('win-modal');app.showScreen('menu-screen');app.loadUserData(false)">Painel</button></div></div></div>
   <div class="modal clone-result-overlay" id="gameover-modal"><div class="modal-card result-card clone-result-card lose-result"><div class="clone-lose-badge" aria-hidden="true">×</div><h3>O tabuleiro travou!</h3><strong class="clone-result-value lose" id="gameover-loss-value">Fim da partida</strong><p>Nenhuma peça se encaixava. Planeje os próximos espaços e tente novamente.</p><div class="clone-result-actions"><button class="btn btn-primary btn-wide" onclick="game.replayFromResult('gameover-modal')">Tentar de novo</button><button class="btn btn-ghost btn-wide" onclick="app.closeModal('gameover-modal');app.showScreen('menu-screen');app.loadUserData(false)">Voltar ao painel</button></div></div></div>
   <div class="toast-container" id="toast-container"></div>
-  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20260919-1"></script><script src="./js/wallet.js?v=20260910-2"></script><script src="./js/game.js?v=20260921-1"></script>
+  <script src="./js/branding.js?v=20260831-5"></script><script src="./js/prism-grid.js?v=20260831-2"></script><script src="./js/app.js?v=20261023-1"></script><script src="./js/wallet.js?v=20261023-1"></script><script src="./js/game.js?v=20260921-1"></script>
 </body>
 </html>

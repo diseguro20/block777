@@ -4,6 +4,10 @@ const wallet = {
   isCreatingDeposit: false,
   promotion: { promoEnabled: true, bonusPercent: 100, bonusMinDeposit: 5000, rolloverMultiplier: 10 },
   toggleTab(tab) {
+    if (tab === 'deposit') {
+      app.openDepositModal(20);
+      return;
+    }
     const deposit = tab === 'deposit';
     document.getElementById('dep-content').hidden = !deposit;
     document.getElementById('with-content').hidden = deposit;
@@ -174,6 +178,266 @@ const wallet = {
       const statusLabel = status === 'pending' ? 'Pendente' : status === 'rejected' ? 'Recusado' : status === 'locked' ? 'Bloqueado' : 'Concluído';
       return `<tr><td>${app.formatDate(tx.created_at)}</td><td>${names[tx.type] || tx.type}</td><td style="color:${Number(tx.amount) > 0 ? 'var(--success)' : 'var(--text)'}">${Number(tx.amount) > 0 ? '+' : ''}${app.formatBRL(tx.amount)}</td><td><span class="badge badge-${status === 'rejected' ? 'danger' : ['pending', 'locked'].includes(status) ? 'pending' : 'success'}">${statusLabel}</span></td></tr>`;
     }).join('');
+  },
+
+  depModalTimer: null,
+  isSubmittingDepModal: false,
+  depModalInited: false,
+
+  initDepositModal(initialAmount = 20) {
+    const stepAmount = document.getElementById('dep-modal-step-amount');
+    const stepPix = document.getElementById('dep-modal-step-pix');
+    const stepOk = document.getElementById('dep-modal-step-ok');
+    const errBox = document.getElementById('dep-modal-err-box');
+    const goBtn = document.getElementById('dep-modal-go');
+    const inp = document.getElementById('dep-modal-amount');
+
+    if (this.depModalTimer) {
+      clearInterval(this.depModalTimer);
+      this.depModalTimer = null;
+    }
+
+    if (stepAmount) stepAmount.style.display = 'block';
+    if (stepPix) stepPix.style.display = 'none';
+    if (stepOk) stepOk.style.display = 'none';
+    if (errBox) { errBox.style.display = 'none'; errBox.textContent = ''; }
+    if (goBtn) { goBtn.disabled = false; }
+
+    if (inp) {
+      inp.value = initialAmount || 20;
+      if (!this.depModalInited) {
+        this.depModalInited = true;
+        inp.addEventListener('input', () => this.syncDepositModal());
+        inp.addEventListener('blur', () => {
+          let v = parseInt(inp.value, 10);
+          if (isNaN(v) || v < 20) v = 20;
+          if (v > 1000) v = 1000;
+          inp.value = v;
+          this.syncDepositModal();
+        });
+      }
+    }
+
+    const promoBanner = document.getElementById('dep-modal-bonus-promo');
+    if (promoBanner) {
+      const percent = Number(this.promotion?.bonusPercent) || 100;
+      promoBanner.textContent = `🎁 ${percent}% DE BÔNUS NO PRIMEIRO DEPÓSITO`;
+    }
+
+    this.syncDepositModal();
+  },
+
+  depModalSet(v) {
+    const inp = document.getElementById('dep-modal-amount');
+    if (!inp) return;
+    inp.value = v;
+    this.syncDepositModal();
+  },
+
+  syncDepositModal() {
+    const inp = document.getElementById('dep-modal-amount');
+    const go = document.getElementById('dep-modal-go-t');
+    const chips = document.querySelectorAll('.depchip');
+    if (!inp) return;
+    let v = parseInt(inp.value, 10);
+    if (isNaN(v)) v = 20;
+    if (go) go.textContent = 'DEPOSITAR ' + app.formatBRL(v * 100);
+    chips.forEach(c => {
+      c.classList.toggle('sel', parseInt(c.dataset.v, 10) === v);
+    });
+    inp.style.width = Math.max(2, String(inp.value || '').length) + 'ch';
+  },
+
+  async submitDepositModal() {
+    if (this.isSubmittingDepModal) return;
+    const inp = document.getElementById('dep-modal-amount');
+    const errBox = document.getElementById('dep-modal-err-box');
+    const goBtn = document.getElementById('dep-modal-go');
+    const goText = document.getElementById('dep-modal-go-t');
+    const stepAmount = document.getElementById('dep-modal-step-amount');
+    const stepPix = document.getElementById('dep-modal-step-pix');
+    const pixVal = document.getElementById('dep-pix-val');
+    const pixBonusTag = document.getElementById('dep-pix-bonus-tag');
+    const pixQrImg = document.getElementById('dep-pix-qr-img');
+    const pixCopy = document.getElementById('dep-pixcopy');
+
+    const amountVal = parseInt(inp?.value, 10);
+    if (isNaN(amountVal) || amountVal < 20) {
+      if (errBox) {
+        errBox.textContent = 'O valor mínimo para depósito é de R$ 20,00.';
+        errBox.style.display = 'block';
+      }
+      return;
+    }
+    if (amountVal > 1000) {
+      if (errBox) {
+        errBox.textContent = 'O valor máximo para depósito é de R$ 1.000,00.';
+        errBox.style.display = 'block';
+      }
+      return;
+    }
+
+    if (errBox) errBox.style.display = 'none';
+    this.isSubmittingDepModal = true;
+    if (goBtn) goBtn.disabled = true;
+    if (goText) goText.textContent = '⏳ Gerando PIX seguro...';
+
+    try {
+      const data = await app.fetchAPI('/api/wallet/deposit', {
+        method: 'POST',
+        body: JSON.stringify({ amount: Math.round(amountVal * 100) })
+      });
+
+      if (!data || (!data.depositId && !data.pixCode)) {
+        throw new Error(data?.error || 'Não foi possível gerar a cobrança PIX. Tente novamente.');
+      }
+
+      this.pixCode = data.pixCode || '';
+
+      if (stepAmount) stepAmount.style.display = 'none';
+      if (stepPix) stepPix.style.display = 'block';
+
+      if (pixVal) pixVal.textContent = app.formatBRL(amountVal * 100);
+      if (pixBonusTag) {
+        if (data.bonusAmount && data.bonusAmount > 0) {
+          pixBonusTag.textContent = '+ ' + app.formatBRL(data.bonusAmount) + ' de Bônus previsto';
+          pixBonusTag.style.display = 'inline-block';
+        } else {
+          pixBonusTag.style.display = 'none';
+        }
+      }
+
+      if (pixQrImg) {
+        pixQrImg.src = data.qrCodeUrl || (`https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=` + encodeURIComponent(data.pixCode));
+      }
+
+      if (pixCopy) {
+        pixCopy.value = data.pixCode || '';
+      }
+
+      if (data.depositId) {
+        this.startDepositModalPolling(data.depositId, amountVal);
+      }
+
+    } catch (err) {
+      console.error('[DepositModal]', err);
+      if (errBox) {
+        errBox.textContent = err.message || 'Erro ao comunicar com o servidor. Tente novamente.';
+        errBox.style.display = 'block';
+      }
+      if (goBtn) goBtn.disabled = false;
+      this.syncDepositModal();
+    } finally {
+      this.isSubmittingDepModal = false;
+    }
+  },
+
+  async copyDepositModalPix() {
+    const pixCopy = document.getElementById('dep-pixcopy');
+    const copyBtn = document.getElementById('dep-qp-copy');
+    const copyText = document.getElementById('dep-qp-copy-t');
+    const code = pixCopy?.value || this.pixCode || '';
+    if (!code) return;
+
+    function showCopied() {
+      if (copyText) copyText.textContent = '✓ Código PIX Copiado!';
+      if (copyBtn) {
+        copyBtn.style.background = '#60e49c';
+        copyBtn.style.color = '#0b100c';
+      }
+      setTimeout(() => {
+        if (copyText) copyText.textContent = 'Copiar Código PIX';
+        if (copyBtn) {
+          copyBtn.style.background = '';
+          copyBtn.style.color = '';
+        }
+      }, 3000);
+    }
+
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        await navigator.clipboard.writeText(code);
+      } else {
+        pixCopy.select();
+        document.execCommand('copy');
+      }
+      showCopied();
+      app.showToast('Código PIX copiado com sucesso!');
+    } catch (_) {
+      if (pixCopy) {
+        pixCopy.select();
+        document.execCommand('copy');
+        showCopied();
+      }
+    }
+  },
+
+  depModalBack() {
+    if (this.depModalTimer) {
+      clearInterval(this.depModalTimer);
+      this.depModalTimer = null;
+    }
+    const stepAmount = document.getElementById('dep-modal-step-amount');
+    const stepPix = document.getElementById('dep-modal-step-pix');
+    const stepOk = document.getElementById('dep-modal-step-ok');
+    const errBox = document.getElementById('dep-modal-err-box');
+    const goBtn = document.getElementById('dep-modal-go');
+
+    if (stepPix) stepPix.style.display = 'none';
+    if (stepOk) stepOk.style.display = 'none';
+    if (stepAmount) stepAmount.style.display = 'block';
+    if (errBox) errBox.style.display = 'none';
+    if (goBtn) goBtn.disabled = false;
+    this.syncDepositModal();
+  },
+
+  startDepositModalPolling(depositId, expectedAmount) {
+    if (this.depModalTimer) clearInterval(this.depModalTimer);
+    let attempts = 0;
+
+    this.depModalTimer = setInterval(async () => {
+      attempts++;
+      if (attempts > 300) {
+        clearInterval(this.depModalTimer);
+        this.depModalTimer = null;
+        return;
+      }
+
+      try {
+        const res = await app.fetchAPI(`/api/wallet/check-deposit/${encodeURIComponent(depositId)}`);
+        if (res && res.status === 'approved') {
+          clearInterval(this.depModalTimer);
+          this.depModalTimer = null;
+
+          if (app.user) {
+            app.user.balance = res.balance;
+            if (res.cash_balance != null) app.user.cash_balance = res.cash_balance;
+            if (res.bonus_balance != null) app.user.bonus_balance = res.bonus_balance;
+          }
+          app.updateBalanceDisplays();
+
+          const stepPix = document.getElementById('dep-modal-step-pix');
+          const stepOk = document.getElementById('dep-modal-step-ok');
+          const confirmedVal = document.getElementById('dep-modal-confirmed-val');
+
+          if (stepPix) stepPix.style.display = 'none';
+          if (stepOk) stepOk.style.display = 'block';
+          if (confirmedVal) {
+            confirmedVal.textContent = '+' + app.formatBRL(res.amount || expectedAmount * 100) + ' no seu saldo';
+          }
+
+          app.showToast('🎉 Pagamento confirmado com sucesso! Saldo creditado.');
+          this.loadWallet();
+        }
+      } catch (_) {}
+    }, 3500);
+  },
+
+  stopDepositModalPolling() {
+    if (this.depModalTimer) {
+      clearInterval(this.depModalTimer);
+      this.depModalTimer = null;
+    }
   }
 };
 
