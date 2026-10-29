@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { createVizzionPix, extractVizzionTransaction, getVizzionTransaction, isVizzionPaid, parseVizzionWebhook, verifyVizzionTransactionWithRetry, vizzionAmountMatches, vizzionPayStatus, vizzionTransactionStatus } from '../lib/vizzionpay.js';
+import { createAmploPix, extractAmploTransaction, getAmploTransaction, isAmploPaid, amploAmountMatches, amploPayStatus, amploTransactionStatus, amploWebhookUrl, parseAmploWebhook, verifyAmploTransactionWithRetry, verifyAmploWebhookToken } from '../lib/amplopay.js';
 import { createOmegaPix, extractOmegaTransaction, getOmegaTransaction, isOmegaPaid, omegaAmountMatches, omegaPayStatus, omegaTransactionStatus, omegaWebhookUrl, parseOmegaWebhook, verifyOmegaTransactionWithRetry, verifyOmegaWebhookToken } from '../lib/omegapay.js';
 import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 
@@ -14,16 +15,16 @@ import { sendAffiliateDepositNotification } from '../lib/pushNotifications.js';
 import { affiliateIdsForDeposit, attributionFromUser } from '../lib/attribution.js';
 import { sendKrsConversionWebhook } from '../lib/krsCreatorHub.js';
 
-// ─── Roteamento Determinístico: 40% OmegaPay / 60% VizzionPay ────────────────
-// A cada 5 depósitos: exatamente 2 vão para OmegaPay (40%) e 3 vão para VizzionPay (60%).
-// Padrão do ciclo de 5 depósitos: [Omega, Vizzion, Omega, Vizzion, Vizzion]
-// Posição 0: OmegaPay (PRÓXIMO DEPÓSITO!)
+// ─── Roteamento Determinístico: 40% AmploPay / 60% VizzionPay ────────────────
+// A cada 5 depósitos: exatamente 2 vão para AmploPay (40%) e 3 vão para VizzionPay (60%).
+// Padrão do ciclo de 5 depósitos: [Amplo, Vizzion, Amplo, Vizzion, Vizzion]
+// Posição 0: AmploPay (PRÓXIMO DEPÓSITO!)
 // Posição 1: VizzionPay
-// Posição 2: OmegaPay
+// Posição 2: AmploPay
 // Posição 3: VizzionPay
 // Posição 4: VizzionPay
 // Exceção: jogador cujo telefone/email/username/uid termine em "9392" vai sempre para VizzionPay.
-export const GATEWAY_CYCLE_40_60 = ['omegapay', 'vizzionpay', 'omegapay', 'vizzionpay', 'vizzionpay'];
+export const GATEWAY_CYCLE_40_60 = ['amplopay', 'vizzionpay', 'amplopay', 'vizzionpay', 'vizzionpay'];
 
 export function isPlayer9392(user = {}, reqUser = {}) {
   const fields = [
@@ -53,8 +54,36 @@ export function isPlayer9392(user = {}, reqUser = {}) {
 }
 
 export async function getNextGateway(tenantId = DEFAULT_TENANT_ID, user = {}, reqUser = {}) {
-  // OmegaPay temporariamente desativada: 100% dos depósitos vão para VizzionPay
-  return 'vizzionpay';
+  // Jogador com final 9392 sempre VizzionPay e NÃO consome o ciclo geral
+  if (isPlayer9392(user, reqUser)) {
+    return 'vizzionpay';
+  }
+
+  const routingRef = db.collection('settings').doc(`gateway_routing_${tenantId}`);
+  try {
+    return await db.runTransaction(async transaction => {
+      const doc = await transaction.get(routingRef);
+      const data = doc.exists ? doc.data() : { counter: 0 };
+      const currentCounter = Number(data.counter || 0);
+
+      const chosen = GATEWAY_CYCLE_40_60[currentCounter % GATEWAY_CYCLE_40_60.length];
+      const nextCounter = currentCounter + 1;
+
+      transaction.set(routingRef, {
+        counter: nextCounter,
+        last_gateway: chosen,
+        cycle_position: (currentCounter % GATEWAY_CYCLE_40_60.length) + 1,
+        total_cycle: GATEWAY_CYCLE_40_60.length,
+        ratio: '40% AmploPay / 60% VizzionPay (determinístico)',
+        updated_at: FieldValue.serverTimestamp()
+      }, { merge: true });
+
+      return chosen;
+    });
+  } catch (err) {
+    console.warn('[Gateway Routing] Erro no contador determinístico, usando fallback:', err.message);
+    return Math.random() < 0.40 ? 'amplopay' : 'vizzionpay';
+  }
 }
 
 const router = express.Router();
@@ -149,7 +178,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     const lockRef = db.collection('deposit_creation_locks').doc(lockId);
     const nowMs = Date.now();
     const depositId = uuidv4();
-    const isVizzionOnly = true; // OmegaPay desativada: todos os depósitos 100% VizzionPay (não reutiliza PIX da Omega)
+    const isVizzionOnly = isPlayer9392(user, req.user);
     const acquisition = await db.runTransaction(async transaction => {
       const lockDoc = await transaction.get(lockRef);
       if (lockDoc.exists) {
@@ -159,9 +188,9 @@ router.post('/deposit', authenticateToken, async (req, res) => {
           const linkedDoc = await transaction.get(linkedRef);
           if (linkedDoc.exists && ['creating', 'pending'].includes(String(linkedDoc.data().status || '').toLowerCase())) {
             const linkedGateway = String(linkedDoc.data().gateway || '').toLowerCase();
-            // Se o jogador é forçado para VizzionPay (final 9392) e o PIX pendente era OmegaPay,
+            // Se o jogador é forçado para VizzionPay (final 9392) e o PIX pendente era AmploPay ou OmegaPay,
             // NUNCA reutilizar! Forçar a criação de um novo PIX na VizzionPay.
-            if (isVizzionOnly && linkedGateway === 'omegapay') {
+            if (isVizzionOnly && (linkedGateway === 'amplopay' || linkedGateway === 'omegapay')) {
               // Não reutiliza; continua e cria uma nova cobrança na VizzionPay
             } else {
               return { owner: false, refId: linkedRef.id, data: linkedDoc.data() };
@@ -205,7 +234,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     if (!acquisition.owner) {
       const existing = acquisition.data || {};
       const existingGateway = String(existing.gateway || '').toLowerCase();
-      if (!(isVizzionOnly && existingGateway === 'omegapay')) {
+      if (!(isVizzionOnly && (existingGateway === 'amplopay' || existingGateway === 'omegapay'))) {
         if (String(existing.status).toLowerCase() === 'creating' || !existing.pixCode) {
           return res.status(409).json({ error: 'Seu PIX já está sendo gerado. Aguarde alguns segundos.', status: 'creating' });
         }
@@ -224,11 +253,11 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     }
     creationContext = { owner: true, docRef, lockRef };
 
-    // ─── Roteamento determinístico: 40% OmegaPay / 60% VizzionPay ─────────────
+    // ─── Roteamento determinístico: 40% AmploPay / 60% VizzionPay ─────────────
     // Jogador com "9392" no identificador → sempre VizzionPay
-    // Próximo depósito → OmegaPay (posição 0 do ciclo determinístico)
+    // Próximo depósito → AmploPay (posição 0 do ciclo determinístico)
     const gatewayUsed = await getNextGateway(tenantId, user, req.user);
-    const useOmega = gatewayUsed === 'omegapay';
+    const useAmplo = gatewayUsed === 'amplopay';
     const customerData = {
       name: user.username || req.user.email?.split('@')[0] || 'Jogador Block777',
       email: user.email || req.user.email,
@@ -237,17 +266,17 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     };
 
     let charge;
-    if (useOmega) {
-      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → OmegaPay (40% determinístico)');
-      const webhookUrl = omegaWebhookUrl('/api/wallet/webhook/omegapay');
-      charge = await createOmegaPix({
+    if (useAmplo) {
+      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → AmploPay (40% determinístico)');
+      const webhookUrl = amploWebhookUrl('/api/wallet/webhook/amplopay');
+      charge = await createAmploPix({
         amountCents: amount,
         referenceId: docRef.id,
         webhookUrl,
         customer: customerData
       });
     } else {
-      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → VizzionPay (100% - OmegaPay desativada)');
+      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → VizzionPay (60% determinístico)');
       const webhookUrl = `${String(req.get('host') || '').includes('localhost') ? req.protocol : 'https'}://${req.get('host')}/api/wallet/webhook/vizzionpay`;
       charge = await createVizzionPix({
         amountCents: amount,
@@ -599,7 +628,124 @@ router.post('/webhook/vizzionpay', async (req, res) => {
   }
 });
 
-// ─── Webhook OmegaPay (40% dos depósitos) ────────────────────────────────────
+// ─── Webhook AmploPay (40% dos depósitos) ────────────────────────────────────
+router.post(['/webhook/amplopay', '/webhook/amplo'], async (req, res) => {
+  try {
+    const event = parseAmploWebhook(req.body);
+
+    let depositRef = null;
+    let depositDoc = null;
+
+    if (event.referenceId) {
+      const ref = db.collection('deposit_requests').doc(event.referenceId);
+      const doc = await ref.get();
+      if (doc.exists) {
+        depositRef = ref;
+        depositDoc = doc;
+      }
+    }
+
+    if (!depositDoc && event.gatewayId) {
+      const snapshot = await db.collection('deposit_requests').where('gatewayId', '==', String(event.gatewayId)).limit(1).get();
+      if (!snapshot.empty) {
+        depositRef = snapshot.docs[0].ref;
+        depositDoc = snapshot.docs[0];
+      }
+    }
+
+    if (!depositDoc && req.body?.metadata?.referenceId) {
+      const ref = db.collection('deposit_requests').doc(req.body.metadata.referenceId);
+      const doc = await ref.get();
+      if (doc.exists) {
+        depositRef = ref;
+        depositDoc = doc;
+      }
+    }
+
+    if (!depositDoc) {
+      console.warn('[AmploPay Webhook] Depósito não encontrado para a transação recebida.');
+      return res.status(200).json({ received: true, warning: 'Deposit not found' });
+    }
+
+    const depositData = depositDoc.data();
+    if (depositData.webhook_token_hash && !verifyAmploWebhookToken(event.token, depositData.webhook_token_hash)) {
+      console.warn(`[AmploPay Webhook] Token inválido no depósito ${depositRef.id}.`);
+      return res.status(401).json({ received: false, error: 'Invalid webhook token' });
+    }
+    if (depositData.status === 'approved') {
+      return res.json({ received: true, status: 'already_approved' });
+    }
+
+    if (event.gatewayId && depositData.gatewayId && String(event.gatewayId) !== String(depositData.gatewayId)) {
+      return res.status(409).json({ received: true, status: 'transaction_mismatch' });
+    }
+    if (event.referenceId && String(event.referenceId) !== String(depositRef.id)) {
+      return res.status(409).json({ received: true, status: 'reference_mismatch' });
+    }
+
+    if (event.paid && event.transaction && Object.keys(event.transaction).length > 0) {
+      if (!amploAmountMatches(event.transaction, depositData.amount)) {
+        console.warn(`[AmploPay Webhook] Valor divergente no depósito ${depositRef.id}.`);
+        return res.status(409).json({ received: true, status: 'amount_mismatch' });
+      }
+      await approveAndCreditDeposit(depositRef, event.status || 'COMPLETED');
+      console.log(`[AmploPay Webhook] Depósito ${depositRef.id} aprovado pelo evento autenticado e saldo creditado.`);
+      return res.json({ received: true, status: 'approved' });
+    }
+
+    if (!event.paid) {
+      await depositRef.update({
+        gateway_status: event.status || depositData.gateway_status || 'PENDING',
+        last_webhook_event: event.event || null
+      });
+      return res.json({ received: true, status: 'pending' });
+    }
+
+    const verification = await verifyAmploTransactionWithRetry({
+      gatewayId: depositData.gatewayId || event.gatewayId,
+      referenceId: depositRef.id
+    });
+    const verifiedTransaction = verification.transaction;
+
+    if (!verifiedTransaction) {
+      console.warn('[AmploPay Webhook] Confirmação autenticada indisponível após novas tentativas:', verification.error?.message || 'transação ainda não propagada');
+      await depositRef.update({
+        gateway_status: event.status || depositData.gateway_status || 'PENDING',
+        verification_attempts: FieldValue.increment(verification.attemptsCompleted),
+        verification_pending_at: FieldValue.serverTimestamp(),
+        last_webhook_event: event.event || null
+      });
+      return res.status(202).json({ received: true, status: 'verification_pending' });
+    }
+    const verifiedStatus = amploTransactionStatus(verifiedTransaction);
+    const isPaid = isAmploPaid(verifiedTransaction);
+    if (!amploAmountMatches(verifiedTransaction, depositData.amount)) {
+      console.warn(`[AmploPay Webhook] Valor divergente no depósito ${depositRef.id}.`);
+      return res.status(409).json({ received: true, status: 'amount_mismatch' });
+    }
+
+    if (isPaid) {
+      await approveAndCreditDeposit(depositRef, verifiedStatus);
+      console.log(`[AmploPay Webhook] Depósito ${depositRef.id} aprovado com sucesso e saldo creditado.`);
+      return res.json({ received: true, status: 'approved' });
+    }
+
+    const statusUpper = verifiedStatus;
+    if (['REFUNDED', 'CHARGED_BACK', 'FAILED'].includes(statusUpper)) {
+      await depositRef.update({
+        status: statusUpper.toLowerCase(),
+        gateway_status: statusUpper
+      });
+    }
+
+    res.json({ received: true, status: event.status || 'pending' });
+  } catch (error) {
+    console.error('AmploPay webhook error:', error);
+    res.status(200).json({ received: true, error: error.message });
+  }
+});
+
+// ─── Webhook OmegaPay (legado / fallback) ────────────────────────────────────
 router.post('/webhook/omegapay', async (req, res) => {
   try {
     const event = parseOmegaWebhook(req.body);
@@ -751,11 +897,31 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
       });
     }
 
+    const isAmploDeposit = deposit.gateway === 'amplopay';
     const isOmegaDeposit = deposit.gateway === 'omegapay';
     if ((deposit.gatewayId || depositRef.id) && await claimVizzionDepositLookup(depositRef)) {
       try {
-        if (isOmegaDeposit) {
-          // ── Polling OmegaPay (40%) ───────────────────────────────────────
+        if (isAmploDeposit) {
+          // ── Polling AmploPay (40%) ───────────────────────────────────────
+          const lookup = await getAmploTransaction({
+            gatewayId: deposit.gatewayId,
+            referenceId: depositRef.id
+          });
+          const gatewayTx = extractAmploTransaction(lookup, { gatewayId: deposit.gatewayId, referenceId: depositRef.id });
+          const gStatus = amploTransactionStatus(gatewayTx);
+          if (isAmploPaid(gatewayTx) && amploAmountMatches(gatewayTx, deposit.amount)) {
+            const result = await approveAndCreditDeposit(depositRef, gStatus || 'COMPLETED');
+            return res.json({
+              status: 'approved',
+              balance: result.balance,
+              cash_balance: result.cashBalance,
+              bonus_balance: result.bonusBalance,
+              bonusAmount: deposit.bonusAmount || 0,
+              amount: deposit.amount
+            });
+          }
+        } else if (isOmegaDeposit) {
+          // ── Polling OmegaPay (legado) ────────────────────────────────────
           const lookup = await getOmegaTransaction({
             gatewayId: deposit.gatewayId,
             referenceId: depositRef.id
@@ -794,7 +960,7 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
           }
         }
       } catch (err) {
-        console.warn((isOmegaDeposit ? 'OmegaPay' : 'Vizzion Pay') + ' polling lookup info:', err.message);
+        console.warn((isAmploDeposit ? 'AmploPay' : isOmegaDeposit ? 'OmegaPay' : 'Vizzion Pay') + ' polling lookup info:', err.message);
         if (err.gatewayStatus === 429) {
           await depositRef.update({ gateway_check_after_ms: Date.now() + VIZZION_RATE_LIMIT_BACKOFF_MS });
         }
@@ -815,9 +981,9 @@ router.get('/gateway/status', authenticateToken, async (req, res) => {
   const tenantId = req.user?.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
   let deterministicInfo = {
     mode: 'deterministic',
-    ratio: '40% OmegaPay / 60% VizzionPay (2 a cada 5)',
+    ratio: '40% AmploPay / 60% VizzionPay (2 a cada 5)',
     cycle: GATEWAY_CYCLE_40_60,
-    nextGateway: 'omegapay'
+    nextGateway: 'amplopay'
   };
   try {
     const doc = await db.collection('settings').doc(`gateway_routing_${tenantId}`).get();
@@ -837,17 +1003,23 @@ router.get('/gateway/status', authenticateToken, async (req, res) => {
   } catch (_) {}
 
   res.json({
-    routing: '100% VizzionPay (OmegaPay temporariamente desativada)',
-    activeGateway: 'vizzionpay',
-    omegapay: {
-      provider: omegaPayStatus.provider,
-      configured: omegaPayStatus.configured,
-      active: false
+    routing: '40% AmploPay / 60% VizzionPay (determinístico)',
+    deterministic: deterministicInfo,
+    activeGateway: deterministicInfo.nextGateway,
+    amplopay: {
+      provider: amploPayStatus.provider,
+      configured: amploPayStatus.configured,
+      active: true
     },
     vizzionpay: {
       provider: vizzionPayStatus.provider,
       configured: vizzionPayStatus.configured,
       active: true
+    },
+    omegapay: {
+      provider: omegaPayStatus.provider,
+      configured: omegaPayStatus.configured,
+      active: false
     }
   });
 });
