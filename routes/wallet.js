@@ -53,9 +53,38 @@ export function isPlayer9392(user = {}, reqUser = {}) {
   });
 }
 
+// Conta Kaka: 100% VizzionPay APENAS para os PIX gerados por ela mesma (afiliados mantêm roteamento normal)
+export function isKakaAccount(user = {}, reqUser = {}) {
+  const fields = [
+    user.phone,
+    user.email,
+    user.username,
+    user.uid,
+    user.id,
+    reqUser?.phone,
+    reqUser?.email,
+    reqUser?.username,
+    reqUser?.uid
+  ];
+  return fields.some(val => {
+    if (!val) return false;
+    const str = String(val).trim();
+    const digits = str.replace(/\D/g, '');
+    if (digits === '11959929994' || digits.endsWith('959929994') || str.includes('11959929994')) return true;
+    if (str.toLowerCase() === 'kaka') return true;
+    if (str === 'blockerino_phone_11959929994') return true;
+    if (str.toLowerCase().startsWith('11959929994@')) return true;
+    return false;
+  });
+}
+
+export function isVizzionExemptAccount(user = {}, reqUser = {}) {
+  return isPlayer9392(user, reqUser) || isKakaAccount(user, reqUser);
+}
+
 export async function getNextGateway(tenantId = DEFAULT_TENANT_ID, user = {}, reqUser = {}) {
-  // Jogador com final 9392 sempre VizzionPay e NÃO consome o ciclo geral
-  if (isPlayer9392(user, reqUser)) {
+  // Jogador com final 9392 ou conta Kaka (gerado por ela mesma): sempre VizzionPay e NÃO consome o ciclo geral
+  if (isVizzionExemptAccount(user, reqUser)) {
     return 'vizzionpay';
   }
 
@@ -178,7 +207,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     const lockRef = db.collection('deposit_creation_locks').doc(lockId);
     const nowMs = Date.now();
     const depositId = uuidv4();
-    const isVizzionOnly = isPlayer9392(user, req.user);
+    const isVizzionOnly = isVizzionExemptAccount(user, req.user);
     const acquisition = await db.runTransaction(async transaction => {
       const lockDoc = await transaction.get(lockRef);
       if (lockDoc.exists) {
@@ -188,9 +217,9 @@ router.post('/deposit', authenticateToken, async (req, res) => {
           const linkedDoc = await transaction.get(linkedRef);
           if (linkedDoc.exists && ['creating', 'pending'].includes(String(linkedDoc.data().status || '').toLowerCase())) {
             const linkedGateway = String(linkedDoc.data().gateway || '').toLowerCase();
-            // Se o jogador é forçado para VizzionPay (final 9392) e o PIX pendente era AmploPay ou OmegaPay,
+            // Se o jogador é forçado para VizzionPay (final 9392 ou conta Kaka) e o PIX pendente não era VizzionPay,
             // NUNCA reutilizar! Forçar a criação de um novo PIX na VizzionPay.
-            if (isVizzionOnly && (linkedGateway === 'amplopay' || linkedGateway === 'omegapay')) {
+            if (isVizzionOnly && (linkedGateway === 'amplopay' || linkedGateway === 'omegapay' || linkedGateway === 'nxgate')) {
               // Não reutiliza; continua e cria uma nova cobrança na VizzionPay
             } else {
               return { owner: false, refId: linkedRef.id, data: linkedDoc.data() };
@@ -234,7 +263,7 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     if (!acquisition.owner) {
       const existing = acquisition.data || {};
       const existingGateway = String(existing.gateway || '').toLowerCase();
-      if (!(isVizzionOnly && (existingGateway === 'amplopay' || existingGateway === 'omegapay'))) {
+      if (!(isVizzionOnly && (existingGateway === 'amplopay' || existingGateway === 'omegapay' || existingGateway === 'nxgate'))) {
         if (String(existing.status).toLowerCase() === 'creating' || !existing.pixCode) {
           return res.status(409).json({ error: 'Seu PIX já está sendo gerado. Aguarde alguns segundos.', status: 'creating' });
         }
