@@ -3,9 +3,8 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import { db, FieldValue } from '../lib/firebase.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { createNxGatePix, checkNxGateStatus, parseNxGateWebhook, nxGateStatus, nxGateWebhookUrl } from '../lib/nxgate.js';
 import { createVizzionPix, extractVizzionTransaction, getVizzionTransaction, isVizzionPaid, parseVizzionWebhook, verifyVizzionTransactionWithRetry, vizzionAmountMatches, vizzionPayStatus, vizzionTransactionStatus } from '../lib/vizzionpay.js';
-import { createAmploPix, extractAmploTransaction, getAmploTransaction, isAmploPaid, amploAmountMatches, amploPayStatus, amploTransactionStatus, amploWebhookUrl, parseAmploWebhook, verifyAmploTransactionWithRetry, verifyAmploWebhookToken } from '../lib/amplopay.js';
-import { createOmegaPix, extractOmegaTransaction, getOmegaTransaction, isOmegaPaid, omegaAmountMatches, omegaPayStatus, omegaTransactionStatus, omegaWebhookUrl, parseOmegaWebhook, verifyOmegaTransactionWithRetry, verifyOmegaWebhookToken } from '../lib/omegapay.js';
 import { calculateDepositPromotion, getWalletBuckets, normalizePromotionSettings, PROMOTION_DEFAULTS } from '../lib/promotion.js';
 
 import { DEFAULT_TENANT_ID, belongsToTenant, tenantSettingsRef } from '../lib/tenant.js';
@@ -24,7 +23,7 @@ import { sendKrsConversionWebhook } from '../lib/krsCreatorHub.js';
 // Posição 3: VizzionPay
 // Posição 4: VizzionPay
 // Exceção: jogador cujo telefone/email/username/uid termine em "9392" vai sempre para VizzionPay.
-export const GATEWAY_CYCLE_40_60 = ['amplopay', 'vizzionpay', 'amplopay', 'vizzionpay', 'vizzionpay'];
+export const GATEWAY_CYCLE_40_60 = ['nxgate', 'vizzionpay', 'nxgate', 'vizzionpay', 'vizzionpay'];
 
 export function isPlayer9392(user = {}, reqUser = {}) {
   const fields = [
@@ -103,7 +102,7 @@ export async function getNextGateway(tenantId = DEFAULT_TENANT_ID, user = {}, re
         last_gateway: chosen,
         cycle_position: (currentCounter % GATEWAY_CYCLE_40_60.length) + 1,
         total_cycle: GATEWAY_CYCLE_40_60.length,
-        ratio: '40% AmploPay / 60% VizzionPay (determinístico)',
+        ratio: '40% NXGate / 60% VizzionPay (determinístico)',
         updated_at: FieldValue.serverTimestamp()
       }, { merge: true });
 
@@ -111,7 +110,7 @@ export async function getNextGateway(tenantId = DEFAULT_TENANT_ID, user = {}, re
     });
   } catch (err) {
     console.warn('[Gateway Routing] Erro no contador determinístico, usando fallback:', err.message);
-    return Math.random() < 0.40 ? 'amplopay' : 'vizzionpay';
+    return Math.random() < 0.40 ? 'nxgate' : 'vizzionpay';
   }
 }
 
@@ -282,11 +281,11 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     }
     creationContext = { owner: true, docRef, lockRef };
 
-    // ─── Roteamento determinístico: 40% AmploPay / 60% VizzionPay ─────────────
-    // Jogador com "9392" no identificador → sempre VizzionPay
-    // Próximo depósito → AmploPay (posição 0 do ciclo determinístico)
+    // ─── Roteamento determinístico: 40% NXGate / 60% VizzionPay ───────────────
+    // Jogador com "9392" ou conta Kaka → sempre VizzionPay
+    // Ciclo determinístico: 40% NXGate / 60% VizzionPay
     const gatewayUsed = await getNextGateway(tenantId, user, req.user);
-    const useAmplo = gatewayUsed === 'amplopay';
+    const useNxGate = gatewayUsed === 'nxgate';
     const customerData = {
       name: user.username || req.user.email?.split('@')[0] || 'Jogador Block777',
       email: user.email || req.user.email,
@@ -295,10 +294,10 @@ router.post('/deposit', authenticateToken, async (req, res) => {
     };
 
     let charge;
-    if (useAmplo) {
-      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → AmploPay (40% determinístico)');
-      const webhookUrl = amploWebhookUrl('/api/wallet/webhook/amplopay');
-      charge = await createAmploPix({
+    if (useNxGate) {
+      console.log('[Deposit] Roteando depósito ' + docRef.id + ' → NXGate (40% determinístico)');
+      const webhookUrl = nxGateWebhookUrl('/api/wallet/webhook/nxgate');
+      charge = await createNxGatePix({
         amountCents: amount,
         referenceId: docRef.id,
         webhookUrl,
@@ -657,20 +656,26 @@ router.post('/webhook/vizzionpay', async (req, res) => {
   }
 });
 
-// ─── Webhook AmploPay (40% dos depósitos) ────────────────────────────────────
-router.post(['/webhook/amplopay', '/webhook/amplo'], async (req, res) => {
+// ─── Webhook NXGate (40% dos depósitos) ────────────────────────────────────
+router.get(['/webhook/nxgate', '/webhook/nxg'], (req, res) => {
+  res.json({ status: 'webhook_active', gateway: 'NXGate', platform: 'Block777', timestamp: new Date().toISOString() });
+});
+
+router.post(['/webhook/nxgate', '/webhook/nxg'], async (req, res) => {
   try {
-    const event = parseAmploWebhook(req.body);
+    const event = parseNxGateWebhook(req.body);
+    console.log('[NXGate Webhook] Notificação recebida:', JSON.stringify(req.body));
 
     let depositRef = null;
     let depositDoc = null;
 
-    if (event.referenceId) {
-      const ref = db.collection('deposit_requests').doc(event.referenceId);
+    for (const candidate of (event.referenceCandidates || [event.referenceId]).filter(Boolean)) {
+      const ref = db.collection('deposit_requests').doc(candidate);
       const doc = await ref.get();
       if (doc.exists) {
         depositRef = ref;
         depositDoc = doc;
+        break;
       }
     }
 
@@ -682,213 +687,32 @@ router.post(['/webhook/amplopay', '/webhook/amplo'], async (req, res) => {
       }
     }
 
-    if (!depositDoc && req.body?.metadata?.referenceId) {
-      const ref = db.collection('deposit_requests').doc(req.body.metadata.referenceId);
-      const doc = await ref.get();
-      if (doc.exists) {
-        depositRef = ref;
-        depositDoc = doc;
-      }
-    }
-
     if (!depositDoc) {
-      console.warn('[AmploPay Webhook] Depósito não encontrado para a transação recebida.');
+      console.warn('[NXGate Webhook] Depósito não encontrado para:', event.referenceCandidates);
       return res.status(200).json({ received: true, warning: 'Deposit not found' });
     }
 
     const depositData = depositDoc.data();
-    if (depositData.webhook_token_hash && !verifyAmploWebhookToken(event.token, depositData.webhook_token_hash)) {
-      console.warn(`[AmploPay Webhook] Token inválido no depósito ${depositRef.id}.`);
-      return res.status(401).json({ received: false, error: 'Invalid webhook token' });
-    }
     if (depositData.status === 'approved') {
       return res.json({ received: true, status: 'already_approved' });
     }
 
-    if (event.gatewayId && depositData.gatewayId && String(event.gatewayId) !== String(depositData.gatewayId)) {
-      return res.status(409).json({ received: true, status: 'transaction_mismatch' });
-    }
-    if (event.referenceId && String(event.referenceId) !== String(depositRef.id)) {
-      return res.status(409).json({ received: true, status: 'reference_mismatch' });
-    }
-
-    if (event.paid && event.transaction && Object.keys(event.transaction).length > 0) {
-      if (!amploAmountMatches(event.transaction, depositData.amount)) {
-        console.warn(`[AmploPay Webhook] Valor divergente no depósito ${depositRef.id}.`);
-        return res.status(409).json({ received: true, status: 'amount_mismatch' });
-      }
-      await approveAndCreditDeposit(depositRef, event.status || 'COMPLETED');
-      console.log(`[AmploPay Webhook] Depósito ${depositRef.id} aprovado pelo evento autenticado e saldo creditado.`);
+    if (event.isPaid) {
+      await approveAndCreditDeposit(depositRef, 'COMPLETED');
+      console.log(`[NXGate Webhook] Depósito ${depositRef.id} aprovado com sucesso e saldo creditado.`);
       return res.json({ received: true, status: 'approved' });
-    }
-
-    if (!event.paid) {
-      await depositRef.update({
-        gateway_status: event.status || depositData.gateway_status || 'PENDING',
-        last_webhook_event: event.event || null
-      });
-      return res.json({ received: true, status: 'pending' });
-    }
-
-    const verification = await verifyAmploTransactionWithRetry({
-      gatewayId: depositData.gatewayId || event.gatewayId,
-      referenceId: depositRef.id
-    });
-    const verifiedTransaction = verification.transaction;
-
-    if (!verifiedTransaction) {
-      console.warn('[AmploPay Webhook] Confirmação autenticada indisponível após novas tentativas:', verification.error?.message || 'transação ainda não propagada');
-      await depositRef.update({
-        gateway_status: event.status || depositData.gateway_status || 'PENDING',
-        verification_attempts: FieldValue.increment(verification.attemptsCompleted),
-        verification_pending_at: FieldValue.serverTimestamp(),
-        last_webhook_event: event.event || null
-      });
-      return res.status(202).json({ received: true, status: 'verification_pending' });
-    }
-    const verifiedStatus = amploTransactionStatus(verifiedTransaction);
-    const isPaid = isAmploPaid(verifiedTransaction);
-    if (!amploAmountMatches(verifiedTransaction, depositData.amount)) {
-      console.warn(`[AmploPay Webhook] Valor divergente no depósito ${depositRef.id}.`);
-      return res.status(409).json({ received: true, status: 'amount_mismatch' });
-    }
-
-    if (isPaid) {
-      await approveAndCreditDeposit(depositRef, verifiedStatus);
-      console.log(`[AmploPay Webhook] Depósito ${depositRef.id} aprovado com sucesso e saldo creditado.`);
-      return res.json({ received: true, status: 'approved' });
-    }
-
-    const statusUpper = verifiedStatus;
-    if (['REFUNDED', 'CHARGED_BACK', 'FAILED'].includes(statusUpper)) {
-      await depositRef.update({
-        status: statusUpper.toLowerCase(),
-        gateway_status: statusUpper
-      });
     }
 
     res.json({ received: true, status: event.status || 'pending' });
   } catch (error) {
-    console.error('AmploPay webhook error:', error);
+    console.error('NXGate webhook error:', error);
     res.status(200).json({ received: true, error: error.message });
   }
 });
 
-// ─── Webhook OmegaPay (legado / fallback) ────────────────────────────────────
-router.post('/webhook/omegapay', async (req, res) => {
-  try {
-    const event = parseOmegaWebhook(req.body);
-
-    let depositRef = null;
-    let depositDoc = null;
-
-    if (event.referenceId) {
-      const ref = db.collection('deposit_requests').doc(event.referenceId);
-      const doc = await ref.get();
-      if (doc.exists) {
-        depositRef = ref;
-        depositDoc = doc;
-      }
-    }
-
-    if (!depositDoc && event.gatewayId) {
-      const snapshot = await db.collection('deposit_requests').where('gatewayId', '==', String(event.gatewayId)).limit(1).get();
-      if (!snapshot.empty) {
-        depositRef = snapshot.docs[0].ref;
-        depositDoc = snapshot.docs[0];
-      }
-    }
-
-    if (!depositDoc && req.body?.metadata?.referenceId) {
-      const ref = db.collection('deposit_requests').doc(req.body.metadata.referenceId);
-      const doc = await ref.get();
-      if (doc.exists) {
-        depositRef = ref;
-        depositDoc = doc;
-      }
-    }
-
-    if (!depositDoc) {
-      console.warn('[OmegaPay Webhook] Depósito não encontrado para a transação recebida.');
-      return res.status(200).json({ received: true, warning: 'Deposit not found' });
-    }
-
-    const depositData = depositDoc.data();
-    if (!verifyOmegaWebhookToken(event.token, depositData.webhook_token_hash)) {
-      console.warn(`[OmegaPay Webhook] Token inválido no depósito ${depositRef.id}.`);
-      return res.status(401).json({ received: false, error: 'Invalid webhook token' });
-    }
-    if (depositData.status === 'approved') {
-      return res.json({ received: true, status: 'already_approved' });
-    }
-
-    if (event.gatewayId && depositData.gatewayId && String(event.gatewayId) !== String(depositData.gatewayId)) {
-      return res.status(409).json({ received: true, status: 'transaction_mismatch' });
-    }
-    if (event.referenceId && String(event.referenceId) !== String(depositRef.id)) {
-      return res.status(409).json({ received: true, status: 'reference_mismatch' });
-    }
-
-    if (event.paid && event.transaction && Object.keys(event.transaction).length > 0) {
-      if (!omegaAmountMatches(event.transaction, depositData.amount)) {
-        console.warn(`[OmegaPay Webhook] Valor divergente no depósito ${depositRef.id}.`);
-        return res.status(409).json({ received: true, status: 'amount_mismatch' });
-      }
-      await approveAndCreditDeposit(depositRef, event.status || 'COMPLETED');
-      console.log(`[OmegaPay Webhook] Depósito ${depositRef.id} aprovado pelo evento autenticado e saldo creditado.`);
-      return res.json({ received: true, status: 'approved' });
-    }
-
-    if (!event.paid) {
-      await depositRef.update({
-        gateway_status: event.status || depositData.gateway_status || 'PENDING',
-        last_webhook_event: event.event || null
-      });
-      return res.json({ received: true, status: 'pending' });
-    }
-
-    const verification = await verifyOmegaTransactionWithRetry({
-      gatewayId: depositData.gatewayId || event.gatewayId,
-      referenceId: depositRef.id
-    });
-    const verifiedTransaction = verification.transaction;
-
-    if (!verifiedTransaction) {
-      console.warn('[OmegaPay Webhook] Confirmação autenticada indisponível após novas tentativas:', verification.error?.message || 'transação ainda não propagada');
-      await depositRef.update({
-        gateway_status: event.status || depositData.gateway_status || 'PENDING',
-        verification_attempts: FieldValue.increment(verification.attemptsCompleted),
-        verification_pending_at: FieldValue.serverTimestamp(),
-        last_webhook_event: event.event || null
-      });
-      return res.status(202).json({ received: true, status: 'verification_pending' });
-    }
-    const verifiedStatus = omegaTransactionStatus(verifiedTransaction);
-    const isPaid = isOmegaPaid(verifiedTransaction);
-    if (!omegaAmountMatches(verifiedTransaction, depositData.amount)) {
-      console.warn(`[OmegaPay Webhook] Valor divergente no depósito ${depositRef.id}.`);
-      return res.status(409).json({ received: true, status: 'amount_mismatch' });
-    }
-
-    if (isPaid) {
-      await approveAndCreditDeposit(depositRef, verifiedStatus);
-      console.log(`[OmegaPay Webhook] Depósito ${depositRef.id} aprovado com sucesso e saldo creditado.`);
-      return res.json({ received: true, status: 'approved' });
-    }
-
-    const statusUpper = verifiedStatus;
-    if (['REFUNDED', 'CHARGED_BACK', 'FAILED'].includes(statusUpper)) {
-      await depositRef.update({
-        status: statusUpper.toLowerCase(),
-        gateway_status: statusUpper
-      });
-    }
-
-    res.json({ received: true, status: event.status || 'pending' });
-  } catch (error) {
-    console.error('OmegaPay webhook error:', error);
-    res.status(200).json({ received: true, error: error.message });
-  }
+// ─── Webhooks Aposentados (AmploPay e OmegaPay completamente descontinuados) ──
+router.all(['/webhook/amplopay', '/webhook/amplo', '/webhook/omegapay'], (req, res) => {
+  res.status(200).json({ received: true, status: 'gateway_retired', message: 'AmploPay e OmegaPay descontinuados. Apenas NXGate e VizzionPay ativos.' });
 });
 
 router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
@@ -926,39 +750,14 @@ router.get('/check-deposit/:depositId', authenticateToken, async (req, res) => {
       });
     }
 
-    const isAmploDeposit = deposit.gateway === 'amplopay';
-    const isOmegaDeposit = deposit.gateway === 'omegapay';
+    const isNxDeposit = deposit.gateway === 'nxgate';
     if ((deposit.gatewayId || depositRef.id) && await claimVizzionDepositLookup(depositRef)) {
       try {
-        if (isAmploDeposit) {
-          // ── Polling AmploPay (40%) ───────────────────────────────────────
-          const lookup = await getAmploTransaction({
-            gatewayId: deposit.gatewayId,
-            referenceId: depositRef.id
-          });
-          const gatewayTx = extractAmploTransaction(lookup, { gatewayId: deposit.gatewayId, referenceId: depositRef.id });
-          const gStatus = amploTransactionStatus(gatewayTx);
-          if (isAmploPaid(gatewayTx) && amploAmountMatches(gatewayTx, deposit.amount)) {
-            const result = await approveAndCreditDeposit(depositRef, gStatus || 'COMPLETED');
-            return res.json({
-              status: 'approved',
-              balance: result.balance,
-              cash_balance: result.cashBalance,
-              bonus_balance: result.bonusBalance,
-              bonusAmount: deposit.bonusAmount || 0,
-              amount: deposit.amount
-            });
-          }
-        } else if (isOmegaDeposit) {
-          // ── Polling OmegaPay (legado) ────────────────────────────────────
-          const lookup = await getOmegaTransaction({
-            gatewayId: deposit.gatewayId,
-            referenceId: depositRef.id
-          });
-          const gatewayTx = extractOmegaTransaction(lookup, { gatewayId: deposit.gatewayId, referenceId: depositRef.id });
-          const gStatus = omegaTransactionStatus(gatewayTx);
-          if (isOmegaPaid(gatewayTx) && omegaAmountMatches(gatewayTx, deposit.amount)) {
-            const result = await approveAndCreditDeposit(depositRef, gStatus || 'COMPLETED');
+        if (isNxDeposit) {
+          // ── Polling NXGate (40%) ─────────────────────────────────────────
+          const statusInfo = await checkNxGateStatus(deposit.gatewayId || depositRef.id);
+          if (statusInfo?.isPaid) {
+            const result = await approveAndCreditDeposit(depositRef, 'COMPLETED');
             return res.json({
               status: 'approved',
               balance: result.balance,
@@ -1010,9 +809,9 @@ router.get('/gateway/status', authenticateToken, async (req, res) => {
   const tenantId = req.user?.tenant_id || req.tenant?.id || DEFAULT_TENANT_ID;
   let deterministicInfo = {
     mode: 'deterministic',
-    ratio: '40% AmploPay / 60% VizzionPay (2 a cada 5)',
+    ratio: '40% NXGate / 60% VizzionPay (2 a cada 5)',
     cycle: GATEWAY_CYCLE_40_60,
-    nextGateway: 'amplopay'
+    nextGateway: 'nxgate'
   };
   try {
     const doc = await db.collection('settings').doc(`gateway_routing_${tenantId}`).get();
@@ -1032,12 +831,12 @@ router.get('/gateway/status', authenticateToken, async (req, res) => {
   } catch (_) {}
 
   res.json({
-    routing: '40% AmploPay / 60% VizzionPay (determinístico)',
+    routing: '40% NXGate / 60% VizzionPay (determinístico)',
     deterministic: deterministicInfo,
     activeGateway: deterministicInfo.nextGateway,
-    amplopay: {
-      provider: amploPayStatus.provider,
-      configured: amploPayStatus.configured,
+    nxgate: {
+      provider: nxGateStatus.provider,
+      configured: nxGateStatus.configured,
       active: true
     },
     vizzionpay: {
@@ -1046,8 +845,8 @@ router.get('/gateway/status', authenticateToken, async (req, res) => {
       active: true
     },
     omegapay: {
-      provider: omegaPayStatus.provider,
-      configured: omegaPayStatus.configured,
+      provider: 'OmegaPay',
+      configured: false,
       active: false
     }
   });
